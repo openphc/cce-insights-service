@@ -33,9 +33,9 @@ flowchart TD
 
     E --> F[Count step_instance by state<br/>per protocol_instance]
     F --> G{Calculate adherence_rate<br/>completed / total}
-    G --> H{adherence_rate >= 80%?}
+    G --> H{"adherence_rate >= 80% ?"}
     H -- Yes --> I[on_track]
-    H -- No --> J{adherence_rate >= 50%?}
+    H -- No --> J{"adherence_rate >= 50% ?"}
     J -- Yes --> K[at_risk]
     J -- No --> L[non_compliant]
 
@@ -43,7 +43,7 @@ flowchart TD
     K --> M
     L --> M
     M --> N[Build ComplianceSummaryResponse]
-    N --> O[Return { data: ... }]
+    N --> O["Return { data: ... }"]
 ```
 
 ## 3. Patient Timeline Query Flow
@@ -88,7 +88,7 @@ flowchart TD
     G --> I
     H --> I
 
-    I --> J[Return DeviationTrendsResponse<br/>{ period, count, type }]
+    I --> J["Return DeviationTrendsResponse<br/>(period, count, type)"]
 ```
 
 ## 5. Facility Compliance Overview Flow
