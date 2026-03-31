@@ -438,3 +438,160 @@ flowchart TD
     L --> M[Apply pagination]
     M --> N[Return response]
 ```
+
+## 13. Patient Events & Deviations Flow
+
+### 13.1 Patient Events
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Controller as PatientController
+    participant Repo as EventLogRepository
+    participant DB as PostgreSQL
+
+    Client->>Controller: GET /v1/patients/{id}/events?resourceType=Encounter&limit=50
+    Controller->>Repo: findBySubjectOrderByEventTimeDesc("Patient/{id}")
+    Repo->>DB: SELECT * FROM event_log<br/>WHERE subject = ? ORDER BY event_time DESC
+    DB-->>Repo: event rows
+
+    Controller->>Controller: Filter by resourceType, source,<br/>date range (in-memory)
+    Controller->>Controller: Apply limit
+    Controller->>Controller: Extract resourceType from JSONB
+
+    Controller-->>Client: 200 OK { data: [...events] }
+```
+
+### 13.2 Patient Deviations
+
+```mermaid
+flowchart TD
+    A[GET /v1/patients/:id/deviations] --> B[Find protocol_instance<br/>by patient_id]
+    B --> C[For each protocol_instance]
+    C --> D[Query deviation table<br/>WHERE protocol_instance_id = ?]
+    D --> E[Filter by deviationType<br/>Filter by date range]
+    E --> F[Sort by detected_at DESC]
+    F --> G[Return deviation list with<br/>protocol context]
+```
+
+## 14. Source Comparison Flow
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Controller as EventVolumeController
+    participant Service as EventVolumeService
+    participant InboundRepo as InboundEventRepository
+    participant DB as PostgreSQL
+
+    Client->>Controller: GET /v1/events/compare-sources?sourceA=ehr-a&sourceB=ehr-b&windowSeconds=300
+    Controller->>Service: compareSourceSystems(sourceA, sourceB, windowSeconds, ...)
+
+    Service->>InboundRepo: findOverlappingEvents(sourceA, sourceB, window)
+    InboundRepo->>DB: SELECT subject, resource_type, COUNT(*)<br/>FROM inbound_event a JOIN inbound_event b<br/>ON a.subject = b.subject<br/>AND ABS(time_diff) <= windowSeconds
+    DB-->>InboundRepo: overlap rows
+
+    Service->>InboundRepo: findUniqueToSource(sourceA, sourceB, window)
+    InboundRepo->>DB: SELECT resource_type, COUNT(*)<br/>WHERE source = sourceA<br/>AND NOT EXISTS matching in sourceB
+    DB-->>InboundRepo: unique-to-A rows
+
+    Service->>InboundRepo: findUniqueToSource(sourceB, sourceA, window)
+    DB-->>InboundRepo: unique-to-B rows
+
+    Service->>InboundRepo: findOverlappingEventSamples(limit)
+    DB-->>InboundRepo: sample overlap pairs
+
+    Service->>Service: Calculate overlap %,<br/>unique counts, build summary
+    Service-->>Controller: SourceComparisonDto
+    Controller-->>Client: 200 OK { data: ... }
+```
+
+## 15. Ingestion Analytics Flow
+
+### 15.1 Ingestion Funnel
+
+```mermaid
+flowchart TD
+    A[GET /v1/ingestion/funnel] --> B[Parse params:<br/>facilityId, source, interval, dateRange]
+    B --> C[Query inbound_event<br/>GROUP BY status]
+
+    C --> D[ACCEPTED count]
+    C --> E[REJECTED count]
+    C --> F[DUPLICATE count]
+
+    D --> G[Calculate acceptance rate]
+    E --> G
+    F --> G
+
+    G --> H{interval provided?}
+    H -- Yes --> I[Query trend data<br/>DATE_TRUNC by interval<br/>GROUP BY period, status]
+    H -- No --> J[Skip trends]
+
+    I --> K[Build IngestionFunnelDto<br/>with status breakdown + trends]
+    J --> K
+    K --> L[Return response]
+```
+
+### 15.2 Rejection Analytics
+
+```mermaid
+flowchart TD
+    A[GET /v1/ingestion/rejections] --> B[Parse params:<br/>facilityId, source, dateRange]
+    B --> C[Query inbound_event<br/>WHERE status = REJECTED<br/>GROUP BY rejection_reason]
+    C --> D[Calculate reason percentages]
+
+    B --> E[Query inbound_event<br/>GROUP BY source, status]
+    B --> F[Query inbound_event<br/>WHERE status = REJECTED<br/>GROUP BY source, rejection_reason]
+
+    E --> G[Build per-source<br/>rejection rates]
+    F --> G
+    D --> H[Build RejectionAnalyticsDto]
+    G --> H
+    H --> I[Return response]
+```
+
+### 15.3 Source Data Quality
+
+```mermaid
+flowchart TD
+    A[GET /v1/ingestion/source-quality] --> B[Parse params:<br/>facilityId, dateRange]
+    B --> C[Query inbound_event<br/>GROUP BY source, status]
+
+    C --> D[For each source]
+    D --> E[Calculate acceptance rate<br/>= ACCEPTED / total]
+    D --> F[Calculate rejection rate<br/>= REJECTED / total]
+    D --> G[Calculate duplicate rate<br/>= DUPLICATE / total]
+
+    E --> H["Quality score =<br/>(acceptance rate × 100)"]
+    F --> H
+    G --> H
+
+    H --> I[Build SourceDataQualityDto]
+    I --> J[Return response]
+```
+
+### 15.4 Pipeline Loss
+
+```mermaid
+sequenceDiagram
+    participant Controller as IngestionAnalyticsController
+    participant Service as IngestionAnalyticsService
+    participant InboundRepo as InboundEventRepository
+    participant EventRepo as EventLogRepository
+    participant DB as PostgreSQL
+
+    Controller->>Service: getPipelineLoss(facilityId, dateRange)
+
+    Service->>InboundRepo: countAcceptedBySource()
+    InboundRepo->>DB: SELECT source, COUNT(*)<br/>FROM inbound_event WHERE status = 'ACCEPTED'
+    DB-->>InboundRepo: accepted counts
+
+    Service->>EventRepo: countMatchedBySource()
+    EventRepo->>DB: SELECT source, COUNT(*)<br/>FROM event_log WHERE processing_status = 'MATCHED'
+    DB-->>EventRepo: matched counts
+
+    Service->>Service: For each source:<br/>loss = accepted − matched<br/>loss_rate = loss / accepted
+
+    Service-->>Controller: PipelineLossDto
+    Controller-->>Controller: Wrap in ApiResponse
+```

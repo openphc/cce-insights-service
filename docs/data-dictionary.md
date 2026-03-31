@@ -90,6 +90,31 @@ Inbound clinical event audit trail. Queried for patient timeline views and **eve
 | `action_id` | `VARCHAR` | Yes | Matched PlanDefinition action ID |
 | `matched_step_instance_id` | `UUID` | Yes | Step completed by this event |
 
+### 1.6 `inbound_event`
+
+Request audit log & rejection tracking. Owned by the **Collector Service** — every HTTP request is persisted as-is before processing. Used for ingestion funnel, rejection analytics, source data quality, and pipeline loss detection.
+
+| Column | Type | Used By Insights | Purpose |
+|--------|------|------------------|---------|
+| `id` | `UUID` | Yes | PK (UUIDv7, time-ordered) |
+| `cloudevents_id` | `VARCHAR` | Yes | CloudEvents `id` — used for pipeline loss detection (JOIN to `event_log`) |
+| `source` | `VARCHAR` | Yes | CloudEvents source — group-by key for source metrics |
+| `type` | `VARCHAR` | Yes | CloudEvents type — used for source comparison matching |
+| `spec_version` | `VARCHAR` | No | Always "1.0" |
+| `subject` | `VARCHAR` | Yes | Patient UPID — used for source comparison matching |
+| `event_time` | `TIMESTAMPTZ` | Yes | Source-provided event time — used for time-window matching |
+| `data_content_type` | `VARCHAR` | No | MIME type of data payload |
+| `facility_id` | `VARCHAR` | Yes | Facility FOSA ID — filter key |
+| `correlation_id` | `VARCHAR` | No | Distributed tracing ID |
+| `source_event_id` | `VARCHAR` | No | Source system's internal event ID |
+| `raw_payload` | `JSONB` | Yes | Full original request body — resourceType extracted via `raw_payload->'data'->>'resourceType'` |
+| `status` | `VARCHAR` | Yes | `RECEIVED`, `ACCEPTED`, `REJECTED`, `DUPLICATE` — group-by key for funnel metrics |
+| `rejection_reason` | `VARCHAR` | Yes | Rejection reason code (if status = REJECTED) — group-by key for rejection analytics |
+| `error_details` | `TEXT` | No | Stack trace or validation error messages |
+| `received_at` | `TIMESTAMPTZ` | Yes | Server-side receipt timestamp (UTC) — filter + sort key |
+
+> **Deduplication constraint:** `UNIQUE(cloudevents_id, source)` — primary deduplication key.
+
 ## 2. Enum Values
 
 ### 2.1 `ProtocolInstanceStatus`
@@ -134,6 +159,34 @@ Inbound clinical event audit trail. Queried for patient timeline views and **eve
 | `on_track` | All steps completed on time/early, no active overdue/missed |
 | `at_risk` | One or more overdue steps (not yet missed) |
 | `non_compliant` | One or more missed steps |
+
+### 2.6 `InboundStatus`
+
+Status of an `inbound_event` record as it moves through the Collector pipeline.
+
+| Value | Description |
+|-------|-------------|
+| `RECEIVED` | Initial state — event persisted, not yet processed |
+| `ACCEPTED` | Validation passed, event published to Kafka |
+| `REJECTED` | Validation or Kafka publish failed — see `rejection_reason` |
+| `DUPLICATE` | Event already seen (same `cloudevents_id` + `source`) |
+
+### 2.7 `RejectionReason`
+
+Reason an event was rejected (stored on `inbound_event.rejection_reason`).
+
+| Value | Description |
+|-------|-------------|
+| `INVALID_ENVELOPE` | Missing or invalid CloudEvents required fields |
+| `INVALID_FHIR` | FHIR R4 payload failed structural validation |
+| `INVALID_JSON` | Non-FHIR JSON payload is not valid JSON or is empty |
+| `UNSUPPORTED_CONTENT_TYPE` | `datacontenttype` is not `application/fhir+json` or `application/json` |
+| `DUPLICATE` | Duplicate `(id, source)` detected within lookback window |
+| `MISSING_SUBJECT` | `subject` field missing |
+| `PAYLOAD_TOO_LARGE` | Request body exceeds max-payload-size |
+| `DESERIALIZATION_ERROR` | Request body could not be parsed as JSON |
+| `KAFKA_PUBLISH_FAILURE` | Kafka broker unavailable or publish timed out |
+| `INTERNAL_ERROR` | Unexpected failure during post-persist processing |
 
 ---
 

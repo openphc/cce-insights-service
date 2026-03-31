@@ -50,6 +50,8 @@ The Insights Service connects to the **same PostgreSQL database** (`cce_collecto
 
 > **Event Volume Queries:** The event volume analytics feature relies on JSONB path queries against `event_log.data` (e.g., `data->>'resourceType'` for resource type grouping, `data->'participant'->0->'individual'->>'reference'` for practitioner extraction). Ensure the `event_log` table is populated with realistic event data (including FHIR resources with practitioner references) to test these endpoints. See `data-dictionary.md` §3.3 for the full list of JSONB extraction paths.
 
+> **Ingestion Analytics:** The ingestion analytics endpoints query the `inbound_event` table (owned by the Collector Service). This table must be populated with event intake records to test the ingestion funnel, rejection analytics, source quality, and pipeline loss endpoints.
+
 **Development options:**
 1. **Run Compliance Service first** — its Flyway migrations create all tables
 2. **Use init script** — apply the Compliance Service schema manually
@@ -82,6 +84,19 @@ curl localhost:8084/v1/deviations/resolution-rate
 curl localhost:8084/v1/events/processing-quality
 curl localhost:8084/v1/patients/at-risk-hotspots
 curl localhost:8084/v1/patients/repeat-deviations?minDeviations=3
+
+# Test patient events and deviations
+curl localhost:8084/v1/patients/{patientId}/events?limit=10
+curl localhost:8084/v1/patients/{patientId}/deviations
+
+# Test source comparison
+curl "localhost:8084/v1/events/compare-sources?sourceA=ehr-system-a&sourceB=ehr-system-b&windowSeconds=300"
+
+# Test ingestion analytics
+curl localhost:8084/v1/ingestion/funnel
+curl localhost:8084/v1/ingestion/rejections
+curl localhost:8084/v1/ingestion/source-quality
+curl localhost:8084/v1/ingestion/pipeline-loss
 ```
 
 ## 3. Configuration Reference
@@ -147,27 +162,45 @@ cce-insights-service/
 ├── settings.gradle
 ├── gradlew / gradlew.bat
 ├── gradle/wrapper/
-├── docker-compose.yml
 ├── Dockerfile
+├── docker-compose.yml
+├── .dockerignore
+├── .env.example
 ├── .gitignore
 ├── README.md
+├── RELEASE_NOTES.md
 ├── docs/
 │   ├── architecture-overview.md
 │   ├── api-reference.md
 │   ├── data-dictionary.md
-│   └── developer-setup.md
+│   ├── developer-setup.md
+│   ├── deployment-guide.md
+│   └── flow-diagrams.md
+├── artifacts/
+│   └── subtasks.md
 └── src/
     ├── main/
     │   ├── java/org/openphc/cce/insights/
     │   │   ├── InsightsServiceApplication.java
-    │   │   ├── config/
-    │   │   ├── domain/entity/ + domain/enums/ + domain/repository/
-    │   │   ├── service/
-    │   │   └── web/controller/ + web/dto/
+    │   │   ├── config/          # JpaConfig, MetricsConfig, ObservabilityConfig
+    │   │   ├── domain/entity/   # 6 @Immutable entities (incl. InboundEvent)
+    │   │   ├── domain/enums/    # 5 enums
+    │   │   ├── domain/repository/ # 7 repos (ReadOnlyRepository + 6)
+    │   │   ├── health/          # DatabaseHealthIndicator
+    │   │   ├── service/         # 10 services + DateUtil
+    │   │   └── web/controller/ + web/dto/  # 10 controllers, ~30 DTOs
     │   └── resources/
-    │       └── application.yml
+    │       ├── application.yml
+    │       ├── application-local.yml
+    │       ├── application-docker.yml
+    │       ├── application-test.yml
+    │       └── logback-spring.xml
     ├── test/java/                    # Unit tests
-    └── integrationTest/java/         # Integration tests (Testcontainers)
+    └── integrationTest/
+        ├── java/                    # Integration tests (Testcontainers)
+        └── resources/
+            ├── init-schema.sql      # DDL for all 6 tables
+            └── seed-data.sql        # Sample data
 ```
 
 ## 5. Testing
@@ -208,21 +241,22 @@ Integration tests use SQL scripts to seed the Compliance Service schema and samp
 
 ## 6. Docker Build
 
-```dockerfile
-FROM eclipse-temurin:21-jdk-alpine AS build
-WORKDIR /app
-COPY gradle/ gradle/
-COPY gradlew build.gradle settings.gradle ./
-RUN ./gradlew dependencies --no-daemon
-COPY src/ src/
-RUN ./gradlew build -x test --no-daemon
+The project includes a multi-stage Dockerfile and docker-compose.yml for containerized development.
 
-FROM eclipse-temurin:21-jre-alpine
-WORKDIR /app
-COPY --from=build /app/build/libs/*.jar app.jar
-EXPOSE 8084
-ENTRYPOINT ["java", "-jar", "app.jar"]
+### 6.1 Docker Compose (Recommended)
+
+```bash
+# Copy and configure environment
+cp .env.example .env
+
+# Start PostgreSQL + Insights Service
+docker compose up -d
+
+# Verify
+curl localhost:8084/actuator/health
 ```
+
+### 6.2 Standalone Docker Build
 
 ```bash
 # Build Docker image
@@ -230,10 +264,13 @@ docker build -t cce-insights-service .
 
 # Run with Docker
 docker run -p 8084:8084 \
+  -e SPRING_PROFILES_ACTIVE=docker \
   -e DB_HOST=host.docker.internal \
-  -e DB_PORT=5433 \
+  -e DB_PORT=5432 \
   -e DB_NAME=cce_collector \
   -e DB_USERNAME=cce_user \
   -e DB_PASSWORD=cce_pass \
   cce-insights-service
 ```
+
+> See [deployment-guide.md](deployment-guide.md) for production deployment options including Kubernetes manifests.

@@ -2,7 +2,7 @@
 
 ## 1. System Context
 
-The **CCE Insights Service** (referred to as "Analytics Service" in the Solution Design v0.3) serves compliance analytics data — protocol adherence rates, deviation trends, facility-level summaries, and patient compliance timelines. It is a **read-only** service that queries the Compliance DB directly and exposes REST APIs consumed by the Analytics UI dashboard.
+The **CCE Insights Service** (referred to as "Analytics Service" in the Solution Design v0.3) serves compliance analytics data — protocol adherence rates, deviation trends, facility-level summaries, patient compliance timelines, ingestion pipeline metrics, and source system quality analysis. It is a **read-only** service that queries the Compliance DB and Collector DB directly and exposes REST APIs consumed by the Analytics UI dashboard.
 
 > All inbound requests arrive via the **CCE Gateway Service**, which validates OAuth tokens and enforces the `dashboard:read` scope. The Insights Service does not handle authentication or authorization.
 
@@ -19,11 +19,16 @@ graph TB
         TIMELINE["Patient Timeline<br/>Service"]
         DEVIATION["Deviation Analytics<br/>Service"]
         EVENTVOLUME["Event Volume<br/>Service"]
+        PROTOCOL["Protocol Analytics<br/>Service"]
+        FACILITY["Facility Ranking<br/>Service"]
+        QUALITY["Processing Quality<br/>Service"]
+        RISK["Patient Risk<br/>Service"]
+        INGESTION["Ingestion Analytics<br/>Service"]
         EXPORT["Export Service"]
     end
 
     subgraph Shared Infrastructure
-        DB[("PostgreSQL 16<br/>(Compliance DB)")]
+        DB[("PostgreSQL 16<br/>(cce_collector)")]
     end
 
     UI --> GATEWAY
@@ -32,18 +37,28 @@ graph TB
     API --> TIMELINE
     API --> DEVIATION
     API --> EVENTVOLUME
+    API --> PROTOCOL
+    API --> FACILITY
+    API --> QUALITY
+    API --> RISK
+    API --> INGESTION
     API --> EXPORT
     SUMMARY --> DB
     TIMELINE --> DB
     DEVIATION --> DB
     EVENTVOLUME --> DB
+    PROTOCOL --> DB
+    FACILITY --> DB
+    QUALITY --> DB
+    RISK --> DB
+    INGESTION --> DB
     EXPORT --> DB
 
     classDef service fill:#4A90D9,stroke:#2C5F8A,color:white
     classDef external fill:#7B8D8E,stroke:#566573,color:white
     classDef data fill:#27AE60,stroke:#1E8449,color:white
 
-    class API,SUMMARY,TIMELINE,DEVIATION,EVENTVOLUME,EXPORT service
+    class API,SUMMARY,TIMELINE,DEVIATION,EVENTVOLUME,PROTOCOL,FACILITY,QUALITY,RISK,INGESTION,EXPORT service
     class UI,GATEWAY external
     class DB data
 ```
@@ -51,6 +66,8 @@ graph TB
 **This service does NOT handle:** event ingestion, protocol matching, step completion, deviation detection, time-based transitions, authentication/authorization, or any write operations.
 
 > **Event Volume Analytics:** In addition to compliance-focused analytics, the Insights Service provides event volume metrics — counts of clinical events grouped by FHIR `resourceType`, facility, practitioner, and source system. These metrics are derived from the `event_log` table (immutable log of all inbound CloudEvents maintained by the Compliance Service). Practitioner information is extracted from the `event_log.data` JSONB column using resource-type-specific paths.
+
+> **Ingestion Analytics:** The Insights Service also queries the `inbound_event` table (owned by the Collector Service) to provide ingestion pipeline metrics — acceptance/rejection funnels, rejection reason analysis, source data quality scores, and pipeline loss tracking. Source comparison and source-level event counts are also powered by `inbound_event` to capture ALL received events, not just compliance-matched ones.
 
 ---
 
@@ -64,6 +81,7 @@ graph TB
 | Database | PostgreSQL | 16+ (shared with Compliance Service) |
 | DB access | Spring Data JPA + Hibernate | (Spring Boot managed) |
 | Observability | Micrometer + Prometheus | (Spring Boot managed) |
+| Logging | Logstash Logback Encoder | 7.4 |
 | Testing | JUnit 5, Testcontainers, MockMvc | |
 
 ### Key Gradle Dependencies
@@ -80,6 +98,7 @@ runtimeOnly 'org.postgresql:postgresql'
 
 // Observability
 implementation 'io.micrometer:micrometer-registry-prometheus'
+implementation 'net.logstash.logback:logstash-logback-encoder:7.4'
 
 // Testing
 testImplementation 'org.springframework.boot:spring-boot-starter-test'
@@ -98,25 +117,32 @@ src/main/java/org/openphc/cce/insights/
 ├── InsightsServiceApplication.java            # @SpringBootApplication
 ├── config/
 │   ├── JpaConfig.java                         # Read-only transaction defaults
-│   └── ObservabilityConfig.java               # Custom metrics
+│   ├── MetricsConfig.java                     # Custom Micrometer metrics
+│   └── ObservabilityConfig.java               # Observability configuration
 ├── domain/
 │   ├── entity/
 │   │   ├── ProtocolDefinition.java            # Read-only entity
 │   │   ├── ProtocolInstance.java              # Read-only entity
 │   │   ├── StepInstance.java                  # Read-only entity
 │   │   ├── Deviation.java                     # Read-only entity
-│   │   └── EventLog.java                      # Read-only entity
+│   │   ├── EventLog.java                      # Read-only entity
+│   │   └── InboundEvent.java                  # Read-only entity (Collector Service)
 │   ├── enums/
 │   │   ├── ProtocolInstanceStatus.java        # ACTIVE, COMPLETED, WITHDRAWN, EXPIRED
 │   │   ├── StepState.java                     # PENDING, DUE, OVERDUE, MISSED, COMPLETED, SKIPPED
 │   │   ├── CompletionStatus.java              # EARLY, ON_TIME, LATE
-│   │   └── DeviationType.java                 # OVERDUE, MISSED
+│   │   ├── DeviationType.java                 # OVERDUE, MISSED
+│   │   └── ComplianceCategory.java            # ON_TRACK, AT_RISK, NON_COMPLIANT
 │   └── repository/
+│       ├── ReadOnlyRepository.java            # Base repo (no save/delete)
 │       ├── ProtocolDefinitionRepository.java
 │       ├── ProtocolInstanceRepository.java
 │       ├── StepInstanceRepository.java
 │       ├── DeviationRepository.java
-│       └── EventLogRepository.java
+│       ├── EventLogRepository.java
+│       └── InboundEventRepository.java        # Ingestion pipeline queries
+├── health/
+│   └── DatabaseHealthIndicator.java           # Custom DB health check
 ├── service/
 │   ├── ComplianceSummaryService.java          # Protocol & facility compliance aggregation
 │   ├── ProtocolAnalyticsService.java          # Step analytics, completion funnel, outcome distribution, enrollment trends
@@ -124,21 +150,26 @@ src/main/java/org/openphc/cce/insights/
 │   ├── PatientRiskService.java                # At-risk hotspots, repeat deviations
 │   ├── DeviationAnalyticsService.java         # Deviation trends, by-action, resolution rate
 │   ├── FacilityRankingService.java            # Facility leaderboard
-│   ├── EventVolumeService.java                # Event volume by resourceType, facility, practitioner, source
+│   ├── EventVolumeService.java                # Event volume by resourceType, facility, practitioner, source + source comparison
 │   ├── ProcessingQualityService.java          # Event processing quality (MATCHED/ZERO_MATCH/DUPLICATE)
-│   └── ExportService.java                     # CSV/JSON export generation
+│   ├── IngestionAnalyticsService.java         # Ingestion funnel, rejections, source quality, pipeline loss
+│   ├── ExportService.java                     # CSV/JSON export generation
+│   └── DateUtil.java                          # Shared interval mapping & date extraction utility
 ├── web/
+│   ├── GlobalExceptionHandler.java            # @ControllerAdvice error handling
 │   ├── controller/
 │   │   ├── ComplianceSummaryController.java
 │   │   ├── ProtocolAnalyticsController.java
-│   │   ├── PatientController.java
+│   │   ├── PatientController.java             # Timeline, tracking, events, deviations
 │   │   ├── PatientRiskController.java
 │   │   ├── DeviationController.java
 │   │   ├── FacilityRankingController.java
-│   │   ├── EventVolumeController.java
+│   │   ├── EventVolumeController.java         # Volume + source comparison
 │   │   ├── ProcessingQualityController.java
+│   │   ├── IngestionAnalyticsController.java  # Ingestion pipeline analytics
 │   │   └── ExportController.java
 │   └── dto/
+│       ├── ApiResponse.java                   # Standard response envelope
 │       ├── ComplianceSummaryDto.java
 │       ├── FacilitySummaryDto.java
 │       ├── PatientComplianceDto.java
@@ -158,21 +189,31 @@ src/main/java/org/openphc/cce/insights/
 │       ├── FacilityEventCountDto.java
 │       ├── PractitionerEventCountDto.java
 │       ├── SourceSystemCountDto.java
+│       ├── SourceComparisonDto.java
 │       ├── EventVolumeTrendDto.java
 │       ├── ProcessingQualityDto.java
 │       ├── AtRiskHotspotDto.java
 │       ├── RepeatDeviationPatientDto.java
-│       └── DtoMapper.java
+│       ├── IngestionFunnelDto.java
+│       ├── RejectionAnalyticsDto.java
+│       ├── SourceDataQualityDto.java
+│       └── PipelineLossDto.java
 
 src/main/resources/
 ├── application.yml
-└── application-docker.yml
+├── application-local.yml
+├── application-docker.yml
+├── application-test.yml
+└── logback-spring.xml
 
 src/test/java/org/openphc/cce/insights/           # Unit tests
-src/integrationTest/java/org/openphc/cce/insights/ # Integration tests
+src/integrationTest/java/org/openphc/cce/insights/ # Integration tests (Testcontainers)
+src/integrationTest/resources/
+├── init-schema.sql                                # DDL for all 6 tables
+└── seed-data.sql                                  # Sample data
 ```
 
-**Total:** ~45 source files across 10 packages.
+**Total:** ~90 source files across 12 packages.
 
 ---
 
@@ -189,8 +230,9 @@ All database access uses `@Transactional(readOnly = true)`. The Insights Service
 | `protocol_definition` | Compliance Service | Protocol metadata (name, version, canonical URL) |
 | `protocol_instance` | Compliance Service | Patient enrollments, compliance rates, filtering by status/facility |
 | `step_instance` | Compliance Service | Step states, timing, completion status, aggregation |
-| `deviation` | Compliance Service | Deviation records, trends, counts by type |
+| `deviation` | Compliance Service | Deviation records, trends, counts by type, facility deviation counts |
 | `event_log` | Compliance Service | Patient event history, timeline visualization, event volume analytics |
+| `inbound_event` | Collector Service | Ingestion funnel, rejection analytics, source quality, pipeline loss, source comparison, source event counts |
 
 ### 4.3 Key Query Patterns
 
@@ -534,4 +576,54 @@ JOIN protocol_instance pi ON d.protocol_instance_id = pi.id
 GROUP BY pi.patient_id
 HAVING COUNT(*) >= :minDeviations
 ORDER BY total_deviations DESC;
+```
+
+---
+
+## 10. Ingestion Analytics Query Patterns
+
+These queries use the `inbound_event` table (Collector Service) for ingestion pipeline visibility.
+
+**Ingestion Funnel (by status):**
+```sql
+SELECT ie.status, COUNT(*) FROM inbound_event ie
+WHERE (:facilityId IS NULL OR ie.facility_id = :facilityId)
+  AND (:source IS NULL OR ie.source = :source)
+  AND (:startDate IS NULL OR ie.received_at >= :startDate)
+  AND (:endDate IS NULL OR ie.received_at <= :endDate)
+GROUP BY ie.status ORDER BY COUNT(*) DESC;
+```
+
+**Rejection Analytics (by reason):**
+```sql
+SELECT ie.rejection_reason, COUNT(*) FROM inbound_event ie
+WHERE ie.status = 'REJECTED'
+  AND (:facilityId IS NULL OR ie.facility_id = :facilityId)
+GROUP BY ie.rejection_reason ORDER BY COUNT(*) DESC;
+```
+
+**Source Data Quality:**
+```sql
+SELECT ie.source, ie.status, COUNT(*) FROM inbound_event ie
+WHERE (:facilityId IS NULL OR ie.facility_id = :facilityId)
+GROUP BY ie.source, ie.status ORDER BY ie.source, COUNT(*) DESC;
+```
+
+**Pipeline Loss (accepted vs compliance-matched):**
+```sql
+SELECT ie.source, COUNT(*) AS accepted FROM inbound_event ie WHERE ie.status = 'ACCEPTED'
+GROUP BY ie.source;
+
+SELECT el.source, COUNT(*) AS matched FROM event_log el WHERE el.processing_status = 'MATCHED'
+GROUP BY el.source;
+```
+
+**Source Comparison (overlapping events):**
+```sql
+SELECT a.subject, COUNT(*) FROM inbound_event a
+JOIN inbound_event b ON a.subject = b.subject
+  AND a.type = b.type
+  AND ABS(EXTRACT(EPOCH FROM (a.event_time - b.event_time))) <= :windowSeconds
+WHERE a.source = :sourceA AND b.source = :sourceB
+GROUP BY a.subject;
 ```

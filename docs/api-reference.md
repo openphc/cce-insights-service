@@ -299,6 +299,104 @@ Detailed tracking for a specific protocol instance with all step instances.
 
 ---
 
+### 2.4 GET `/v1/patients/{patientId}/events`
+
+Raw clinical events (from `event_log`) for a specific patient, ordered by event time descending. Shows the FHIR events that triggered step completions and protocol matching.
+
+**Required Scope:** `dashboard:read`
+
+**Path Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `patientId` | String | Patient identifier (e.g., `260225-0002-5501`) |
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `resourceType` | String | — | Filter by FHIR resource type (e.g., `Encounter`) |
+| `source` | String | — | Filter by source system |
+| `startDate` | ISO 8601 | — | Events after this time |
+| `endDate` | ISO 8601 | — | Events before this time |
+| `limit` | Integer | `50` | Page size (max 200) |
+
+**Response: `200 OK`**
+
+```json
+{
+  "data": [
+    {
+      "eventId": "990e8400-e29b-41d4-a716-446655440001",
+      "cloudeventsId": "ce-001",
+      "type": "org.openphc.fhir.Encounter.create",
+      "eventTime": "2026-01-20T09:30:00Z",
+      "source": "ebuzima/kigali-south",
+      "resourceType": "Encounter",
+      "processingStatus": "MATCHED",
+      "facilityId": "0002",
+      "protocolInstanceId": "660e8400-e29b-41d4-a716-446655440001",
+      "actionId": "anc-visit-1",
+      "matchedStepInstanceId": "770e8400-e29b-41d4-a716-446655440001"
+    },
+    {
+      "eventId": "990e8400-e29b-41d4-a716-446655440002",
+      "cloudeventsId": "ce-002",
+      "type": "org.openphc.fhir.Observation.create",
+      "eventTime": "2026-01-20T09:35:00Z",
+      "source": "ebuzima/kigali-south",
+      "resourceType": "Observation",
+      "processingStatus": "MATCHED",
+      "facilityId": "0002",
+      "protocolInstanceId": "660e8400-e29b-41d4-a716-446655440001",
+      "actionId": "anc-visit-1",
+      "matchedStepInstanceId": "770e8400-e29b-41d4-a716-446655440001"
+    }
+  ]
+}
+```
+
+---
+
+### 2.5 GET `/v1/patients/{patientId}/deviations`
+
+All deviations for a patient across all protocol enrollments, ordered by detection time descending. Provides a cross-protocol deviation history for targeted outreach.
+
+**Required Scope:** `dashboard:read`
+
+**Path Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `patientId` | String | Patient identifier |
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `deviationType` | String | — | Filter: `overdue`, `missed` |
+| `startDate` | ISO 8601 | — | Deviations detected after |
+| `endDate` | ISO 8601 | — | Deviations detected before |
+
+**Response: `200 OK`**
+
+```json
+{
+  "data": [
+    {
+      "deviationId": "880e8400-e29b-41d4-a716-446655440001",
+      "protocolInstanceId": "660e8400-e29b-41d4-a716-446655440002",
+      "protocolCanonical": "http://openphc.org/fhir/PlanDefinition/anc-high-risk|2.1",
+      "stepInstanceId": "770e8400-e29b-41d4-a716-446655440005",
+      "deviationType": "OVERDUE",
+      "detectedAt": "2026-02-25T00:00:05Z"
+    }
+  ]
+}
+```
+
+---
+
 ## 3. Deviations & Intelligence
 
 ### 3.1 GET `/v1/deviations`
@@ -722,7 +820,9 @@ Event counts grouped by practitioner, with resource type breakdown. Practitioner
 
 ### 4.6 GET `/v1/events/by-source`
 
-Event counts grouped by source system, with resource type breakdown.
+Event counts grouped by source system, based on `inbound_event` table. Shows ALL events received per source (not just compliance-matched) with **status breakdown** (ACCEPTED, REJECTED, DUPLICATE).
+
+**Data Source:** `inbound_event` (Collector Service)
 
 **Required Scope:** `dashboard:read`
 
@@ -741,31 +841,129 @@ Event counts grouped by source system, with resource type breakdown.
   "data": [
     {
       "source": "rhie-mediator",
-      "totalEvents": 8400,
+      "totalEvents": 9200,
       "byResourceType": [
-        { "resourceType": "Encounter", "count": 2800 },
-        { "resourceType": "Observation", "count": 2600 },
-        { "resourceType": "Condition", "count": 1200 },
-        { "resourceType": "MedicationRequest", "count": 900 },
-        { "resourceType": "ServiceRequest", "count": 600 },
-        { "resourceType": "Immunization", "count": 300 }
+        { "resourceType": "ACCEPTED", "count": 8400 },
+        { "resourceType": "REJECTED", "count": 520 },
+        { "resourceType": "DUPLICATE", "count": 280 }
       ]
     },
     {
       "source": "ebuzima/kigali-south",
-      "totalEvents": 4080,
+      "totalEvents": 4350,
       "byResourceType": [
-        { "resourceType": "Encounter", "count": 1400 },
-        { "resourceType": "Observation", "count": 1250 },
-        { "resourceType": "Condition", "count": 400 },
-        { "resourceType": "MedicationRequest", "count": 300 },
-        { "resourceType": "ServiceRequest", "count": 220 },
-        { "resourceType": "Immunization", "count": 150 }
+        { "resourceType": "ACCEPTED", "count": 4080 },
+        { "resourceType": "REJECTED", "count": 180 },
+        { "resourceType": "DUPLICATE", "count": 90 }
       ]
     }
   ]
 }
 ```
+
+> **Note:** The `byResourceType` field reuses the existing DTO structure but contains status categories (ACCEPTED, REJECTED, DUPLICATE) instead of FHIR resource types. For FHIR resource type breakdowns, use `/v1/events/by-resource-type`.
+
+---
+
+### 4.7 GET `/v1/events/source-comparison`
+
+Compare two source systems to identify overlapping (potentially duplicate) events and events unique to each source. Overlap is determined by matching `subject` (patient), CloudEvents `type`, and `event_time` within a configurable time window.
+
+**Data Source:** `inbound_event` (Collector Service) — captures ALL events received, not just compliance-matched.
+
+**Use case:** A client is sending the same clinical events through two different upstream systems (e.g., `rhie-mediator` and `ebuzima/kigali-south`). This endpoint quantifies the overlap and surfaces sample pairs for investigation.
+
+**Required Scope:** `dashboard:read`
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `sourceA` | String | **required** | First source system to compare |
+| `sourceB` | String | **required** | Second source system to compare |
+| `windowSeconds` | Long | `300` | Time window (seconds) for matching events. Two events for the same patient/resourceType are considered overlapping if their `event_time` differs by ≤ this window. Default: 5 minutes. |
+| `facilityId` | String | — | Filter by facility FOSA ID |
+| `startDate` | ISO 8601 | — | Events after this time |
+| `endDate` | ISO 8601 | — | Events before this time |
+| `sampleLimit` | Integer | `20` | Number of sample overlap pairs to return (max 100) |
+
+**Response: `200 OK`**
+
+```json
+{
+  "data": {
+    "sourceA": "rhie-mediator",
+    "sourceB": "ebuzima/kigali-south",
+    "matchWindowSeconds": 300,
+    "sourceASummary": {
+      "source": "rhie-mediator",
+      "totalEvents": 8400,
+      "uniqueEvents": 5200,
+      "overlappingEvents": 3200,
+      "overlapPercentage": 38.1,
+      "uniqueByResourceType": [
+        { "resourceType": "Encounter", "count": 1800 },
+        { "resourceType": "Observation", "count": 1500 },
+        { "resourceType": "Condition", "count": 900 },
+        { "resourceType": "MedicationRequest", "count": 600 },
+        { "resourceType": "ServiceRequest", "count": 400 }
+      ]
+    },
+    "sourceBSummary": {
+      "source": "ebuzima/kigali-south",
+      "totalEvents": 4080,
+      "uniqueEvents": 880,
+      "overlappingEvents": 3200,
+      "overlapPercentage": 78.4,
+      "uniqueByResourceType": [
+        { "resourceType": "Encounter", "count": 300 },
+        { "resourceType": "Observation", "count": 250 },
+        { "resourceType": "Condition", "count": 180 },
+        { "resourceType": "MedicationRequest", "count": 100 },
+        { "resourceType": "ServiceRequest", "count": 50 }
+      ]
+    },
+    "overlap": {
+      "totalOverlappingEvents": 3200,
+      "byResourceType": [
+        { "resourceType": "Encounter", "count": 1100 },
+        { "resourceType": "Observation", "count": 950 },
+        { "resourceType": "Condition", "count": 480 },
+        { "resourceType": "MedicationRequest", "count": 380 },
+        { "resourceType": "ServiceRequest", "count": 290 }
+      ]
+    },
+    "samples": [
+      {
+        "eventAId": "990e8400-e29b-41d4-a716-446655440003",
+        "eventBId": "990e8400-e29b-41d4-a716-446655440001",
+        "subject": "Patient/260225-0002-5501",
+        "resourceType": "Encounter",
+        "eventTimeA": "2026-01-20T09:30:00Z",
+        "eventTimeB": "2026-01-20T09:30:00Z",
+        "timeDiffSeconds": 0.0
+      }
+    ]
+  }
+}
+```
+
+**How matching works:**
+- Two events are considered "overlapping" when all three conditions are met:
+  1. Same `subject` (patient reference)
+  2. Same CloudEvents `type` (matched from `inbound_event.type`)
+  3. `|event_time_A - event_time_B|` ≤ `windowSeconds`
+- Events with `status = 'DUPLICATE'` (collector-level duplicates) are excluded from both sides.
+- `uniqueEvents` = events in that source with no matching counterpart in the other source.
+- `overlapPercentage` = `overlappingEvents / totalEvents * 100` for that source.
+- ResourceType in the response is extracted from the raw payload FHIR resource, falling back to the CloudEvents `type` if not available.
+
+**Tuning `windowSeconds`:**
+| Value | Use case |
+|-------|----------|
+| `0` | Exact timestamp match only (same event forwarded with identical timestamps) |
+| `300` (default) | 5-minute window — accounts for minor processing delays between systems |
+| `3600` | 1-hour window — catches events that may have been batched differently |
 
 ---
 
@@ -1380,3 +1578,206 @@ Patients with deviations across multiple protocols or multiple steps within the 
   }
 }
 ```
+
+---
+
+## 13. Ingestion Analytics
+
+Metrics derived from the `inbound_event` table (owned by the Collector Service). These endpoints provide visibility into the full ingestion pipeline — from HTTP receipt to Kafka publication — including rejected events, duplicates, and pipeline loss that are invisible to compliance-level metrics.
+
+> **Data Source:** `inbound_event` table (Collector Service). Unlike sections 4 and 11 which use `event_log` (compliance-matched events only), these endpoints see **every event received** by the platform.
+
+### 13.1 GET `/v1/ingestion/funnel`
+
+Ingestion pipeline status breakdown. Shows how many events were received, accepted, rejected, and deduplicated, with optional time-series trends.
+
+**Required Scope:** `dashboard:read`
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `facilityId` | String | — | Filter by facility FOSA ID |
+| `source` | String | — | Filter by source system |
+| `startDate` | ISO 8601 | — | Filter by `received_at` start |
+| `endDate` | ISO 8601 | — | Filter by `received_at` end |
+| `interval` | String | — | If provided, includes time-series trends. Values: `daily`, `weekly`, `monthly` |
+
+**Response: `200 OK`**
+
+```json
+{
+  "data": {
+    "totalReceived": 15000,
+    "accepted": 13200,
+    "rejected": 1200,
+    "duplicate": 600,
+    "acceptanceRate": 88.0,
+    "rejectionRate": 8.0,
+    "duplicateRate": 4.0,
+    "breakdown": [
+      { "status": "ACCEPTED", "count": 13200, "percentage": 88.0 },
+      { "status": "REJECTED", "count": 1200, "percentage": 8.0 },
+      { "status": "DUPLICATE", "count": 600, "percentage": 4.0 }
+    ],
+    "trends": [
+      { "period": "2026-03-01", "byStatus": { "ACCEPTED": 4200, "REJECTED": 380, "DUPLICATE": 190 }, "total": 4770 },
+      { "period": "2026-03-08", "byStatus": { "ACCEPTED": 4500, "REJECTED": 410, "DUPLICATE": 205 }, "total": 5115 }
+    ]
+  }
+}
+```
+
+---
+
+### 13.2 GET `/v1/ingestion/rejections`
+
+Rejection reason analytics — breakdown by `rejection_reason` (from `RejectionReason` enum) with per-source detail.
+
+**Required Scope:** `dashboard:read`
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `facilityId` | String | — | Filter by facility FOSA ID |
+| `source` | String | — | Filter by source system |
+| `startDate` | ISO 8601 | — | Filter by `received_at` start |
+| `endDate` | ISO 8601 | — | Filter by `received_at` end |
+
+**Response: `200 OK`**
+
+```json
+{
+  "data": {
+    "totalRejected": 1200,
+    "byReason": [
+      { "reason": "INVALID_FHIR", "count": 480, "percentage": 40.0 },
+      { "reason": "MISSING_SUBJECT", "count": 300, "percentage": 25.0 },
+      { "reason": "INVALID_ENVELOPE", "count": 180, "percentage": 15.0 },
+      { "reason": "PAYLOAD_TOO_LARGE", "count": 120, "percentage": 10.0 },
+      { "reason": "DESERIALIZATION_ERROR", "count": 72, "percentage": 6.0 },
+      { "reason": "UNSUPPORTED_CONTENT_TYPE", "count": 48, "percentage": 4.0 }
+    ],
+    "bySource": [
+      {
+        "source": "rhie-mediator",
+        "totalEvents": 9200,
+        "rejectedEvents": 520,
+        "rejectionRate": 5.7,
+        "topReasons": [
+          { "reason": "INVALID_FHIR", "count": 210, "percentage": 40.4 },
+          { "reason": "MISSING_SUBJECT", "count": 150, "percentage": 28.8 }
+        ]
+      },
+      {
+        "source": "ebuzima/kigali-south",
+        "totalEvents": 4350,
+        "rejectedEvents": 680,
+        "rejectionRate": 15.6,
+        "topReasons": [
+          { "reason": "INVALID_FHIR", "count": 270, "percentage": 39.7 },
+          { "reason": "INVALID_ENVELOPE", "count": 165, "percentage": 24.3 }
+        ]
+      }
+    ]
+  }
+}
+```
+
+**Rejection Reasons (from Collector `RejectionReason` enum):**
+
+| Reason | Description |
+|--------|-------------|
+| `INVALID_ENVELOPE` | Missing or invalid CloudEvents required fields |
+| `INVALID_FHIR` | FHIR R4 payload failed structural validation |
+| `INVALID_JSON` | Non-FHIR JSON payload is not valid JSON or is empty |
+| `UNSUPPORTED_CONTENT_TYPE` | `datacontenttype` is not `application/fhir+json` or `application/json` |
+| `DUPLICATE` | Duplicate `(id, source)` detected within lookback window |
+| `MISSING_SUBJECT` | `subject` field missing (required by CCE for patient routing) |
+| `PAYLOAD_TOO_LARGE` | Request body exceeds max-payload-size |
+| `DESERIALIZATION_ERROR` | Request body could not be parsed as JSON |
+| `KAFKA_PUBLISH_FAILURE` | Kafka broker unavailable or publish timed out |
+| `INTERNAL_ERROR` | Unexpected failure during post-persist processing |
+
+---
+
+### 13.3 GET `/v1/ingestion/source-quality`
+
+Source data quality scorecard — per-source acceptance, rejection, and duplicate rates. Ranks sources by reliability.
+
+**Required Scope:** `dashboard:read`
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `facilityId` | String | — | Filter by facility FOSA ID |
+| `startDate` | ISO 8601 | — | Filter by `received_at` start |
+| `endDate` | ISO 8601 | — | Filter by `received_at` end |
+
+**Response: `200 OK`**
+
+```json
+{
+  "data": {
+    "sources": [
+      {
+        "source": "rhie-mediator",
+        "totalEvents": 9200,
+        "accepted": 8400,
+        "rejected": 520,
+        "duplicate": 280,
+        "acceptanceRate": 91.3,
+        "rejectionRate": 5.7,
+        "duplicateRate": 3.0
+      },
+      {
+        "source": "ebuzima/kigali-south",
+        "totalEvents": 4350,
+        "accepted": 4080,
+        "rejected": 180,
+        "duplicate": 90,
+        "acceptanceRate": 93.8,
+        "rejectionRate": 4.1,
+        "duplicateRate": 2.1
+      }
+    ]
+  }
+}
+```
+
+---
+
+### 13.4 GET `/v1/ingestion/pipeline-loss`
+
+Detects events that were ACCEPTED by the Collector (published to Kafka) but never appeared in the Compliance Service's `event_log`. Indicates events lost in Kafka transit or dropped during compliance processing.
+
+**Required Scope:** `dashboard:read`
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `facilityId` | String | — | Filter by facility FOSA ID |
+| `startDate` | ISO 8601 | — | Filter by `received_at` start |
+| `endDate` | ISO 8601 | — | Filter by `received_at` end |
+
+**Response: `200 OK`**
+
+```json
+{
+  "data": {
+    "totalAcceptedByCollector": 12480,
+    "totalInComplianceEventLog": 12450,
+    "lostEvents": 30,
+    "lossRate": 0.2,
+    "bySource": [
+      { "source": "rhie-mediator", "lostEvents": 18 },
+      { "source": "ebuzima/kigali-south", "lostEvents": 12 }
+    ]
+  }
+}
+```
+
+**How it works:** Joins `inbound_event` (where `status = 'ACCEPTED'`) with `event_log` on `(cloudevents_id, source)`. Events in the first table with no match in the second are considered "lost" in the pipeline. A non-zero `lossRate` warrants investigation of Kafka consumer lag, compliance service errors, or dead-letter queues.
