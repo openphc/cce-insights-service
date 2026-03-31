@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/v1/facilities")
+@RequestMapping("/v1/insights/facilities")
 @RequiredArgsConstructor
 public class FacilityRankingController {
 

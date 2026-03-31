@@ -34,16 +34,16 @@ docker compose up -d
 
 | Group | Endpoints | Path Prefix |
 |-------|-----------|-------------|
-| Compliance Summaries | 3 | `/v1/protocols/`, `/v1/facilities/` |
-| Patient Compliance | 5 | `/v1/patients/` |
-| Deviations & Intelligence | 5 | `/v1/deviations/`, `/v1/intelligence/` |
-| Event Volume | 7 | `/v1/events/` |
-| Protocol Analytics | 4 | `/v1/protocols/{id}/` |
-| Facility Analytics | 1 | `/v1/facilities/ranking` |
-| Processing Quality | 1 | `/v1/events/processing-quality` |
-| Patient Risk | 2 | `/v1/patients/` |
-| Ingestion Analytics | 4 | `/v1/ingestion/` |
-| Export | 1 | `/v1/exports/` |
+| Compliance Summaries | 3 | `/v1/insights/protocols/`, `/v1/insights/facilities/` |
+| Patient Compliance | 5 | `/v1/insights/patients/` |
+| Deviations & Intelligence | 5 | `/v1/insights/deviations/`, `/v1/insights/intelligence/` |
+| Event Volume | 7 | `/v1/insights/events/` |
+| Protocol Analytics | 4 | `/v1/insights/protocols/{id}/` |
+| Facility Analytics | 1 | `/v1/insights/facilities/ranking` |
+| Processing Quality | 1 | `/v1/insights/events/processing-quality` |
+| Patient Risk | 2 | `/v1/insights/patients/` |
+| Ingestion Analytics | 4 | `/v1/insights/ingestion/` |
+| Export | 1 | `/v1/insights/exports/` |
 
 See [docs/api-reference.md](docs/api-reference.md) for full request/response schemas.
 

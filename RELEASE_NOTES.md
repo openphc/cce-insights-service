@@ -29,75 +29,75 @@ First production release of the **CCE Insights Service** — a read-only analyti
 #### Compliance Summaries (3 endpoints) — S4
 | # | Endpoint |
 |---|----------|
-| 1 | `GET /v1/protocols/{id}/compliance-summary` |
-| 2 | `GET /v1/facilities/{id}/compliance-summary` |
-| 3 | `GET /v1/protocols/{id}/patients` |
+| 1 | `GET /v1/insights/protocols/{id}/compliance-summary` |
+| 2 | `GET /v1/insights/facilities/{id}/compliance-summary` |
+| 3 | `GET /v1/insights/protocols/{id}/patients` |
 
 #### Patient Compliance (5 endpoints) — S5
 | # | Endpoint |
 |---|----------|
-| 4 | `GET /v1/patients/{id}/compliance-timeline` |
-| 5 | `GET /v1/patients/{id}/protocol-tracking` |
-| 6 | `GET /v1/patients/{id}/protocol-tracking/{piId}` |
-| 7 | `GET /v1/patients/{id}/events` |
-| 8 | `GET /v1/patients/{id}/deviations` |
+| 4 | `GET /v1/insights/patients/{id}/compliance-timeline` |
+| 5 | `GET /v1/insights/patients/{id}/protocol-tracking` |
+| 6 | `GET /v1/insights/patients/{id}/protocol-tracking/{piId}` |
+| 7 | `GET /v1/insights/patients/{id}/events` |
+| 8 | `GET /v1/insights/patients/{id}/deviations` |
 
 #### Deviations & Intelligence (5 endpoints) — S6, S9
 | # | Endpoint |
 |---|----------|
-| 9 | `GET /v1/deviations` |
-| 10 | `GET /v1/deviations/trends` |
-| 11 | `GET /v1/intelligence/summary` |
-| 12 | `GET /v1/deviations/by-action` |
-| 13 | `GET /v1/deviations/resolution-rate` |
+| 9 | `GET /v1/insights/deviations` |
+| 10 | `GET /v1/insights/deviations/trends` |
+| 11 | `GET /v1/insights/intelligence/summary` |
+| 12 | `GET /v1/insights/deviations/by-action` |
+| 13 | `GET /v1/insights/deviations/resolution-rate` |
 
 #### Event Volume & Activity Metrics (7 endpoints) — S7
 | # | Endpoint |
 |---|----------|
-| 14 | `GET /v1/events/summary` |
-| 15 | `GET /v1/events/trends` |
-| 16 | `GET /v1/events/by-resource-type` |
-| 17 | `GET /v1/events/by-facility` |
-| 18 | `GET /v1/events/by-practitioner` |
-| 19 | `GET /v1/events/by-source` |
-| 20 | `GET /v1/events/compare-sources` |
+| 14 | `GET /v1/insights/events/summary` |
+| 15 | `GET /v1/insights/events/trends` |
+| 16 | `GET /v1/insights/events/by-resource-type` |
+| 17 | `GET /v1/insights/events/by-facility` |
+| 18 | `GET /v1/insights/events/by-practitioner` |
+| 19 | `GET /v1/insights/events/by-source` |
+| 20 | `GET /v1/insights/events/compare-sources` |
 
 #### Protocol Analytics (4 endpoints) — S8
 | # | Endpoint |
 |---|----------|
-| 21 | `GET /v1/protocols/{id}/step-analytics` |
-| 22 | `GET /v1/protocols/{id}/completion-funnel` |
-| 23 | `GET /v1/protocols/{id}/outcome-distribution` |
-| 24 | `GET /v1/protocols/{id}/enrollment-trends` |
+| 21 | `GET /v1/insights/protocols/{id}/step-analytics` |
+| 22 | `GET /v1/insights/protocols/{id}/completion-funnel` |
+| 23 | `GET /v1/insights/protocols/{id}/outcome-distribution` |
+| 24 | `GET /v1/insights/protocols/{id}/enrollment-trends` |
 
 #### Facility Analytics (1 endpoint) — S9
 | # | Endpoint |
 |---|----------|
-| 25 | `GET /v1/facilities/ranking` |
+| 25 | `GET /v1/insights/facilities/ranking` |
 
 #### Event Processing Quality (1 endpoint) — S10
 | # | Endpoint |
 |---|----------|
-| 26 | `GET /v1/events/processing-quality` |
+| 26 | `GET /v1/insights/events/processing-quality` |
 
 #### Patient Risk Analytics (2 endpoints) — S10
 | # | Endpoint |
 |---|----------|
-| 27 | `GET /v1/patients/at-risk-hotspots` |
-| 28 | `GET /v1/patients/repeat-deviations` |
+| 27 | `GET /v1/insights/patients/at-risk-hotspots` |
+| 28 | `GET /v1/insights/patients/repeat-deviations` |
 
 #### Ingestion Analytics (4 endpoints) — S14
 | # | Endpoint |
 |---|----------|
-| 29 | `GET /v1/ingestion/funnel` |
-| 30 | `GET /v1/ingestion/rejections` |
-| 31 | `GET /v1/ingestion/source-quality` |
-| 32 | `GET /v1/ingestion/pipeline-loss` |
+| 29 | `GET /v1/insights/ingestion/funnel` |
+| 30 | `GET /v1/insights/ingestion/rejections` |
+| 31 | `GET /v1/insights/ingestion/source-quality` |
+| 32 | `GET /v1/insights/ingestion/pipeline-loss` |
 
 #### Export (1 endpoint) — S11
 | # | Endpoint |
 |---|----------|
-| 33 | `GET /v1/exports/compliance-report` |
+| 33 | `GET /v1/insights/exports/compliance-report` |
 
 ---
 

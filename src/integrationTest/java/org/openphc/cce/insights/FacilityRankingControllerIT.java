@@ -14,7 +14,7 @@ class FacilityRankingControllerIT extends AbstractIntegrationTest {
 
     @Test
     void getFacilityRanking_returnsRankedList() throws Exception {
-        mockMvc.perform(get("/v1/facilities/ranking"))
+        mockMvc.perform(get("/v1/insights/facilities/ranking"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").isArray());
     }

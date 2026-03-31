@@ -16,7 +16,7 @@ class IngestionAnalyticsControllerIT extends AbstractIntegrationTest {
 
     @Test
     void funnel_returnsStatusBreakdown() throws Exception {
-        mockMvc.perform(get("/v1/ingestion/funnel"))
+        mockMvc.perform(get("/v1/insights/ingestion/funnel"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.totalReceived").isNumber())
                 .andExpect(jsonPath("$.data.accepted").isNumber())
@@ -28,7 +28,7 @@ class IngestionAnalyticsControllerIT extends AbstractIntegrationTest {
 
     @Test
     void funnel_withInterval_returnsTrends() throws Exception {
-        mockMvc.perform(get("/v1/ingestion/funnel")
+        mockMvc.perform(get("/v1/insights/ingestion/funnel")
                         .param("interval", "monthly"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.trends").isArray());
@@ -36,7 +36,7 @@ class IngestionAnalyticsControllerIT extends AbstractIntegrationTest {
 
     @Test
     void funnel_filteredBySource() throws Exception {
-        mockMvc.perform(get("/v1/ingestion/funnel")
+        mockMvc.perform(get("/v1/insights/ingestion/funnel")
                         .param("source", "ebuzima/kigali-south"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.totalReceived").isNumber());
@@ -46,7 +46,7 @@ class IngestionAnalyticsControllerIT extends AbstractIntegrationTest {
 
     @Test
     void rejections_returnsReasonBreakdown() throws Exception {
-        mockMvc.perform(get("/v1/ingestion/rejections"))
+        mockMvc.perform(get("/v1/insights/ingestion/rejections"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.totalRejected").isNumber())
                 .andExpect(jsonPath("$.data.byReason").isArray())
@@ -56,7 +56,7 @@ class IngestionAnalyticsControllerIT extends AbstractIntegrationTest {
 
     @Test
     void rejections_includesSourceDetail() throws Exception {
-        mockMvc.perform(get("/v1/ingestion/rejections"))
+        mockMvc.perform(get("/v1/insights/ingestion/rejections"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.bySource").isArray());
     }
@@ -65,7 +65,7 @@ class IngestionAnalyticsControllerIT extends AbstractIntegrationTest {
 
     @Test
     void sourceQuality_returnsPerSourceMetrics() throws Exception {
-        mockMvc.perform(get("/v1/ingestion/source-quality"))
+        mockMvc.perform(get("/v1/insights/ingestion/source-quality"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.sources").isArray())
                 .andExpect(jsonPath("$.data.sources[0].source").isString())
@@ -78,7 +78,7 @@ class IngestionAnalyticsControllerIT extends AbstractIntegrationTest {
 
     @Test
     void pipelineLoss_detectsLostEvents() throws Exception {
-        mockMvc.perform(get("/v1/ingestion/pipeline-loss"))
+        mockMvc.perform(get("/v1/insights/ingestion/pipeline-loss"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.totalAcceptedByCollector").isNumber())
                 .andExpect(jsonPath("$.data.totalInComplianceEventLog").isNumber())
@@ -88,7 +88,7 @@ class IngestionAnalyticsControllerIT extends AbstractIntegrationTest {
 
     @Test
     void pipelineLoss_returnsLossBySource() throws Exception {
-        mockMvc.perform(get("/v1/ingestion/pipeline-loss"))
+        mockMvc.perform(get("/v1/insights/ingestion/pipeline-loss"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.bySource").isArray());
     }

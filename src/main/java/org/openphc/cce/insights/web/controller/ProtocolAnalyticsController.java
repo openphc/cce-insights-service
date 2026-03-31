@@ -10,7 +10,7 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/v1/protocols")
+@RequestMapping("/v1/insights/protocols")
 @RequiredArgsConstructor
 public class ProtocolAnalyticsController {
 

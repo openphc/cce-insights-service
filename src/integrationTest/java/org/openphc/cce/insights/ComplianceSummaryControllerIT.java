@@ -14,7 +14,7 @@ class ComplianceSummaryControllerIT extends AbstractIntegrationTest {
 
     @Test
     void getProtocolComplianceSummary_returnsAggregatedMetrics() throws Exception {
-        mockMvc.perform(get("/v1/protocols/550e8400-e29b-41d4-a716-446655440000/compliance-summary"))
+        mockMvc.perform(get("/v1/insights/protocols/550e8400-e29b-41d4-a716-446655440000/compliance-summary"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.protocolDefinitionId").value("550e8400-e29b-41d4-a716-446655440000"))
                 .andExpect(jsonPath("$.data.totalEnrollments").value(3))
@@ -25,13 +25,13 @@ class ComplianceSummaryControllerIT extends AbstractIntegrationTest {
 
     @Test
     void getProtocolComplianceSummary_notFound() throws Exception {
-        mockMvc.perform(get("/v1/protocols/00000000-0000-0000-0000-000000000000/compliance-summary"))
+        mockMvc.perform(get("/v1/insights/protocols/00000000-0000-0000-0000-000000000000/compliance-summary"))
                 .andExpect(status().isNotFound());
     }
 
     @Test
     void getProtocolPatients_returnsAllPatients() throws Exception {
-        mockMvc.perform(get("/v1/protocols/550e8400-e29b-41d4-a716-446655440000/patients"))
+        mockMvc.perform(get("/v1/insights/protocols/550e8400-e29b-41d4-a716-446655440000/patients"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data.length()").value(3));
@@ -39,7 +39,7 @@ class ComplianceSummaryControllerIT extends AbstractIntegrationTest {
 
     @Test
     void getProtocolPatients_filteredByStatus() throws Exception {
-        mockMvc.perform(get("/v1/protocols/550e8400-e29b-41d4-a716-446655440000/patients")
+        mockMvc.perform(get("/v1/insights/protocols/550e8400-e29b-41d4-a716-446655440000/patients")
                         .param("status", "at_risk"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").isArray())

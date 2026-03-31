@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.*;
 import java.time.OffsetDateTime;
 
 @RestController
-@RequestMapping("/v1/ingestion")
+@RequestMapping("/v1/insights/ingestion")
 @RequiredArgsConstructor
 public class IngestionAnalyticsController {
 

@@ -29,77 +29,77 @@ All endpoints prefixed with `/v1/`. All require the `dashboard:read` OAuth scope
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/protocols/{protocolDefinitionId}/compliance-summary` | Aggregate compliance metrics for a protocol |
-| GET | `/v1/facilities/{facilityId}/compliance-summary` | Facility-level compliance metrics across all protocols |
-| GET | `/v1/protocols/{protocolDefinitionId}/patients` | List patients by compliance status for a protocol |
+| GET | `/v1/insights/protocols/{protocolDefinitionId}/compliance-summary` | Aggregate compliance metrics for a protocol |
+| GET | `/v1/insights/facilities/{facilityId}/compliance-summary` | Facility-level compliance metrics across all protocols |
+| GET | `/v1/insights/protocols/{protocolDefinitionId}/patients` | List patients by compliance status for a protocol |
 
 ### Patient Compliance
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/patients/{patientId}/compliance-timeline` | Full compliance timeline across all enrolled protocols |
-| GET | `/v1/patients/{patientId}/protocol-tracking` | All protocol instances for a patient (delegated read from compliance data) |
-| GET | `/v1/patients/{patientId}/protocol-tracking/{protocolInstanceId}` | Detailed tracking with step instances |
+| GET | `/v1/insights/patients/{patientId}/compliance-timeline` | Full compliance timeline across all enrolled protocols |
+| GET | `/v1/insights/patients/{patientId}/protocol-tracking` | All protocol instances for a patient (delegated read from compliance data) |
+| GET | `/v1/insights/patients/{patientId}/protocol-tracking/{protocolInstanceId}` | Detailed tracking with step instances |
 
 ### Intelligence & Deviations
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/intelligence/summary` | Intelligence events summary (counts by type, period) |
-| GET | `/v1/deviations` | List deviations with filter/sort/pagination |
-| GET | `/v1/deviations/trends` | Deviation trends over time (daily/weekly/monthly aggregation) |
+| GET | `/v1/insights/intelligence/summary` | Intelligence events summary (counts by type, period) |
+| GET | `/v1/insights/deviations` | List deviations with filter/sort/pagination |
+| GET | `/v1/insights/deviations/trends` | Deviation trends over time (daily/weekly/monthly aggregation) |
 
 ### Event Volume & Activity Metrics
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/events/summary` | Aggregate event counts by resourceType, facility, source, processing status |
-| GET | `/v1/events/trends` | Event volume over time (daily/weekly/monthly) with resource type breakdown |
-| GET | `/v1/events/by-resource-type` | Event counts grouped by FHIR resourceType |
-| GET | `/v1/events/by-facility` | Event counts grouped by facility with resource type breakdown |
-| GET | `/v1/events/by-practitioner` | Event counts grouped by practitioner (extracted from FHIR data JSONB) |
-| GET | `/v1/events/by-source` | Event counts grouped by source system |
+| GET | `/v1/insights/events/summary` | Aggregate event counts by resourceType, facility, source, processing status |
+| GET | `/v1/insights/events/trends` | Event volume over time (daily/weekly/monthly) with resource type breakdown |
+| GET | `/v1/insights/events/by-resource-type` | Event counts grouped by FHIR resourceType |
+| GET | `/v1/insights/events/by-facility` | Event counts grouped by facility with resource type breakdown |
+| GET | `/v1/insights/events/by-practitioner` | Event counts grouped by practitioner (extracted from FHIR data JSONB) |
+| GET | `/v1/insights/events/by-source` | Event counts grouped by source system |
 
 ### Protocol Analytics
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/protocols/{protocolDefinitionId}/step-analytics` | Per-step completion rates, timeliness (EARLY/ON_TIME/LATE), avg/median time-to-complete |
-| GET | `/v1/protocols/{protocolDefinitionId}/completion-funnel` | Drop-off rates at each sequential step — where patients are lost |
-| GET | `/v1/protocols/{protocolDefinitionId}/outcome-distribution` | % of protocol instances by terminal status (ACTIVE/COMPLETED/WITHDRAWN/EXPIRED) |
-| GET | `/v1/protocols/{protocolDefinitionId}/enrollment-trends` | New enrollments over time (daily/weekly/monthly) |
+| GET | `/v1/insights/protocols/{protocolDefinitionId}/step-analytics` | Per-step completion rates, timeliness (EARLY/ON_TIME/LATE), avg/median time-to-complete |
+| GET | `/v1/insights/protocols/{protocolDefinitionId}/completion-funnel` | Drop-off rates at each sequential step — where patients are lost |
+| GET | `/v1/insights/protocols/{protocolDefinitionId}/outcome-distribution` | % of protocol instances by terminal status (ACTIVE/COMPLETED/WITHDRAWN/EXPIRED) |
+| GET | `/v1/insights/protocols/{protocolDefinitionId}/enrollment-trends` | New enrollments over time (daily/weekly/monthly) |
 
 ### Facility Analytics
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/facilities/ranking` | Facility leaderboard by complianceRate, deviationCount, or eventVolume |
+| GET | `/v1/insights/facilities/ranking` | Facility leaderboard by complianceRate, deviationCount, or eventVolume |
 
 ### Deviation Analytics
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/deviations/by-action` | Most deviated-from protocol steps grouped by actionId |
-| GET | `/v1/deviations/resolution-rate` | OVERDUE→COMPLETED (resolved) vs OVERDUE→MISSED (escalated) ratio |
+| GET | `/v1/insights/deviations/by-action` | Most deviated-from protocol steps grouped by actionId |
+| GET | `/v1/insights/deviations/resolution-rate` | OVERDUE→COMPLETED (resolved) vs OVERDUE→MISSED (escalated) ratio |
 
 ### Event Processing & Integration Health
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/events/processing-quality` | MATCHED/ZERO_MATCH/DUPLICATE ratios per source system |
+| GET | `/v1/insights/events/processing-quality` | MATCHED/ZERO_MATCH/DUPLICATE ratios per source system |
 
 ### Patient Risk Analytics
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/patients/at-risk-hotspots` | Concentration of at_risk/non_compliant patients by facility |
-| GET | `/v1/patients/repeat-deviations` | Patients with deviations >= minDeviations threshold |
+| GET | `/v1/insights/patients/at-risk-hotspots` | Concentration of at_risk/non_compliant patients by facility |
+| GET | `/v1/insights/patients/repeat-deviations` | Patients with deviations >= minDeviations threshold |
 
 ### Exports
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/exports/compliance-report` | Export compliance data in CSV or JSON format |
+| GET | `/v1/insights/exports/compliance-report` | Export compliance data in CSV or JSON format |
 
 ### Response Envelope
 

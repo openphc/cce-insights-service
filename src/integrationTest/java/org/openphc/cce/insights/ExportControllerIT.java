@@ -14,7 +14,7 @@ class ExportControllerIT extends AbstractIntegrationTest {
 
     @Test
     void exportJson_returnsJsonReport() throws Exception {
-        mockMvc.perform(get("/v1/exports/compliance-report").param("format", "json"))
+        mockMvc.perform(get("/v1/insights/exports/compliance-report").param("format", "json"))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith("application/json"))
                 .andExpect(jsonPath("$.data").isArray());
@@ -22,7 +22,7 @@ class ExportControllerIT extends AbstractIntegrationTest {
 
     @Test
     void exportCsv_returnsCsvReport() throws Exception {
-        mockMvc.perform(get("/v1/exports/compliance-report").param("format", "csv"))
+        mockMvc.perform(get("/v1/insights/exports/compliance-report").param("format", "csv"))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith("text/csv"));
     }

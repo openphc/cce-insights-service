@@ -14,7 +14,7 @@ class ProcessingQualityControllerIT extends AbstractIntegrationTest {
 
     @Test
     void getProcessingQuality_returnsQualityMetrics() throws Exception {
-        mockMvc.perform(get("/v1/events/processing-quality"))
+        mockMvc.perform(get("/v1/insights/events/processing-quality"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.totalEvents").isNumber())
                 .andExpect(jsonPath("$.data.overall").isMap());

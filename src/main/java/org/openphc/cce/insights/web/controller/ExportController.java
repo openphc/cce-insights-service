@@ -14,7 +14,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/v1/exports")
+@RequestMapping("/v1/insights/exports")
 @RequiredArgsConstructor
 public class ExportController {
 

@@ -14,14 +14,14 @@ class EventVolumeControllerIT extends AbstractIntegrationTest {
 
     @Test
     void getSummary_returnsTotalEvents() throws Exception {
-        mockMvc.perform(get("/v1/events/summary"))
+        mockMvc.perform(get("/v1/insights/events/summary"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.totalEvents").isNumber());
     }
 
     @Test
     void getTrends_returnsTrendData() throws Exception {
-        mockMvc.perform(get("/v1/events/trends").param("interval", "monthly"))
+        mockMvc.perform(get("/v1/insights/events/trends").param("interval", "monthly"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.interval").value("monthly"))
                 .andExpect(jsonPath("$.data.trends").isArray());
@@ -29,7 +29,7 @@ class EventVolumeControllerIT extends AbstractIntegrationTest {
 
     @Test
     void getByResourceType_returnsGroupedCounts() throws Exception {
-        mockMvc.perform(get("/v1/events/by-resource-type"))
+        mockMvc.perform(get("/v1/insights/events/by-resource-type"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data[0].resourceType").isString());
@@ -37,28 +37,28 @@ class EventVolumeControllerIT extends AbstractIntegrationTest {
 
     @Test
     void getByFacility_returnsGroupedCounts() throws Exception {
-        mockMvc.perform(get("/v1/events/by-facility"))
+        mockMvc.perform(get("/v1/insights/events/by-facility"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").isArray());
     }
 
     @Test
     void getByPractitioner_returnsGroupedCounts() throws Exception {
-        mockMvc.perform(get("/v1/events/by-practitioner"))
+        mockMvc.perform(get("/v1/insights/events/by-practitioner"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").isArray());
     }
 
     @Test
     void getBySource_returnsGroupedCounts() throws Exception {
-        mockMvc.perform(get("/v1/events/by-source"))
+        mockMvc.perform(get("/v1/insights/events/by-source"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").isArray());
     }
 
     @Test
     void sourceComparison_returnsOverlapAndUnique() throws Exception {
-        mockMvc.perform(get("/v1/events/source-comparison")
+        mockMvc.perform(get("/v1/insights/events/source-comparison")
                         .param("sourceA", "ebuzima/kigali-south")
                         .param("sourceB", "rhie-mediator")
                         .param("windowSeconds", "300"))
@@ -76,7 +76,7 @@ class EventVolumeControllerIT extends AbstractIntegrationTest {
 
     @Test
     void sourceComparison_requiresBothSources() throws Exception {
-        mockMvc.perform(get("/v1/events/source-comparison")
+        mockMvc.perform(get("/v1/insights/events/source-comparison")
                         .param("sourceA", "ebuzima/kigali-south"))
                 .andExpect(status().isBadRequest());
     }

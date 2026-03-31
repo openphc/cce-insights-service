@@ -117,7 +117,7 @@ docker run -d \
 curl http://localhost:8084/actuator/health
 
 # Test an endpoint
-curl http://localhost:8084/v1/deviations?limit=5
+curl http://localhost:8084/v1/insights/deviations?limit=5
 
 # Prometheus metrics
 curl http://localhost:8084/actuator/prometheus

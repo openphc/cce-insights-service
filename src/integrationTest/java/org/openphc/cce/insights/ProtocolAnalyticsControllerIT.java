@@ -14,7 +14,7 @@ class ProtocolAnalyticsControllerIT extends AbstractIntegrationTest {
 
     @Test
     void getStepAnalytics_returnsPerStepMetrics() throws Exception {
-        mockMvc.perform(get("/v1/protocols/550e8400-e29b-41d4-a716-446655440000/step-analytics"))
+        mockMvc.perform(get("/v1/insights/protocols/550e8400-e29b-41d4-a716-446655440000/step-analytics"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.protocolDefinitionId").value("550e8400-e29b-41d4-a716-446655440000"))
                 .andExpect(jsonPath("$.data.steps").isArray());
@@ -22,7 +22,7 @@ class ProtocolAnalyticsControllerIT extends AbstractIntegrationTest {
 
     @Test
     void getCompletionFunnel_returnsFunnelData() throws Exception {
-        mockMvc.perform(get("/v1/protocols/550e8400-e29b-41d4-a716-446655440000/completion-funnel"))
+        mockMvc.perform(get("/v1/insights/protocols/550e8400-e29b-41d4-a716-446655440000/completion-funnel"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.totalEnrollments").value(3))
                 .andExpect(jsonPath("$.data.funnel").isArray());
@@ -30,7 +30,7 @@ class ProtocolAnalyticsControllerIT extends AbstractIntegrationTest {
 
     @Test
     void getOutcomeDistribution_returnsDistribution() throws Exception {
-        mockMvc.perform(get("/v1/protocols/550e8400-e29b-41d4-a716-446655440000/outcome-distribution"))
+        mockMvc.perform(get("/v1/insights/protocols/550e8400-e29b-41d4-a716-446655440000/outcome-distribution"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.totalInstances").value(3))
                 .andExpect(jsonPath("$.data.distribution").isMap());
@@ -38,7 +38,7 @@ class ProtocolAnalyticsControllerIT extends AbstractIntegrationTest {
 
     @Test
     void getEnrollmentTrends_returnsTrends() throws Exception {
-        mockMvc.perform(get("/v1/protocols/550e8400-e29b-41d4-a716-446655440000/enrollment-trends")
+        mockMvc.perform(get("/v1/insights/protocols/550e8400-e29b-41d4-a716-446655440000/enrollment-trends")
                         .param("interval", "monthly"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.interval").value("monthly"))
@@ -47,7 +47,7 @@ class ProtocolAnalyticsControllerIT extends AbstractIntegrationTest {
 
     @Test
     void getStepAnalytics_notFound() throws Exception {
-        mockMvc.perform(get("/v1/protocols/00000000-0000-0000-0000-000000000000/step-analytics"))
+        mockMvc.perform(get("/v1/insights/protocols/00000000-0000-0000-0000-000000000000/step-analytics"))
                 .andExpect(status().isNotFound());
     }
 }

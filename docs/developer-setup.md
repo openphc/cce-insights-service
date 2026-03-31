@@ -67,36 +67,36 @@ The Insights Service connects to the **same PostgreSQL database** (`cce_collecto
 curl localhost:8084/actuator/health
 
 # Test an endpoint
-curl localhost:8084/v1/deviations?limit=5
+curl localhost:8084/v1/insights/deviations?limit=5
 
 # Test protocol analytics
-curl localhost:8084/v1/protocols/{protocolDefinitionId}/step-analytics
-curl localhost:8084/v1/protocols/{protocolDefinitionId}/completion-funnel
-curl localhost:8084/v1/protocols/{protocolDefinitionId}/outcome-distribution
-curl localhost:8084/v1/protocols/{protocolDefinitionId}/enrollment-trends?interval=weekly
+curl localhost:8084/v1/insights/protocols/{protocolDefinitionId}/step-analytics
+curl localhost:8084/v1/insights/protocols/{protocolDefinitionId}/completion-funnel
+curl localhost:8084/v1/insights/protocols/{protocolDefinitionId}/outcome-distribution
+curl localhost:8084/v1/insights/protocols/{protocolDefinitionId}/enrollment-trends?interval=weekly
 
 # Test facility ranking and deviation analytics
-curl localhost:8084/v1/facilities/ranking?rankBy=complianceRate&order=desc
-curl localhost:8084/v1/deviations/by-action?limit=10
-curl localhost:8084/v1/deviations/resolution-rate
+curl localhost:8084/v1/insights/facilities/ranking?rankBy=complianceRate&order=desc
+curl localhost:8084/v1/insights/deviations/by-action?limit=10
+curl localhost:8084/v1/insights/deviations/resolution-rate
 
 # Test event processing quality and patient risk
-curl localhost:8084/v1/events/processing-quality
-curl localhost:8084/v1/patients/at-risk-hotspots
-curl localhost:8084/v1/patients/repeat-deviations?minDeviations=3
+curl localhost:8084/v1/insights/events/processing-quality
+curl localhost:8084/v1/insights/patients/at-risk-hotspots
+curl localhost:8084/v1/insights/patients/repeat-deviations?minDeviations=3
 
 # Test patient events and deviations
-curl localhost:8084/v1/patients/{patientId}/events?limit=10
-curl localhost:8084/v1/patients/{patientId}/deviations
+curl localhost:8084/v1/insights/patients/{patientId}/events?limit=10
+curl localhost:8084/v1/insights/patients/{patientId}/deviations
 
 # Test source comparison
-curl "localhost:8084/v1/events/compare-sources?sourceA=ehr-system-a&sourceB=ehr-system-b&windowSeconds=300"
+curl "localhost:8084/v1/insights/events/compare-sources?sourceA=ehr-system-a&sourceB=ehr-system-b&windowSeconds=300"
 
 # Test ingestion analytics
-curl localhost:8084/v1/ingestion/funnel
-curl localhost:8084/v1/ingestion/rejections
-curl localhost:8084/v1/ingestion/source-quality
-curl localhost:8084/v1/ingestion/pipeline-loss
+curl localhost:8084/v1/insights/ingestion/funnel
+curl localhost:8084/v1/insights/ingestion/rejections
+curl localhost:8084/v1/insights/ingestion/source-quality
+curl localhost:8084/v1/insights/ingestion/pipeline-loss
 ```
 
 ## 3. Configuration Reference

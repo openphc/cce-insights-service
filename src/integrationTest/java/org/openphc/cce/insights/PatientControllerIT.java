@@ -14,7 +14,7 @@ class PatientControllerIT extends AbstractIntegrationTest {
 
     @Test
     void getComplianceTimeline_returnsTimeline() throws Exception {
-        mockMvc.perform(get("/v1/patients/260225-0002-5501/compliance-timeline"))
+        mockMvc.perform(get("/v1/insights/patients/260225-0002-5501/compliance-timeline"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.patientId").value("260225-0002-5501"))
                 .andExpect(jsonPath("$.data.protocols").isArray())
@@ -23,7 +23,7 @@ class PatientControllerIT extends AbstractIntegrationTest {
 
     @Test
     void getProtocolTracking_returnsList() throws Exception {
-        mockMvc.perform(get("/v1/patients/260225-0002-5501/protocol-tracking"))
+        mockMvc.perform(get("/v1/insights/patients/260225-0002-5501/protocol-tracking"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data.length()").value(1));
@@ -31,7 +31,7 @@ class PatientControllerIT extends AbstractIntegrationTest {
 
     @Test
     void getProtocolTrackingDetail_returnsStepsAndDeviations() throws Exception {
-        mockMvc.perform(get("/v1/patients/260225-0002-5502/protocol-tracking/660e8400-e29b-41d4-a716-446655440002"))
+        mockMvc.perform(get("/v1/insights/patients/260225-0002-5502/protocol-tracking/660e8400-e29b-41d4-a716-446655440002"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.protocolInstanceId").value("660e8400-e29b-41d4-a716-446655440002"))
                 .andExpect(jsonPath("$.data.steps").isArray())
@@ -42,7 +42,7 @@ class PatientControllerIT extends AbstractIntegrationTest {
 
     @Test
     void getPatientEvents_returnsEventHistory() throws Exception {
-        mockMvc.perform(get("/v1/patients/260225-0002-5501/events"))
+        mockMvc.perform(get("/v1/insights/patients/260225-0002-5501/events"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data[0].eventId").isString())
@@ -53,7 +53,7 @@ class PatientControllerIT extends AbstractIntegrationTest {
 
     @Test
     void getPatientEvents_filteredByResourceType() throws Exception {
-        mockMvc.perform(get("/v1/patients/260225-0002-5501/events")
+        mockMvc.perform(get("/v1/insights/patients/260225-0002-5501/events")
                         .param("resourceType", "Encounter"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").isArray());
@@ -61,7 +61,7 @@ class PatientControllerIT extends AbstractIntegrationTest {
 
     @Test
     void getPatientDeviations_returnsDeviationHistory() throws Exception {
-        mockMvc.perform(get("/v1/patients/260225-0002-5502/deviations"))
+        mockMvc.perform(get("/v1/insights/patients/260225-0002-5502/deviations"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data.length()").value(1))
@@ -71,7 +71,7 @@ class PatientControllerIT extends AbstractIntegrationTest {
 
     @Test
     void getPatientDeviations_filteredByType() throws Exception {
-        mockMvc.perform(get("/v1/patients/260225-0002-5503/deviations")
+        mockMvc.perform(get("/v1/insights/patients/260225-0002-5503/deviations")
                         .param("deviationType", "MISSED"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").isArray())
@@ -80,7 +80,7 @@ class PatientControllerIT extends AbstractIntegrationTest {
 
     @Test
     void getPatientDeviations_emptyForCompliantPatient() throws Exception {
-        mockMvc.perform(get("/v1/patients/260225-0002-5501/deviations"))
+        mockMvc.perform(get("/v1/insights/patients/260225-0002-5501/deviations"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data.length()").value(0));

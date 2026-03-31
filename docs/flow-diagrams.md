@@ -75,7 +75,7 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-    A[GET /v1/deviations/trends] --> B[Parse query params:<br/>type, facility_id, from, to]
+    A[GET /v1/insights/deviations/trends] --> B[Parse query params:<br/>type, facility_id, from, to]
     B --> C[Query deviation table<br/>with date range + filters]
     C --> D[GROUP BY deviation_type,<br/>DATE_TRUNC period]
 
@@ -142,7 +142,7 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-    A[GET /v1/events/by-resource-type<br/>or /by-facility or /by-source] --> B[Parse query params:<br/>facilityId, source, startDate, endDate]
+    A[GET /v1/insights/events/by-resource-type<br/>or /by-facility or /by-source] --> B[Parse query params:<br/>facilityId, source, startDate, endDate]
     B --> C[Query event_log table<br/>WHERE processing_status != DUPLICATE]
 
     C --> D{Group-by dimension?}
@@ -185,7 +185,7 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-    A[GET /v1/events/trends] --> B[Parse query params:<br/>interval, resourceType,<br/>facilityId, source, dateRange]
+    A[GET /v1/insights/events/trends] --> B[Parse query params:<br/>interval, resourceType,<br/>facilityId, source, dateRange]
     B --> C[Query event_log table]
     C --> D{interval param?}
     D -- daily --> E["DATE_TRUNC('day', event_time)"]
@@ -204,7 +204,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[GET /v1/events/summary] --> B[Parse filters]
+    A[GET /v1/insights/events/summary] --> B[Parse filters]
 
     B --> C[Query 1: Total + status breakdown<br/>GROUP BY processing_status]
     B --> D[Query 2: By resource type<br/>GROUP BY data resourceType]
@@ -225,7 +225,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[GET /v1/protocols/:id/step-analytics] --> B[Parse params:<br/>facilityId, startDate, endDate]
+    A[GET /v1/insights/protocols/:id/step-analytics] --> B[Parse params:<br/>facilityId, startDate, endDate]
     B --> C[Query step_instance<br/>JOIN protocol_instance<br/>WHERE protocol_definition_id = :id]
     C --> D[GROUP BY action_id]
     D --> E[For each action_id]
@@ -245,7 +245,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[GET /v1/protocols/:id/completion-funnel] --> B[Parse params]
+    A[GET /v1/insights/protocols/:id/completion-funnel] --> B[Parse params]
     B --> C[Query step_instance<br/>JOIN protocol_instance]
     C --> D[GROUP BY action_id]
     D --> E[For each action_id]
@@ -265,7 +265,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[GET /v1/protocols/:id/outcome-distribution] --> B[Parse params]
+    A[GET /v1/insights/protocols/:id/outcome-distribution] --> B[Parse params]
     B --> C[Query protocol_instance<br/>WHERE protocol_definition_id = :id]
     C --> D[GROUP BY status]
 
@@ -286,7 +286,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[GET /v1/protocols/:id/enrollment-trends] --> B[Parse params:<br/>interval, startDate, endDate]
+    A[GET /v1/insights/protocols/:id/enrollment-trends] --> B[Parse params:<br/>interval, startDate, endDate]
     B --> C[Query protocol_instance<br/>WHERE protocol_definition_id = :id<br/>AND enrolled_at in range]
 
     C --> D{interval param?}
@@ -328,7 +328,7 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-    A[GET /v1/deviations/by-action] --> B[Parse params:<br/>protocolDefinitionId, deviationType,<br/>facilityId, dateRange]
+    A[GET /v1/insights/deviations/by-action] --> B[Parse params:<br/>protocolDefinitionId, deviationType,<br/>facilityId, dateRange]
     B --> C[Query deviation<br/>JOIN step_instance<br/>JOIN protocol_instance]
     C --> D[GROUP BY action_id,<br/>protocol_definition_id]
 
@@ -348,7 +348,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[GET /v1/deviations/resolution-rate] --> B[Parse params]
+    A[GET /v1/insights/deviations/resolution-rate] --> B[Parse params]
     B --> C[Query deviation<br/>WHERE deviation_type = OVERDUE<br/>JOIN step_instance]
     C --> D{Step final state?}
 
@@ -369,7 +369,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[GET /v1/events/processing-quality] --> B[Parse params:<br/>source, facilityId, dateRange]
+    A[GET /v1/insights/events/processing-quality] --> B[Parse params:<br/>source, facilityId, dateRange]
     B --> C[Query event_log<br/>WHERE event_time in range]
     C --> D[GROUP BY source,<br/>processing_status]
 
@@ -418,7 +418,7 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-    A[GET /v1/patients/repeat-deviations] --> B[Parse params:<br/>minDeviations, facilityId,<br/>protocolDefinitionId, dateRange]
+    A[GET /v1/insights/patients/repeat-deviations] --> B[Parse params:<br/>minDeviations, facilityId,<br/>protocolDefinitionId, dateRange]
     B --> C[Query deviation<br/>JOIN protocol_instance]
     C --> D[GROUP BY patient_id]
     D --> E["HAVING COUNT(*) >= :minDeviations"]
@@ -450,7 +450,7 @@ sequenceDiagram
     participant Repo as EventLogRepository
     participant DB as PostgreSQL
 
-    Client->>Controller: GET /v1/patients/{id}/events?resourceType=Encounter&limit=50
+    Client->>Controller: GET /v1/insights/patients/{id}/events?resourceType=Encounter&limit=50
     Controller->>Repo: findBySubjectOrderByEventTimeDesc("Patient/{id}")
     Repo->>DB: SELECT * FROM event_log<br/>WHERE subject = ? ORDER BY event_time DESC
     DB-->>Repo: event rows
@@ -466,7 +466,7 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-    A[GET /v1/patients/:id/deviations] --> B[Find protocol_instance<br/>by patient_id]
+    A[GET /v1/insights/patients/:id/deviations] --> B[Find protocol_instance<br/>by patient_id]
     B --> C[For each protocol_instance]
     C --> D[Query deviation table<br/>WHERE protocol_instance_id = ?]
     D --> E[Filter by deviationType<br/>Filter by date range]
@@ -484,7 +484,7 @@ sequenceDiagram
     participant InboundRepo as InboundEventRepository
     participant DB as PostgreSQL
 
-    Client->>Controller: GET /v1/events/compare-sources?sourceA=ehr-a&sourceB=ehr-b&windowSeconds=300
+    Client->>Controller: GET /v1/insights/events/compare-sources?sourceA=ehr-a&sourceB=ehr-b&windowSeconds=300
     Controller->>Service: compareSourceSystems(sourceA, sourceB, windowSeconds, ...)
 
     Service->>InboundRepo: findOverlappingEvents(sourceA, sourceB, window)
@@ -512,7 +512,7 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-    A[GET /v1/ingestion/funnel] --> B[Parse params:<br/>facilityId, source, interval, dateRange]
+    A[GET /v1/insights/ingestion/funnel] --> B[Parse params:<br/>facilityId, source, interval, dateRange]
     B --> C[Query inbound_event<br/>GROUP BY status]
 
     C --> D[ACCEPTED count]
@@ -536,7 +536,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[GET /v1/ingestion/rejections] --> B[Parse params:<br/>facilityId, source, dateRange]
+    A[GET /v1/insights/ingestion/rejections] --> B[Parse params:<br/>facilityId, source, dateRange]
     B --> C[Query inbound_event<br/>WHERE status = REJECTED<br/>GROUP BY rejection_reason]
     C --> D[Calculate reason percentages]
 
@@ -554,7 +554,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[GET /v1/ingestion/source-quality] --> B[Parse params:<br/>facilityId, dateRange]
+    A[GET /v1/insights/ingestion/source-quality] --> B[Parse params:<br/>facilityId, dateRange]
     B --> C[Query inbound_event<br/>GROUP BY source, status]
 
     C --> D[For each source]
