@@ -17,6 +17,26 @@ public interface DeviationRepository extends ReadOnlyRepository<Deviation, UUID>
 
     Page<Deviation> findByDeviationType(DeviationType type, Pageable pageable);
 
+    @Query(value = "SELECT d.id, pi.patient_id, d.protocol_instance_id, pi.protocol_canonical, " +
+            "d.step_instance_id, si.action_id, d.deviation_type, d.detected_at, " +
+            "(SELECT el.facility_id FROM event_log el WHERE el.protocol_instance_id = pi.id LIMIT 1) AS facility_id " +
+            "FROM deviation d " +
+            "JOIN protocol_instance pi ON d.protocol_instance_id = pi.id " +
+            "JOIN step_instance si ON d.step_instance_id = si.id " +
+            "WHERE (CAST(:deviationType AS text) IS NULL OR d.deviation_type = :deviationType) " +
+            "AND (CAST(:facilityId AS text) IS NULL OR EXISTS (" +
+            "  SELECT 1 FROM event_log el WHERE el.protocol_instance_id = pi.id " +
+            "  AND el.facility_id = :facilityId)) " +
+            "AND (CAST(:startDate AS timestamptz) IS NULL OR d.detected_at >= :startDate) " +
+            "AND (CAST(:endDate AS timestamptz) IS NULL OR d.detected_at <= :endDate) " +
+            "ORDER BY d.detected_at DESC LIMIT :lim",
+            nativeQuery = true)
+    List<Object[]> findFilteredDeviations(@Param("deviationType") String deviationType,
+                                           @Param("facilityId") String facilityId,
+                                           @Param("startDate") OffsetDateTime startDate,
+                                           @Param("endDate") OffsetDateTime endDate,
+                                           @Param("lim") int lim);
+
     @Query(value = "SELECT DATE_TRUNC(:interval, d.detected_at) AS period, " +
             "d.deviation_type, COUNT(*) AS count " +
             "FROM deviation d " +

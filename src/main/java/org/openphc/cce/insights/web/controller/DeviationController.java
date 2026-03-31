@@ -17,6 +17,18 @@ public class DeviationController {
 
     private final DeviationAnalyticsService deviationAnalyticsService;
 
+    @GetMapping("/deviations")
+    public ResponseEntity<ApiResponse<List<DeviationDto>>> getDeviations(
+            @RequestParam(required = false) String deviationType,
+            @RequestParam(required = false) String facilityId,
+            @RequestParam(required = false) OffsetDateTime startDate,
+            @RequestParam(required = false) OffsetDateTime endDate,
+            @RequestParam(defaultValue = "50") int limit) {
+        List<DeviationDto> deviations = deviationAnalyticsService.getDeviations(
+                deviationType, facilityId, startDate, endDate, limit);
+        return ResponseEntity.ok(ApiResponse.ok(deviations));
+    }
+
     @GetMapping("/deviations/trends")
     public ResponseEntity<ApiResponse<DeviationTrendDto>> getDeviationTrends(
             @RequestParam(defaultValue = "weekly") String interval,

@@ -23,6 +23,25 @@ public class DeviationAnalyticsService {
 
     private final DeviationRepository deviationRepository;
 
+    public List<DeviationDto> getDeviations(String deviationType, String facilityId,
+                                             OffsetDateTime startDate, OffsetDateTime endDate,
+                                             int limit) {
+        List<Object[]> rows = deviationRepository.findFilteredDeviations(
+                deviationType, facilityId, startDate, endDate, limit);
+        return rows.stream().map(row -> DeviationDto.builder()
+                .deviationId((UUID) row[0])
+                .patientId((String) row[1])
+                .protocolInstanceId((UUID) row[2])
+                .protocolCanonical((String) row[3])
+                .stepInstanceId((UUID) row[4])
+                .actionId((String) row[5])
+                .deviationType((String) row[6])
+                .detectedAt(row[7] instanceof java.sql.Timestamp ts
+                        ? ts.toInstant().atOffset(java.time.ZoneOffset.UTC) : (OffsetDateTime) row[7])
+                .facilityId((String) row[8])
+                .build()).collect(Collectors.toList());
+    }
+
     public DeviationTrendDto getDeviationTrends(String interval, OffsetDateTime startDate,
                                                  OffsetDateTime endDate, String facilityId) {
         String dbInterval = DateUtil.mapInterval(interval);
