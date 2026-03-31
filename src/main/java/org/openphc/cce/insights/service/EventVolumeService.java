@@ -1,0 +1,255 @@
+package org.openphc.cce.insights.service;
+
+import lombok.RequiredArgsConstructor;
+import org.openphc.cce.insights.domain.repository.EventLogRepository;
+import org.openphc.cce.insights.domain.repository.InboundEventRepository;
+import org.openphc.cce.insights.web.dto.*;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.sql.Timestamp;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.util.*;
+import java.util.stream.Collectors;
+
+@Service
+@RequiredArgsConstructor
+@Transactional(readOnly = true)
+public class EventVolumeService {
+
+    private final EventLogRepository eventLogRepository;
+    private final InboundEventRepository inboundEventRepository;
+
+    public EventVolumeSummaryDto getSummary(OffsetDateTime startDate, OffsetDateTime endDate) {
+        List<Object[]> byFacility = eventLogRepository.countByFacility(startDate, endDate);
+        List<Object[]> byResourceType = eventLogRepository.countByResourceType(null, null, startDate, endDate);
+        // Source counts from inbound_event — captures ALL received events, not just compliance-matched
+        List<Object[]> bySource = inboundEventRepository.countBySource(null, startDate, endDate);
+
+        long totalEvents = byResourceType.stream().mapToLong(r -> ((Number) r[1]).longValue()).sum();
+
+        List<EventVolumeSummaryDto.FacilityCount> facilityTop = new ArrayList<>();
+        Map<String, Long> facilityTotals = new LinkedHashMap<>();
+        for (Object[] r : byFacility) {
+            String fid = (String) r[0];
+            long cnt = ((Number) r[2]).longValue();
+            facilityTotals.merge(fid, cnt, Long::sum);
+        }
+        facilityTotals.entrySet().stream()
+                .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
+                .limit(10)
+                .forEach(e -> facilityTop.add(EventVolumeSummaryDto.FacilityCount.builder()
+                        .facilityId(e.getKey())
+                        .count(e.getValue())
+                        .build()));
+
+        List<EventVolumeSummaryDto.SourceCount> sourceCounts = bySource.stream()
+                .map(r -> EventVolumeSummaryDto.SourceCount.builder()
+                        .source((String) r[0])
+                        .count(((Number) r[1]).longValue())
+                        .build())
+                .collect(Collectors.toList());
+
+        return EventVolumeSummaryDto.builder()
+                .totalEvents(totalEvents)
+                .byFacility(facilityTop)
+                .bySource(sourceCounts)
+                .build();
+    }
+
+    public List<ResourceTypeCountDto> getByResourceType(OffsetDateTime startDate, OffsetDateTime endDate) {
+        return eventLogRepository.countByResourceType(null, null, startDate, endDate).stream()
+                .map(row -> ResourceTypeCountDto.builder()
+                        .resourceType((String) row[0])
+                        .count(((Number) row[1]).longValue())
+                        .build())
+                .collect(Collectors.toList());
+    }
+
+    public List<FacilityEventCountDto> getByFacility(OffsetDateTime startDate, OffsetDateTime endDate) {
+        List<Object[]> rows = eventLogRepository.countByFacility(startDate, endDate);
+        // rows: [facility_id, resource_type, count] — aggregate by facility
+        Map<String, List<Object[]>> grouped = new LinkedHashMap<>();
+        for (Object[] row : rows) {
+            grouped.computeIfAbsent((String) row[0], k -> new ArrayList<>()).add(row);
+        }
+        return grouped.entrySet().stream().map(e -> {
+            List<ResourceTypeCountDto> byType = e.getValue().stream()
+                    .map(r -> ResourceTypeCountDto.builder()
+                            .resourceType((String) r[1])
+                            .count(((Number) r[2]).longValue())
+                            .build())
+                    .collect(Collectors.toList());
+            long total = byType.stream().mapToLong(ResourceTypeCountDto::getCount).sum();
+            return FacilityEventCountDto.builder()
+                    .facilityId(e.getKey())
+                    .totalEvents(total)
+                    .byResourceType(byType)
+                    .build();
+        }).collect(Collectors.toList());
+    }
+
+    public List<PractitionerEventCountDto> getByPractitioner(OffsetDateTime startDate, OffsetDateTime endDate) {
+        List<Object[]> rows = eventLogRepository.countByPractitioner(null, startDate, endDate);
+        // rows: [practitioner_ref, practitioner_display, resource_type, count]
+        Map<String, List<Object[]>> grouped = new LinkedHashMap<>();
+        for (Object[] row : rows) {
+            grouped.computeIfAbsent((String) row[0], k -> new ArrayList<>()).add(row);
+        }
+        return grouped.entrySet().stream().map(e -> {
+            List<ResourceTypeCountDto> byType = e.getValue().stream()
+                    .map(r -> ResourceTypeCountDto.builder()
+                            .resourceType((String) r[2])
+                            .count(((Number) r[3]).longValue())
+                            .build())
+                    .collect(Collectors.toList());
+            long total = byType.stream().mapToLong(ResourceTypeCountDto::getCount).sum();
+            String display = e.getValue().get(0)[1] != null ? (String) e.getValue().get(0)[1] : null;
+            return PractitionerEventCountDto.builder()
+                    .practitionerRef(e.getKey())
+                    .practitionerDisplay(display)
+                    .totalEvents(total)
+                    .byResourceType(byType)
+                    .build();
+        }).collect(Collectors.toList());
+    }
+
+    public List<SourceSystemCountDto> getBySource(OffsetDateTime startDate, OffsetDateTime endDate) {
+        // Source counts from inbound_event — shows ALL events received per source with status breakdown
+        List<Object[]> rows = inboundEventRepository.countBySourceAndStatus(null, startDate, endDate);
+        // rows: [source, status, count]
+        Map<String, Map<String, Long>> grouped = new LinkedHashMap<>();
+        for (Object[] row : rows) {
+            String source = (String) row[0];
+            String status = (String) row[1];
+            long count = ((Number) row[2]).longValue();
+            grouped.computeIfAbsent(source, k -> new LinkedHashMap<>()).put(status, count);
+        }
+        return grouped.entrySet().stream().map(e -> {
+            Map<String, Long> statusCounts = e.getValue();
+            long total = statusCounts.values().stream().mapToLong(Long::longValue).sum();
+            // Map status counts as ResourceTypeCountDto (reusing DTO — status acts as category)
+            List<ResourceTypeCountDto> byStatus = statusCounts.entrySet().stream()
+                    .map(s -> ResourceTypeCountDto.builder()
+                            .resourceType(s.getKey())
+                            .count(s.getValue())
+                            .build())
+                    .collect(Collectors.toList());
+            return SourceSystemCountDto.builder()
+                    .source(e.getKey())
+                    .totalEvents(total)
+                    .byResourceType(byStatus)
+                    .build();
+        }).collect(Collectors.toList());
+    }
+
+    public EventVolumeTrendDto getTrends(String interval, OffsetDateTime startDate,
+                                          OffsetDateTime endDate, String facilityId) {
+        String dbInterval = DateUtil.mapInterval(interval);
+        List<Object[]> rows = eventLogRepository.findEventTrends(dbInterval, facilityId, null, null, startDate, endDate);
+
+        // rows: [period, resource_type, count] — aggregate by period
+        Map<String, Map<String, Long>> periodMap = new LinkedHashMap<>();
+        for (Object[] row : rows) {
+            String period = DateUtil.extractDate(row[0]);
+            String resourceType = (String) row[1];
+            long count = ((Number) row[2]).longValue();
+            periodMap.computeIfAbsent(period, k -> new LinkedHashMap<>()).put(resourceType, count);
+        }
+
+        List<EventVolumeTrendDto.TrendPoint> trends = periodMap.entrySet().stream().map(e -> {
+            long total = e.getValue().values().stream().mapToLong(Long::longValue).sum();
+            return EventVolumeTrendDto.TrendPoint.builder()
+                    .period(e.getKey())
+                    .total(total)
+                    .byResourceType(e.getValue())
+                    .build();
+        }).collect(Collectors.toList());
+
+        return EventVolumeTrendDto.builder()
+                .interval(interval != null ? interval : "weekly")
+                .trends(trends)
+                .build();
+    }
+
+    public SourceComparisonDto compareSourceSystems(String sourceA, String sourceB,
+                                                     long windowSeconds, String facilityId,
+                                                     OffsetDateTime startDate, OffsetDateTime endDate,
+                                                     int sampleLimit) {
+        // Source comparison uses inbound_event — captures ALL events received, not just compliance-matched
+        List<Object[]> overlapRows = inboundEventRepository.findOverlappingEvents(
+                sourceA, sourceB, windowSeconds, facilityId, startDate, endDate);
+
+        // Unique to sourceA
+        List<Object[]> uniqueARows = inboundEventRepository.findUniqueToSource(
+                sourceA, sourceB, windowSeconds, facilityId, startDate, endDate);
+
+        // Unique to sourceB
+        List<Object[]> uniqueBRows = inboundEventRepository.findUniqueToSource(
+                sourceB, sourceA, windowSeconds, facilityId, startDate, endDate);
+
+        // Sample overlapping events for drill-down
+        List<Object[]> sampleRows = inboundEventRepository.findOverlappingEventSamples(
+                sourceA, sourceB, windowSeconds, facilityId, startDate, endDate, sampleLimit);
+
+        long overlapCount = overlapRows.stream().mapToLong(r -> ((Number) r[1]).longValue()).sum();
+        long uniqueACount = uniqueARows.stream().mapToLong(r -> ((Number) r[1]).longValue()).sum();
+        long uniqueBCount = uniqueBRows.stream().mapToLong(r -> ((Number) r[1]).longValue()).sum();
+        long totalA = overlapCount + uniqueACount;
+        long totalB = overlapCount + uniqueBCount;
+
+        double overlapPctA = totalA > 0 ? Math.round((double) overlapCount / totalA * 1000.0) / 10.0 : 0;
+        double overlapPctB = totalB > 0 ? Math.round((double) overlapCount / totalB * 1000.0) / 10.0 : 0;
+
+        List<SourceComparisonDto.OverlapSample> samples = sampleRows.stream().map(row -> {
+            Timestamp tsA = (Timestamp) row[4];
+            Timestamp tsB = (Timestamp) row[5];
+            return SourceComparisonDto.OverlapSample.builder()
+                    .eventAId((UUID) row[0])
+                    .eventBId((UUID) row[1])
+                    .subject((String) row[2])
+                    .resourceType((String) row[3])
+                    .eventTimeA(tsA.toInstant().atOffset(ZoneOffset.UTC))
+                    .eventTimeB(tsB.toInstant().atOffset(ZoneOffset.UTC))
+                    .timeDiffSeconds(((Number) row[6]).doubleValue())
+                    .build();
+        }).collect(Collectors.toList());
+
+        return SourceComparisonDto.builder()
+                .sourceA(sourceA)
+                .sourceB(sourceB)
+                .matchWindowSeconds(windowSeconds)
+                .sourceASummary(SourceComparisonDto.SourceSummary.builder()
+                        .source(sourceA)
+                        .totalEvents(totalA)
+                        .uniqueEvents(uniqueACount)
+                        .overlappingEvents(overlapCount)
+                        .overlapPercentage(overlapPctA)
+                        .uniqueByResourceType(toResourceTypeCounts(uniqueARows))
+                        .build())
+                .sourceBSummary(SourceComparisonDto.SourceBSummary.builder()
+                        .source(sourceB)
+                        .totalEvents(totalB)
+                        .uniqueEvents(uniqueBCount)
+                        .overlappingEvents(overlapCount)
+                        .overlapPercentage(overlapPctB)
+                        .uniqueByResourceType(toResourceTypeCounts(uniqueBRows))
+                        .build())
+                .overlap(SourceComparisonDto.OverlapSummary.builder()
+                        .totalOverlappingEvents(overlapCount)
+                        .byResourceType(toResourceTypeCounts(overlapRows))
+                        .build())
+                .samples(samples)
+                .build();
+    }
+
+    private List<SourceComparisonDto.ResourceTypeCount> toResourceTypeCounts(List<Object[]> rows) {
+        return rows.stream()
+                .map(r -> SourceComparisonDto.ResourceTypeCount.builder()
+                        .resourceType((String) r[0])
+                        .count(((Number) r[1]).longValue())
+                        .build())
+                .collect(Collectors.toList());
+    }
+}

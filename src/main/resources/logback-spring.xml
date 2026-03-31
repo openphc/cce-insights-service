@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+
+    <springProperty scope="context" name="appName" source="spring.application.name" defaultValue="cce-insights-service"/>
+
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <appender name="JSON" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <customFields>{"service":"${appName}"}</customFields>
+        </encoder>
+    </appender>
+
+    <springProfile name="local">
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+        <logger name="org.openphc.cce.insights" level="DEBUG"/>
+        <logger name="org.springframework.web" level="DEBUG"/>
+        <logger name="org.hibernate.SQL" level="DEBUG"/>
+    </springProfile>
+
+    <springProfile name="docker,!local">
+        <root level="INFO">
+            <appender-ref ref="JSON"/>
+        </root>
+        <logger name="org.openphc.cce.insights" level="INFO"/>
+        <logger name="org.hibernate" level="WARN"/>
+    </springProfile>
+
+    <springProfile name="test">
+        <root level="WARN">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+        <logger name="org.openphc.cce.insights" level="DEBUG"/>
+    </springProfile>
+
+</configuration>

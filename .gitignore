@@ -23,5 +23,27 @@
 hs_err_pid*
 replay_pid*
 
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.project
+.classpath
+*.swp
+*~
+.factorypath
+
+# OS
+.DS_Store
+Thumbs.db
+
 # Local reference documents. Never commit them.
 artifacts/

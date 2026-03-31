@@ -1,0 +1,48 @@
+version: "3.9"
+
+services:
+  cce-db:
+    image: postgres:16-alpine
+    container_name: cce-insights-db
+    environment:
+      POSTGRES_DB: ${DB_NAME:-cce_collector}
+      POSTGRES_USER: ${DB_USERNAME:-cce_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-cce_pass}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-cce_user} -d ${DB_NAME:-cce_collector}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  insights-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cce-insights-service
+    depends_on:
+      cce-db:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DB_HOST: cce-db
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-cce_collector}
+      DB_USERNAME: ${DB_USERNAME:-cce_user}
+      DB_PASSWORD: ${DB_PASSWORD:-cce_pass}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-10}
+      SERVER_PORT: 8084
+    ports:
+      - "8084:8084"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8084/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
+volumes:
+  pgdata:

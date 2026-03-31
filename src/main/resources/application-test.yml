@@ -1,0 +1,10 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5433/cce_collector
+    username: cce_user
+    password: cce_pass
+    hikari:
+      maximum-pool-size: 5
+  jpa:
+    hibernate:
+      ddl-auto: none
