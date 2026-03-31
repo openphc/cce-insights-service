@@ -15,10 +15,10 @@ public interface EventLogRepository extends ReadOnlyRepository<EventLog, UUID> {
     @Query(value = "SELECT el.data->>'resourceType' AS resource_type, COUNT(*) AS event_count " +
             "FROM event_log el " +
             "WHERE el.processing_status != 'DUPLICATE' " +
-            "AND (:facilityId IS NULL OR el.facility_id = :facilityId) " +
-            "AND (:source IS NULL OR el.source = :source) " +
-            "AND (:startDate IS NULL OR el.event_time >= :startDate) " +
-            "AND (:endDate IS NULL OR el.event_time <= :endDate) " +
+            "AND CAST(:facilityId AS text) IS NULL OR el.facility_id = :facilityId) " +
+            "AND CAST(:source AS text) IS NULL OR el.source = :source) " +
+            "AND CAST(:startDate AS timestamptz) IS NULL OR el.event_time >= :startDate) " +
+            "AND CAST(:endDate AS timestamptz) IS NULL OR el.event_time <= :endDate) " +
             "GROUP BY el.data->>'resourceType' ORDER BY event_count DESC",
             nativeQuery = true)
     List<Object[]> countByResourceType(@Param("facilityId") String facilityId,
@@ -30,8 +30,8 @@ public interface EventLogRepository extends ReadOnlyRepository<EventLog, UUID> {
             "FROM event_log el " +
             "WHERE el.facility_id IS NOT NULL " +
             "AND el.processing_status != 'DUPLICATE' " +
-            "AND (:startDate IS NULL OR el.event_time >= :startDate) " +
-            "AND (:endDate IS NULL OR el.event_time <= :endDate) " +
+            "AND CAST(:startDate AS timestamptz) IS NULL OR el.event_time >= :startDate) " +
+            "AND CAST(:endDate AS timestamptz) IS NULL OR el.event_time <= :endDate) " +
             "GROUP BY el.facility_id, el.data->>'resourceType' " +
             "ORDER BY el.facility_id, event_count DESC",
             nativeQuery = true)
@@ -56,9 +56,9 @@ public interface EventLogRepository extends ReadOnlyRepository<EventLog, UUID> {
             "el.data->>'resourceType' AS resource_type, COUNT(*) AS event_count " +
             "FROM event_log el " +
             "WHERE el.processing_status != 'DUPLICATE' " +
-            "AND (:facilityId IS NULL OR el.facility_id = :facilityId) " +
-            "AND (:startDate IS NULL OR el.event_time >= :startDate) " +
-            "AND (:endDate IS NULL OR el.event_time <= :endDate) " +
+            "AND CAST(:facilityId AS text) IS NULL OR el.facility_id = :facilityId) " +
+            "AND CAST(:startDate AS timestamptz) IS NULL OR el.event_time >= :startDate) " +
+            "AND CAST(:endDate AS timestamptz) IS NULL OR el.event_time <= :endDate) " +
             "GROUP BY practitioner_ref, practitioner_display, resource_type " +
             "HAVING COALESCE(" +
             "  el.data->'participant'->0->'individual'->>'reference', " +
@@ -76,9 +76,9 @@ public interface EventLogRepository extends ReadOnlyRepository<EventLog, UUID> {
     @Query(value = "SELECT el.source, el.data->>'resourceType' AS resource_type, COUNT(*) AS event_count " +
             "FROM event_log el " +
             "WHERE el.processing_status != 'DUPLICATE' " +
-            "AND (:facilityId IS NULL OR el.facility_id = :facilityId) " +
-            "AND (:startDate IS NULL OR el.event_time >= :startDate) " +
-            "AND (:endDate IS NULL OR el.event_time <= :endDate) " +
+            "AND CAST(:facilityId AS text) IS NULL OR el.facility_id = :facilityId) " +
+            "AND CAST(:startDate AS timestamptz) IS NULL OR el.event_time >= :startDate) " +
+            "AND CAST(:endDate AS timestamptz) IS NULL OR el.event_time <= :endDate) " +
             "GROUP BY el.source, el.data->>'resourceType' " +
             "ORDER BY el.source, event_count DESC",
             nativeQuery = true)
@@ -90,11 +90,11 @@ public interface EventLogRepository extends ReadOnlyRepository<EventLog, UUID> {
             "el.data->>'resourceType' AS resource_type, COUNT(*) AS event_count " +
             "FROM event_log el " +
             "WHERE el.processing_status != 'DUPLICATE' " +
-            "AND (:facilityId IS NULL OR el.facility_id = :facilityId) " +
-            "AND (:source IS NULL OR el.source = :source) " +
-            "AND (:resourceType IS NULL OR el.data->>'resourceType' = :resourceType) " +
-            "AND (:startDate IS NULL OR el.event_time >= :startDate) " +
-            "AND (:endDate IS NULL OR el.event_time <= :endDate) " +
+            "AND CAST(:facilityId AS text) IS NULL OR el.facility_id = :facilityId) " +
+            "AND CAST(:source AS text) IS NULL OR el.source = :source) " +
+            "AND CAST(:resourceType AS text) IS NULL OR el.data->>'resourceType' = :resourceType) " +
+            "AND CAST(:startDate AS timestamptz) IS NULL OR el.event_time >= :startDate) " +
+            "AND CAST(:endDate AS timestamptz) IS NULL OR el.event_time <= :endDate) " +
             "GROUP BY period, el.data->>'resourceType' ORDER BY period",
             nativeQuery = true)
     List<Object[]> findEventTrends(@Param("interval") String interval,
@@ -106,9 +106,9 @@ public interface EventLogRepository extends ReadOnlyRepository<EventLog, UUID> {
 
     @Query(value = "SELECT el.processing_status, COUNT(*) AS count " +
             "FROM event_log el " +
-            "WHERE (:facilityId IS NULL OR el.facility_id = :facilityId) " +
-            "AND (:startDate IS NULL OR el.event_time >= :startDate) " +
-            "AND (:endDate IS NULL OR el.event_time <= :endDate) " +
+            "WHERE CAST(:facilityId AS text) IS NULL OR el.facility_id = :facilityId) " +
+            "AND CAST(:startDate AS timestamptz) IS NULL OR el.event_time >= :startDate) " +
+            "AND CAST(:endDate AS timestamptz) IS NULL OR el.event_time <= :endDate) " +
             "GROUP BY el.processing_status",
             nativeQuery = true)
     List<Object[]> countByProcessingStatus(@Param("facilityId") String facilityId,
@@ -117,10 +117,10 @@ public interface EventLogRepository extends ReadOnlyRepository<EventLog, UUID> {
 
     @Query(value = "SELECT el.source, el.processing_status, COUNT(*) AS count " +
             "FROM event_log el " +
-            "WHERE (:source IS NULL OR el.source = :source) " +
-            "AND (:facilityId IS NULL OR el.facility_id = :facilityId) " +
-            "AND (:startDate IS NULL OR el.event_time >= :startDate) " +
-            "AND (:endDate IS NULL OR el.event_time <= :endDate) " +
+            "WHERE CAST(:source AS text) IS NULL OR el.source = :source) " +
+            "AND CAST(:facilityId AS text) IS NULL OR el.facility_id = :facilityId) " +
+            "AND CAST(:startDate AS timestamptz) IS NULL OR el.event_time >= :startDate) " +
+            "AND CAST(:endDate AS timestamptz) IS NULL OR el.event_time <= :endDate) " +
             "GROUP BY el.source, el.processing_status ORDER BY el.source",
             nativeQuery = true)
     List<Object[]> findProcessingQualityBySource(@Param("source") String source,
@@ -134,7 +134,7 @@ public interface EventLogRepository extends ReadOnlyRepository<EventLog, UUID> {
             "FROM event_log el " +
             "JOIN protocol_instance pi ON el.protocol_instance_id = pi.id " +
             "WHERE el.facility_id IS NOT NULL " +
-            "AND (:protocolDefId IS NULL OR pi.protocol_definition_id = :protocolDefId) " +
+            "AND CAST(:protocolDefId AS uuid) IS NULL OR pi.protocol_definition_id = :protocolDefId) " +
             "GROUP BY el.facility_id",
             nativeQuery = true)
     List<Object[]> findFacilityEventCounts(@Param("protocolDefId") UUID protocolDefId);
@@ -144,7 +144,7 @@ public interface EventLogRepository extends ReadOnlyRepository<EventLog, UUID> {
             "FROM protocol_instance pi " +
             "JOIN event_log el ON el.protocol_instance_id = pi.id " +
             "WHERE pi.status = 'ACTIVE' AND el.facility_id IS NOT NULL " +
-            "AND (:protocolDefId IS NULL OR pi.protocol_definition_id = :protocolDefId) " +
+            "AND CAST(:protocolDefId AS uuid) IS NULL OR pi.protocol_definition_id = :protocolDefId) " +
             "GROUP BY el.facility_id",
             nativeQuery = true)
     List<Object[]> findActivePatientsByFacility(@Param("protocolDefId") UUID protocolDefId);
