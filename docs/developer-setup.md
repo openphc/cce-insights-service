@@ -48,6 +48,8 @@ docker compose ps
 
 The Insights Service connects to the **same PostgreSQL database** (`cce_collector`) as all other CCE services. The database and infrastructure are deployed by the **CCE Collector Service**. All tables must exist before the Insights Service can function. The Insights Service does **not run Flyway migrations** — it has no owned tables.
 
+> **Event Volume Queries:** The event volume analytics feature relies on JSONB path queries against `event_log.data` (e.g., `data->>'resourceType'` for resource type grouping, `data->'participant'->0->'individual'->>'reference'` for practitioner extraction). Ensure the `event_log` table is populated with realistic event data (including FHIR resources with practitioner references) to test these endpoints. See `data-dictionary.md` §3.3 for the full list of JSONB extraction paths.
+
 **Development options:**
 1. **Run Compliance Service first** — its Flyway migrations create all tables
 2. **Use init script** — apply the Compliance Service schema manually
@@ -64,6 +66,22 @@ curl localhost:8084/actuator/health
 
 # Test an endpoint
 curl localhost:8084/v1/deviations?limit=5
+
+# Test protocol analytics
+curl localhost:8084/v1/protocols/{protocolDefinitionId}/step-analytics
+curl localhost:8084/v1/protocols/{protocolDefinitionId}/completion-funnel
+curl localhost:8084/v1/protocols/{protocolDefinitionId}/outcome-distribution
+curl localhost:8084/v1/protocols/{protocolDefinitionId}/enrollment-trends?interval=weekly
+
+# Test facility ranking and deviation analytics
+curl localhost:8084/v1/facilities/ranking?rankBy=complianceRate&order=desc
+curl localhost:8084/v1/deviations/by-action?limit=10
+curl localhost:8084/v1/deviations/resolution-rate
+
+# Test event processing quality and patient risk
+curl localhost:8084/v1/events/processing-quality
+curl localhost:8084/v1/patients/at-risk-hotspots
+curl localhost:8084/v1/patients/repeat-deviations?minDeviations=3
 ```
 
 ## 3. Configuration Reference

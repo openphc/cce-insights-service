@@ -10,7 +10,7 @@ Spring Boot 3.4.x / Java 21 microservice that serves compliance analytics — pr
 
 ## Key Conventions
 
-- **Package:** `org.openphc.cce.insights` — ~30 source files across 10 packages
+- **Package:** `org.openphc.cce.insights` — ~45 source files across 10 packages
 - **Read-only database access:** No writes to any table. Uses Spring Data JPA with read-only transactions (`@Transactional(readOnly = true)`)
 - **Shared database:** Connects to the same PostgreSQL database (`cce_collector`) as all other CCE services (Phase 1). Queries `protocol_instance`, `step_instance`, `deviation`, `protocol_definition`, `event_log` tables.
 - **No Kafka integration:** Does not consume from or produce to any Kafka topic. Purely REST API → Database.
@@ -48,6 +48,52 @@ All endpoints prefixed with `/v1/`. All require the `dashboard:read` OAuth scope
 | GET | `/v1/intelligence/summary` | Intelligence events summary (counts by type, period) |
 | GET | `/v1/deviations` | List deviations with filter/sort/pagination |
 | GET | `/v1/deviations/trends` | Deviation trends over time (daily/weekly/monthly aggregation) |
+
+### Event Volume & Activity Metrics
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/v1/events/summary` | Aggregate event counts by resourceType, facility, source, processing status |
+| GET | `/v1/events/trends` | Event volume over time (daily/weekly/monthly) with resource type breakdown |
+| GET | `/v1/events/by-resource-type` | Event counts grouped by FHIR resourceType |
+| GET | `/v1/events/by-facility` | Event counts grouped by facility with resource type breakdown |
+| GET | `/v1/events/by-practitioner` | Event counts grouped by practitioner (extracted from FHIR data JSONB) |
+| GET | `/v1/events/by-source` | Event counts grouped by source system |
+
+### Protocol Analytics
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/v1/protocols/{protocolDefinitionId}/step-analytics` | Per-step completion rates, timeliness (EARLY/ON_TIME/LATE), avg/median time-to-complete |
+| GET | `/v1/protocols/{protocolDefinitionId}/completion-funnel` | Drop-off rates at each sequential step — where patients are lost |
+| GET | `/v1/protocols/{protocolDefinitionId}/outcome-distribution` | % of protocol instances by terminal status (ACTIVE/COMPLETED/WITHDRAWN/EXPIRED) |
+| GET | `/v1/protocols/{protocolDefinitionId}/enrollment-trends` | New enrollments over time (daily/weekly/monthly) |
+
+### Facility Analytics
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/v1/facilities/ranking` | Facility leaderboard by complianceRate, deviationCount, or eventVolume |
+
+### Deviation Analytics
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/v1/deviations/by-action` | Most deviated-from protocol steps grouped by actionId |
+| GET | `/v1/deviations/resolution-rate` | OVERDUE→COMPLETED (resolved) vs OVERDUE→MISSED (escalated) ratio |
+
+### Event Processing & Integration Health
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/v1/events/processing-quality` | MATCHED/ZERO_MATCH/DUPLICATE ratios per source system |
+
+### Patient Risk Analytics
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/v1/patients/at-risk-hotspots` | Concentration of at_risk/non_compliant patients by facility |
+| GET | `/v1/patients/repeat-deviations` | Patients with deviations >= minDeviations threshold |
 
 ### Exports
 
@@ -96,7 +142,17 @@ All endpoints prefixed with `/v1/`. All require the `dashboard:read` OAuth scope
 
 - **Protocol compliance rate:** Count of `step_instance` by `completion_status` grouped by protocol
 - **Facility summary:** JOIN `protocol_instance` → `event_log` (for `facility_id`) → `step_instance`
+- **Step analytics:** COUNT by `state` and `completion_status` per `action_id`, with `PERCENTILE_CONT(0.5)` for median
+- **Completion funnel:** COUNT DISTINCT `patient_id` reached vs completed per `action_id`
+- **Outcome distribution:** COUNT `protocol_instance` grouped by `status`
+- **Enrollment trends:** COUNT `protocol_instance` grouped by `DATE_TRUNC(:interval, enrolled_at)`
+- **Facility ranking:** Cross-table aggregation of compliance rate, deviation count, event volume per `facility_id`
 - **Deviation trends:** COUNT deviations grouped by `deviation_type`, `detected_at` (date-truncated)
+- **Deviations by action:** COUNT deviations grouped by `step_instance.action_id`
+- **Resolution rate:** Track `OVERDUE` deviations → `step_instance.state` (COMPLETED = resolved, MISSED = escalated)
+- **Processing quality:** COUNT `event_log` grouped by `source`, `processing_status`
+- **At-risk hotspots:** Classify patients per facility as on_track/at_risk/non_compliant using correlated subqueries on `step_instance.state`
+- **Repeat deviations:** COUNT deviations per `patient_id` with `HAVING COUNT(*) >= :minDeviations`
 - **Patient timeline:** JOIN `event_log` + `step_instance` ordered by `event_time`
 
 ## Build & Run
