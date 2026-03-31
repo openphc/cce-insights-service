@@ -29,13 +29,20 @@ public class EventVolumeService {
 
         long totalEvents = byResourceType.stream().mapToLong(r -> ((Number) r[1]).longValue()).sum();
 
-        List<EventVolumeSummaryDto.FacilityCount> facilityTop = byFacility.stream()
+        List<EventVolumeSummaryDto.FacilityCount> facilityTop = new ArrayList<>();
+        Map<String, Long> facilityTotals = new LinkedHashMap<>();
+        for (Object[] r : byFacility) {
+            String fid = (String) r[0];
+            long cnt = ((Number) r[2]).longValue();
+            facilityTotals.merge(fid, cnt, Long::sum);
+        }
+        facilityTotals.entrySet().stream()
+                .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
                 .limit(10)
-                .map(r -> EventVolumeSummaryDto.FacilityCount.builder()
-                        .facilityId((String) r[0])
-                        .count(((Number) r[1]).longValue())
-                        .build())
-                .collect(Collectors.toList());
+                .forEach(e -> facilityTop.add(EventVolumeSummaryDto.FacilityCount.builder()
+                        .facilityId(e.getKey())
+                        .count(e.getValue())
+                        .build()));
 
         List<EventVolumeSummaryDto.SourceCount> sourceCounts = bySource.stream()
                 .map(r -> EventVolumeSummaryDto.SourceCount.builder()
