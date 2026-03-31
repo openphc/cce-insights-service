@@ -27,8 +27,8 @@ public interface ProtocolInstanceRepository extends ReadOnlyRepository<ProtocolI
     @Query(value = "SELECT DATE_TRUNC(:interval, pi.enrolled_at) AS period, COUNT(*) AS enrollments " +
             "FROM protocol_instance pi " +
             "WHERE pi.protocol_definition_id = :protocolDefId " +
-            "AND CAST(:startDate AS timestamptz) IS NULL OR pi.enrolled_at >= :startDate) " +
-            "AND CAST(:endDate AS timestamptz) IS NULL OR pi.enrolled_at <= :endDate) " +
+            "AND (CAST(:startDate AS timestamptz) IS NULL OR pi.enrolled_at >= :startDate) " +
+            "AND (CAST(:endDate AS timestamptz) IS NULL OR pi.enrolled_at <= :endDate) " +
             "GROUP BY period ORDER BY period",
             nativeQuery = true)
     List<Object[]> findEnrollmentTrends(@Param("protocolDefId") UUID protocolDefId,

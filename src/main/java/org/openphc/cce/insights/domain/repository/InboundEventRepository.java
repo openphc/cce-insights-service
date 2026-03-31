@@ -14,10 +14,10 @@ public interface InboundEventRepository extends ReadOnlyRepository<InboundEvent,
 
     @Query(value = "SELECT ie.status, COUNT(*) AS event_count " +
             "FROM inbound_event ie " +
-            "WHERE CAST(:facilityId AS text) IS NULL OR ie.facility_id = :facilityId) " +
-            "AND CAST(:source AS text) IS NULL OR ie.source = :source) " +
-            "AND CAST(:startDate AS timestamptz) IS NULL OR ie.received_at >= :startDate) " +
-            "AND CAST(:endDate AS timestamptz) IS NULL OR ie.received_at <= :endDate) " +
+            "WHERE (CAST(:facilityId AS text) IS NULL OR ie.facility_id = :facilityId) " +
+            "AND (CAST(:source AS text) IS NULL OR ie.source = :source) " +
+            "AND (CAST(:startDate AS timestamptz) IS NULL OR ie.received_at >= :startDate) " +
+            "AND (CAST(:endDate AS timestamptz) IS NULL OR ie.received_at <= :endDate) " +
             "GROUP BY ie.status ORDER BY event_count DESC",
             nativeQuery = true)
     List<Object[]> countByStatus(@Param("facilityId") String facilityId,
@@ -30,10 +30,10 @@ public interface InboundEventRepository extends ReadOnlyRepository<InboundEvent,
     @Query(value = "SELECT ie.rejection_reason, COUNT(*) AS event_count " +
             "FROM inbound_event ie " +
             "WHERE ie.status = 'REJECTED' " +
-            "AND CAST(:facilityId AS text) IS NULL OR ie.facility_id = :facilityId) " +
-            "AND CAST(:source AS text) IS NULL OR ie.source = :source) " +
-            "AND CAST(:startDate AS timestamptz) IS NULL OR ie.received_at >= :startDate) " +
-            "AND CAST(:endDate AS timestamptz) IS NULL OR ie.received_at <= :endDate) " +
+            "AND (CAST(:facilityId AS text) IS NULL OR ie.facility_id = :facilityId) " +
+            "AND (CAST(:source AS text) IS NULL OR ie.source = :source) " +
+            "AND (CAST(:startDate AS timestamptz) IS NULL OR ie.received_at >= :startDate) " +
+            "AND (CAST(:endDate AS timestamptz) IS NULL OR ie.received_at <= :endDate) " +
             "GROUP BY ie.rejection_reason ORDER BY event_count DESC",
             nativeQuery = true)
     List<Object[]> countByRejectionReason(@Param("facilityId") String facilityId,
@@ -43,10 +43,10 @@ public interface InboundEventRepository extends ReadOnlyRepository<InboundEvent,
 
     @Query(value = "SELECT DATE_TRUNC(:interval, ie.received_at) AS period, ie.status, COUNT(*) AS event_count " +
             "FROM inbound_event ie " +
-            "WHERE CAST(:facilityId AS text) IS NULL OR ie.facility_id = :facilityId) " +
-            "AND CAST(:source AS text) IS NULL OR ie.source = :source) " +
-            "AND CAST(:startDate AS timestamptz) IS NULL OR ie.received_at >= :startDate) " +
-            "AND CAST(:endDate AS timestamptz) IS NULL OR ie.received_at <= :endDate) " +
+            "WHERE (CAST(:facilityId AS text) IS NULL OR ie.facility_id = :facilityId) " +
+            "AND (CAST(:source AS text) IS NULL OR ie.source = :source) " +
+            "AND (CAST(:startDate AS timestamptz) IS NULL OR ie.received_at >= :startDate) " +
+            "AND (CAST(:endDate AS timestamptz) IS NULL OR ie.received_at <= :endDate) " +
             "GROUP BY period, ie.status ORDER BY period",
             nativeQuery = true)
     List<Object[]> findIngestionTrends(@Param("interval") String interval,
@@ -59,9 +59,9 @@ public interface InboundEventRepository extends ReadOnlyRepository<InboundEvent,
 
     @Query(value = "SELECT ie.source, ie.status, COUNT(*) AS event_count " +
             "FROM inbound_event ie " +
-            "WHERE CAST(:facilityId AS text) IS NULL OR ie.facility_id = :facilityId) " +
-            "AND CAST(:startDate AS timestamptz) IS NULL OR ie.received_at >= :startDate) " +
-            "AND CAST(:endDate AS timestamptz) IS NULL OR ie.received_at <= :endDate) " +
+            "WHERE (CAST(:facilityId AS text) IS NULL OR ie.facility_id = :facilityId) " +
+            "AND (CAST(:startDate AS timestamptz) IS NULL OR ie.received_at >= :startDate) " +
+            "AND (CAST(:endDate AS timestamptz) IS NULL OR ie.received_at <= :endDate) " +
             "GROUP BY ie.source, ie.status ORDER BY ie.source",
             nativeQuery = true)
     List<Object[]> countBySourceAndStatus(@Param("facilityId") String facilityId,
@@ -71,9 +71,9 @@ public interface InboundEventRepository extends ReadOnlyRepository<InboundEvent,
     @Query(value = "SELECT ie.source, ie.rejection_reason, COUNT(*) AS event_count " +
             "FROM inbound_event ie " +
             "WHERE ie.status = 'REJECTED' " +
-            "AND CAST(:facilityId AS text) IS NULL OR ie.facility_id = :facilityId) " +
-            "AND CAST(:startDate AS timestamptz) IS NULL OR ie.received_at >= :startDate) " +
-            "AND CAST(:endDate AS timestamptz) IS NULL OR ie.received_at <= :endDate) " +
+            "AND (CAST(:facilityId AS text) IS NULL OR ie.facility_id = :facilityId) " +
+            "AND (CAST(:startDate AS timestamptz) IS NULL OR ie.received_at >= :startDate) " +
+            "AND (CAST(:endDate AS timestamptz) IS NULL OR ie.received_at <= :endDate) " +
             "GROUP BY ie.source, ie.rejection_reason ORDER BY ie.source, event_count DESC",
             nativeQuery = true)
     List<Object[]> countBySourceAndRejectionReason(@Param("facilityId") String facilityId,
@@ -91,9 +91,9 @@ public interface InboundEventRepository extends ReadOnlyRepository<InboundEvent,
             "  WHERE el.cloudevents_id = ie.cloudevents_id " +
             "  AND el.source = ie.source" +
             ") " +
-            "AND CAST(:facilityId AS text) IS NULL OR ie.facility_id = :facilityId) " +
-            "AND CAST(:startDate AS timestamptz) IS NULL OR ie.received_at >= :startDate) " +
-            "AND CAST(:endDate AS timestamptz) IS NULL OR ie.received_at <= :endDate) " +
+            "AND (CAST(:facilityId AS text) IS NULL OR ie.facility_id = :facilityId) " +
+            "AND (CAST(:startDate AS timestamptz) IS NULL OR ie.received_at >= :startDate) " +
+            "AND (CAST(:endDate AS timestamptz) IS NULL OR ie.received_at <= :endDate) " +
             "GROUP BY ie.source ORDER BY lost_count DESC",
             nativeQuery = true)
     List<Object[]> findPipelineLossBySource(@Param("facilityId") String facilityId,
@@ -107,9 +107,9 @@ public interface InboundEventRepository extends ReadOnlyRepository<InboundEvent,
             "  WHERE el.cloudevents_id = ie.cloudevents_id " +
             "  AND el.source = ie.source" +
             ") " +
-            "AND CAST(:facilityId AS text) IS NULL OR ie.facility_id = :facilityId) " +
-            "AND CAST(:startDate AS timestamptz) IS NULL OR ie.received_at >= :startDate) " +
-            "AND CAST(:endDate AS timestamptz) IS NULL OR ie.received_at <= :endDate)",
+            "AND (CAST(:facilityId AS text) IS NULL OR ie.facility_id = :facilityId) " +
+            "AND (CAST(:startDate AS timestamptz) IS NULL OR ie.received_at >= :startDate) " +
+            "AND (CAST(:endDate AS timestamptz) IS NULL OR ie.received_at <= :endDate)",
             nativeQuery = true)
     long countPipelineLoss(@Param("facilityId") String facilityId,
                             @Param("startDate") OffsetDateTime startDate,
@@ -117,9 +117,9 @@ public interface InboundEventRepository extends ReadOnlyRepository<InboundEvent,
 
     @Query(value = "SELECT COUNT(*) FROM inbound_event ie " +
             "WHERE ie.status = 'ACCEPTED' " +
-            "AND CAST(:facilityId AS text) IS NULL OR ie.facility_id = :facilityId) " +
-            "AND CAST(:startDate AS timestamptz) IS NULL OR ie.received_at >= :startDate) " +
-            "AND CAST(:endDate AS timestamptz) IS NULL OR ie.received_at <= :endDate)",
+            "AND (CAST(:facilityId AS text) IS NULL OR ie.facility_id = :facilityId) " +
+            "AND (CAST(:startDate AS timestamptz) IS NULL OR ie.received_at >= :startDate) " +
+            "AND (CAST(:endDate AS timestamptz) IS NULL OR ie.received_at <= :endDate)",
             nativeQuery = true)
     long countAccepted(@Param("facilityId") String facilityId,
                         @Param("startDate") OffsetDateTime startDate,
@@ -138,9 +138,9 @@ public interface InboundEventRepository extends ReadOnlyRepository<InboundEvent,
             "  AND ABS(EXTRACT(EPOCH FROM (a.event_time - b.event_time))) <= :windowSeconds " +
             "WHERE a.source = :sourceA AND b.source = :sourceB " +
             "AND a.status != 'DUPLICATE' AND b.status != 'DUPLICATE' " +
-            "AND CAST(:facilityId AS text) IS NULL OR a.facility_id = :facilityId) " +
-            "AND CAST(:startDate AS timestamptz) IS NULL OR a.received_at >= :startDate) " +
-            "AND CAST(:endDate AS timestamptz) IS NULL OR a.received_at <= :endDate) " +
+            "AND (CAST(:facilityId AS text) IS NULL OR a.facility_id = :facilityId) " +
+            "AND (CAST(:startDate AS timestamptz) IS NULL OR a.received_at >= :startDate) " +
+            "AND (CAST(:endDate AS timestamptz) IS NULL OR a.received_at <= :endDate) " +
             "GROUP BY resource_type ORDER BY event_count DESC",
             nativeQuery = true)
     List<Object[]> findOverlappingEvents(@Param("sourceA") String sourceA,
@@ -156,9 +156,9 @@ public interface InboundEventRepository extends ReadOnlyRepository<InboundEvent,
             "FROM inbound_event a " +
             "WHERE a.source = :source " +
             "AND a.status != 'DUPLICATE' " +
-            "AND CAST(:facilityId AS text) IS NULL OR a.facility_id = :facilityId) " +
-            "AND CAST(:startDate AS timestamptz) IS NULL OR a.received_at >= :startDate) " +
-            "AND CAST(:endDate AS timestamptz) IS NULL OR a.received_at <= :endDate) " +
+            "AND (CAST(:facilityId AS text) IS NULL OR a.facility_id = :facilityId) " +
+            "AND (CAST(:startDate AS timestamptz) IS NULL OR a.received_at >= :startDate) " +
+            "AND (CAST(:endDate AS timestamptz) IS NULL OR a.received_at <= :endDate) " +
             "AND NOT EXISTS (" +
             "  SELECT 1 FROM inbound_event b " +
             "  WHERE b.source = :otherSource " +
@@ -189,9 +189,9 @@ public interface InboundEventRepository extends ReadOnlyRepository<InboundEvent,
             "  AND ABS(EXTRACT(EPOCH FROM (a.event_time - b.event_time))) <= :windowSeconds " +
             "WHERE a.source = :sourceA AND b.source = :sourceB " +
             "AND a.status != 'DUPLICATE' AND b.status != 'DUPLICATE' " +
-            "AND CAST(:facilityId AS text) IS NULL OR a.facility_id = :facilityId) " +
-            "AND CAST(:startDate AS timestamptz) IS NULL OR a.received_at >= :startDate) " +
-            "AND CAST(:endDate AS timestamptz) IS NULL OR a.received_at <= :endDate) " +
+            "AND (CAST(:facilityId AS text) IS NULL OR a.facility_id = :facilityId) " +
+            "AND (CAST(:startDate AS timestamptz) IS NULL OR a.received_at >= :startDate) " +
+            "AND (CAST(:endDate AS timestamptz) IS NULL OR a.received_at <= :endDate) " +
             "ORDER BY a.received_at DESC LIMIT :limit",
             nativeQuery = true)
     List<Object[]> findOverlappingEventSamples(@Param("sourceA") String sourceA,
@@ -206,9 +206,9 @@ public interface InboundEventRepository extends ReadOnlyRepository<InboundEvent,
 
     @Query(value = "SELECT ie.source, COUNT(*) AS total_events " +
             "FROM inbound_event ie " +
-            "WHERE CAST(:facilityId AS text) IS NULL OR ie.facility_id = :facilityId) " +
-            "AND CAST(:startDate AS timestamptz) IS NULL OR ie.received_at >= :startDate) " +
-            "AND CAST(:endDate AS timestamptz) IS NULL OR ie.received_at <= :endDate) " +
+            "WHERE (CAST(:facilityId AS text) IS NULL OR ie.facility_id = :facilityId) " +
+            "AND (CAST(:startDate AS timestamptz) IS NULL OR ie.received_at >= :startDate) " +
+            "AND (CAST(:endDate AS timestamptz) IS NULL OR ie.received_at <= :endDate) " +
             "GROUP BY ie.source ORDER BY total_events DESC",
             nativeQuery = true)
     List<Object[]> countBySource(@Param("facilityId") String facilityId,

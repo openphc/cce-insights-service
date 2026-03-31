@@ -20,9 +20,9 @@ public interface DeviationRepository extends ReadOnlyRepository<Deviation, UUID>
     @Query(value = "SELECT DATE_TRUNC(:interval, d.detected_at) AS period, " +
             "d.deviation_type, COUNT(*) AS count " +
             "FROM deviation d " +
-            "WHERE CAST(:startDate AS timestamptz) IS NULL OR d.detected_at >= :startDate) " +
-            "AND CAST(:endDate AS timestamptz) IS NULL OR d.detected_at <= :endDate) " +
-            "AND CAST(:facilityId AS text) IS NULL OR EXISTS (" +
+            "WHERE (CAST(:startDate AS timestamptz) IS NULL OR d.detected_at >= :startDate) " +
+            "AND (CAST(:endDate AS timestamptz) IS NULL OR d.detected_at <= :endDate) " +
+            "AND (CAST(:facilityId AS text) IS NULL OR EXISTS (" +
             "  SELECT 1 FROM event_log el WHERE el.protocol_instance_id = d.protocol_instance_id " +
             "  AND el.facility_id = :facilityId)) " +
             "GROUP BY period, d.deviation_type ORDER BY period",
@@ -40,9 +40,9 @@ public interface DeviationRepository extends ReadOnlyRepository<Deviation, UUID>
             "FROM deviation d " +
             "JOIN step_instance si ON d.step_instance_id = si.id " +
             "JOIN protocol_instance pi ON d.protocol_instance_id = pi.id " +
-            "WHERE CAST(:protocolDefId AS uuid) IS NULL OR pi.protocol_definition_id = :protocolDefId) " +
-            "AND CAST(:startDate AS timestamptz) IS NULL OR d.detected_at >= :startDate) " +
-            "AND CAST(:endDate AS timestamptz) IS NULL OR d.detected_at <= :endDate) " +
+            "WHERE (CAST(:protocolDefId AS uuid) IS NULL OR pi.protocol_definition_id = :protocolDefId) " +
+            "AND (CAST(:startDate AS timestamptz) IS NULL OR d.detected_at >= :startDate) " +
+            "AND (CAST(:endDate AS timestamptz) IS NULL OR d.detected_at <= :endDate) " +
             "GROUP BY si.action_id, pi.protocol_definition_id, pi.protocol_canonical " +
             "ORDER BY total_deviations DESC",
             nativeQuery = true)
@@ -59,11 +59,11 @@ public interface DeviationRepository extends ReadOnlyRepository<Deviation, UUID>
             "FROM deviation d " +
             "JOIN step_instance si ON d.step_instance_id = si.id " +
             "WHERE d.deviation_type = 'OVERDUE' " +
-            "AND CAST(:protocolDefId AS uuid) IS NULL OR EXISTS (" +
+            "AND (CAST(:protocolDefId AS uuid) IS NULL OR EXISTS (" +
             "  SELECT 1 FROM protocol_instance pi WHERE pi.id = d.protocol_instance_id " +
             "  AND pi.protocol_definition_id = :protocolDefId)) " +
-            "AND CAST(:startDate AS timestamptz) IS NULL OR d.detected_at >= :startDate) " +
-            "AND CAST(:endDate AS timestamptz) IS NULL OR d.detected_at <= :endDate)",
+            "AND (CAST(:startDate AS timestamptz) IS NULL OR d.detected_at >= :startDate) " +
+            "AND (CAST(:endDate AS timestamptz) IS NULL OR d.detected_at <= :endDate)",
             nativeQuery = true)
     List<Object[]> findResolutionRate(@Param("protocolDefId") UUID protocolDefId,
                                       @Param("startDate") OffsetDateTime startDate,
@@ -81,11 +81,11 @@ public interface DeviationRepository extends ReadOnlyRepository<Deviation, UUID>
             "COUNT(DISTINCT d.step_instance_id) AS affected_steps " +
             "FROM deviation d " +
             "JOIN protocol_instance pi ON d.protocol_instance_id = pi.id " +
-            "WHERE CAST(:facilityId AS text) IS NULL OR EXISTS (" +
+            "WHERE (CAST(:facilityId AS text) IS NULL OR EXISTS (" +
             "  SELECT 1 FROM event_log el WHERE el.protocol_instance_id = pi.id " +
             "  AND el.facility_id = :facilityId)) " +
-            "AND CAST(:startDate AS timestamptz) IS NULL OR d.detected_at >= :startDate) " +
-            "AND CAST(:endDate AS timestamptz) IS NULL OR d.detected_at <= :endDate) " +
+            "AND (CAST(:startDate AS timestamptz) IS NULL OR d.detected_at >= :startDate) " +
+            "AND (CAST(:endDate AS timestamptz) IS NULL OR d.detected_at <= :endDate) " +
             "GROUP BY pi.patient_id " +
             "HAVING COUNT(*) >= :minDeviations " +
             "ORDER BY total_deviations DESC",
