@@ -100,14 +100,15 @@ See [docs/api-reference.md](docs/api-reference.md) for full request/response sch
 ```
 src/main/java/org/openphc/cce/insights/
 ├── InsightsServiceApplication.java
-├── config/           # JpaConfig, ObservabilityConfig, MetricsConfig, CacheConfig
+├── config/           # CacheConfig, JpaConfig, MetricsConfig, ObservabilityConfig
 ├── domain/
 │   ├── entity/       # 6 @Immutable JPA entities
 │   ├── enums/        # 5 enums
 │   └── repository/   # 7 repositories (ReadOnlyRepository base)
 ├── health/           # DatabaseHealthIndicator
-├── service/          # 10 services + DateUtil
+├── service/          # 10 services + DateUtil utility
 └── web/
     ├── controller/   # 11 REST controllers (incl. LookupController)
-    └── dto/          # ~30 DTOs + ApiResponse
+    ├── dto/          # ~30 DTOs + ApiResponse
+    └── GlobalExceptionHandler.java
 ```

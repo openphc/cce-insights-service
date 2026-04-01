@@ -548,9 +548,9 @@ High-level event volume summary with breakdowns by resource type, facility, and 
   "data": {
     "totalEvents": 12480,
     "processingStatusBreakdown": {
-      "matched": 9820,
-      "zeroMatch": 2540,
-      "duplicate": 120
+      "matched": { "count": 9820, "percentage": 78.7 },
+      "zeroMatch": { "count": 2540, "percentage": 20.4 },
+      "duplicate": { "count": 120, "percentage": 0.9 }
     },
     "byResourceType": [
       { "resourceType": "Encounter", "count": 4200 },

@@ -90,7 +90,7 @@ curl localhost:8084/v1/insights/patients/{patientId}/events?limit=10
 curl localhost:8084/v1/insights/patients/{patientId}/deviations
 
 # Test source comparison
-curl "localhost:8084/v1/insights/events/compare-sources?sourceA=ehr-system-a&sourceB=ehr-system-b&windowSeconds=300"
+curl "localhost:8084/v1/insights/events/source-comparison?sourceA=ehr-system-a&sourceB=ehr-system-b&windowSeconds=300"
 
 # Test ingestion analytics
 curl localhost:8084/v1/insights/ingestion/funnel
@@ -192,13 +192,13 @@ cce-insights-service/
     ├── main/
     │   ├── java/org/openphc/cce/insights/
     │   │   ├── InsightsServiceApplication.java
-    │   │   ├── config/          # JpaConfig, MetricsConfig, ObservabilityConfig
+    │   │   ├── config/          # CacheConfig, JpaConfig, MetricsConfig, ObservabilityConfig
     │   │   ├── domain/entity/   # 6 @Immutable entities (incl. InboundEvent)
     │   │   ├── domain/enums/    # 5 enums
     │   │   ├── domain/repository/ # 7 repos (ReadOnlyRepository + 6)
     │   │   ├── health/          # DatabaseHealthIndicator
-    │   │   ├── service/         # 10 services + DateUtil
-    │   │   └── web/controller/ + web/dto/  # 10 controllers, ~30 DTOs
+    │   │   ├── service/         # 10 services + DateUtil utility
+    │   │   └── web/controller/ + web/dto/  # 11 controllers (incl. LookupController), ~30 DTOs
     │   └── resources/
     │       ├── application.yml
     │       ├── application-local.yml

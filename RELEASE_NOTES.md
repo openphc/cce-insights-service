@@ -123,7 +123,7 @@ First production release of the **CCE Insights Service** — a read-only analyti
 | **Services** | 10 + DateUtil utility |
 | **Controllers** | 11 (incl. LookupController) |
 | **DTOs** | ~30 |
-| **Configs** | 5 (JpaConfig, MetricsConfig, ObservabilityConfig, CacheConfig, DatabaseHealthIndicator) |
+| **Configs** | 5 (CacheConfig, JpaConfig, MetricsConfig, ObservabilityConfig, DatabaseHealthIndicator) |
 | **Integration Tests** | 10 IT classes with Testcontainers |
 
 ---
@@ -144,6 +144,12 @@ First production release of the **CCE Insights Service** — a read-only analyti
 ### Bug Fixes in This Release
 
 - **Fixed:** `FacilityRankingService.deviationCountMap` was never populated — compliance rate always returned 100%. Now queries deviation counts per facility.
+- **Fixed:** `FacilityRankingService` compliance rate formula — changed from `1 - deviations/events` to step-based `(completedSteps + skippedSteps) / totalSteps`. Uses `findStepComplianceByFacility()` query.
+- **Fixed:** `FacilityRankingService` rankBy switch-case — now matches UI values (`complianceRate`, `deviationCount`, `eventVolume`). Added `order` parameter (asc/desc) support.
+- **Fixed:** `PatientRiskService.getAtRiskHotspots()` — was computing compliance categories globally instead of per-facility. Added `findFacilityPatientMapping()` query to scope patients per facility.
+- **Fixed:** `ComplianceSummaryService.getFacilityComplianceSummary()` — was ignoring `facilityId` filter. Added `findPatientsByFacility()` query to restrict results to the requested facility.
+- **Fixed:** `EventVolumeService.getTrends()` — source parameter was not being passed from controller to service. Wired the parameter through.
+- **Fixed:** `EventVolumeService.getSummary()` — `processingStatusBreakdown` was always `null`. Now populates with `{matched: {count, percentage}, zeroMatch: {count, percentage}, duplicate: {count, percentage}}` using `countByProcessingStatus()` query.
 - **Fixed:** Missing `logstash-logback-encoder` dependency — JSON logging (docker profile) would fail at runtime.
 - **Fixed:** PostgreSQL nullable parameter CAST issue — native queries with nullable parameters now use `CAST(:param AS type)` across all 4 repository files.
 - **Fixed:** `EventVolumeService.getSummary()` indexing bug — `countByFacility()` returns 3 columns but code indexed wrong column as count.

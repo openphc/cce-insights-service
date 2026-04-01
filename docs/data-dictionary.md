@@ -243,7 +243,11 @@ event_count_by_resource_type = COUNT(*) FROM event_log WHERE processing_status !
 
 event_percentage = (resource_type_count / total_non_duplicate_events) * 100
 
-processing_quality_rate = COUNT(status) / total_events  -- per processing_status value
+processing_status_breakdown (in events/summary):
+  For each status in [MATCHED, ZERO_MATCH, DUPLICATE]:
+    count = COUNT(processing_status = status)
+    percentage = ROUND(count / total_events * 100, 1)
+  Returns: { matched: {count, percentage}, zeroMatch: {count, percentage}, duplicate: {count, percentage} }
 ```
 
 ### 3.5 Step Analytics Formulas
@@ -292,12 +296,14 @@ Supported intervals: `daily`, `weekly`, `monthly`.
 ### 3.9 Facility Ranking Formulas
 
 ```
-compliance_rate = AVG(completed_or_skipped_steps / total_steps) per protocol instance at facility
+compliance_rate = (completed_steps + skipped_steps) / total_steps per facility
 
 active_deviations = COUNT(deviations) detected within last 30 days at facility
 
 total_events = COUNT(DISTINCT event_log.id) at facility
 ```
+
+Facility-level compliance is computed from `step_instance` aggregations (not per-protocol-instance averages). The `findStepComplianceByFacility()` query groups by `facility_id` and returns `totalSteps` and `completedSteps` (including `COMPLETED` and `SKIPPED` states).
 
 Ranking options (`rankBy` parameter):
 | Value | Sort Expression |

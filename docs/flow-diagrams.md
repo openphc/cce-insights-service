@@ -121,18 +121,20 @@ sequenceDiagram
     participant Service as ExportService
     participant DB as PostgreSQL
 
-    Client->>Controller: GET /v1/export?format=csv&type=deviations
-    Controller->>Service: exportDeviations(filters, format)
+    Client->>Controller: GET /v1/insights/exports/compliance-report?format=csv
+    Controller->>Controller: Set response headers<br/>Content-Type: text/csv<br/>Content-Disposition: attachment
 
-    Service->>DB: Streaming query<br/>SELECT ... FROM deviation<br/>JOIN protocol_instance ...
-    Note right of Service: Uses cursor-based<br/>streaming to avoid<br/>loading all rows
+    Controller->>Service: writeComplianceCsv(filters, response.getOutputStream())
 
-    loop Stream rows
-        DB-->>Service: Row batch
-        Service->>Service: Transform to CSV row
+    Service->>DB: Query protocol_instance<br/>JOIN step_instance<br/>JOIN deviation
+    DB-->>Service: Result set
+
+    Service->>Service: Write CSV header row
+    loop For each row
+        Service->>Service: Format and write CSV row<br/>directly to OutputStream
     end
 
-    Service-->>Controller: StreamingResponseBody
+    Service-->>Controller: OutputStream flushed
     Controller-->>Client: 200 OK<br/>Content-Type: text/csv<br/>Content-Disposition: attachment
 ```
 
@@ -204,19 +206,23 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[GET /v1/insights/events/summary] --> B[Parse filters]
+    A[GET /v1/insights/events/summary] --> B[Parse filters:<br/>facilityId, source,<br/>startDate, endDate]
 
-    B --> C[Query 1: Total + status breakdown<br/>GROUP BY processing_status]
+    B --> C[Query 1: By facility<br/>GROUP BY facility_id]
     B --> D[Query 2: By resource type<br/>GROUP BY data resourceType]
-    B --> E[Query 3: By facility<br/>GROUP BY facility_id]
-    B --> F[Query 4: By source<br/>GROUP BY source]
+    B --> E[Query 3: By source<br/>GROUP BY source via inbound_event]
+    B --> F[Query 4: Processing status<br/>GROUP BY processing_status]
 
-    C --> G[Compose EventVolumeSummaryDto]
+    C --> G[Calculate totalEvents<br/>from facility counts]
     D --> G
     E --> G
-    F --> G
 
-    G --> H[Return composite response]
+    F --> H[buildProcessingStatusBreakdown:<br/>For each status compute<br/>count + percentage]
+
+    G --> I[Compose EventVolumeSummaryDto]
+    H --> I
+
+    I --> J[Return composite response<br/>with processingStatusBreakdown:<br/>matched/zeroMatch/duplicate<br/>each with count + percentage]
 ```
 
 ## 8. Protocol Analytics Flow
@@ -484,7 +490,7 @@ sequenceDiagram
     participant InboundRepo as InboundEventRepository
     participant DB as PostgreSQL
 
-    Client->>Controller: GET /v1/insights/events/compare-sources?sourceA=ehr-a&sourceB=ehr-b&windowSeconds=300
+    Client->>Controller: GET /v1/insights/events/source-comparison?sourceA=ehr-a&sourceB=ehr-b&windowSeconds=300
     Controller->>Service: compareSourceSystems(sourceA, sourceB, windowSeconds, ...)
 
     Service->>InboundRepo: findOverlappingEvents(sourceA, sourceB, window)
@@ -594,4 +600,56 @@ sequenceDiagram
 
     Service-->>Controller: PipelineLossDto
     Controller-->>Controller: Wrap in ApiResponse
+```
+
+## 16. Lookup Endpoints Flow
+
+```mermaid
+flowchart TD
+    A[GET /v1/insights/lookups/*] --> B{Which lookup?}
+
+    B -- /protocols --> C[ProtocolDefinitionRepository.findAll]
+    B -- /facilities --> D[EventLogRepository.findDistinctFacilityIds]
+    B -- /practitioners --> E[EventLogRepository.findDistinctPractitioners]
+    B -- /sources --> F[InboundEventRepository.findDistinctSources]
+    B -- /patients --> G[ProtocolInstanceRepository.findDistinctPatientIds]
+
+    C --> H["@Cacheable(lookups, key=protocols)"]
+    D --> H
+    E --> H
+    F --> H
+    G --> H
+
+    H --> I{Cache hit?}
+    I -- Yes --> J[Return cached data]
+    I -- No --> K[Execute DB query]
+    K --> L[Store in lookups cache<br/>TTL: 60 min]
+    L --> J
+```
+
+## 17. Caching Flow (3-Tier Caffeine)
+
+```mermaid
+flowchart TD
+    A[Incoming Request] --> B[Controller]
+    B --> C[Service Method<br/>with @Cacheable]
+
+    C --> D{Cache Lookup}
+    D -- Hit --> E[Return cached response]
+    D -- Miss --> F[Execute DB query]
+
+    F --> G{Which cache tier?}
+    G -- "lookups<br/>(60 min TTL, 50 max)" --> H[Store in lookups cache]
+    G -- "analytics<br/>(30 min TTL, 200 max)" --> I[Store in analytics cache]
+    G -- "metrics<br/>(15 min TTL, 500 max)" --> J[Store in metrics cache]
+
+    H --> E
+    I --> E
+    J --> E
+
+    subgraph "Cache Tiers"
+        K["lookups: protocols, facilities,<br/>practitioners, sources, patients"]
+        L["analytics: compliance summaries,<br/>protocol analytics, deviations,<br/>patient risk, facility ranking"]
+        M["metrics: event volume,<br/>ingestion pipeline,<br/>processing quality"]
+    end
 ```
