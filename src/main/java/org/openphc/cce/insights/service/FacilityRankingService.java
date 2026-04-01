@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.openphc.cce.insights.domain.repository.DeviationRepository;
 import org.openphc.cce.insights.domain.repository.EventLogRepository;
 import org.openphc.cce.insights.domain.repository.ProtocolInstanceRepository;
+import org.openphc.cce.insights.domain.repository.StepInstanceRepository;
 import org.openphc.cce.insights.web.dto.FacilityRankingDto;
 import org.springframework.stereotype.Service;
 import org.springframework.cache.annotation.Cacheable;
@@ -20,10 +21,11 @@ public class FacilityRankingService {
 
     private final EventLogRepository eventLogRepository;
     private final DeviationRepository deviationRepository;
+    private final StepInstanceRepository stepInstanceRepository;
 
-    @Cacheable(value = "analytics", key = "'rankings-' + #sortBy + '-' + #limit")
+    @Cacheable(value = "analytics", key = "'rankings-' + #sortBy + '-' + #order + '-' + #limit")
     public List<FacilityRankingDto> getRankings(OffsetDateTime startDate, OffsetDateTime endDate,
-                                                 String sortBy, int limit) {
+                                                 String sortBy, String order, int limit) {
         List<Object[]> facilityEvents = eventLogRepository.findFacilityEventCounts(null);
 
         Map<String, Long> eventCountMap = new LinkedHashMap<>();
@@ -45,12 +47,29 @@ public class FacilityRankingService {
             deviationCountMap.put((String) row[0], ((Number) row[1]).longValue());
         }
 
-        List<FacilityRankingDto> rankings = eventCountMap.keySet().stream().map(facilityId -> {
+        // Step-based compliance: completed+skipped / total steps per facility
+        List<Object[]> stepComplianceRows = stepInstanceRepository.findStepComplianceByFacility();
+        Map<String, Long> totalStepsMap = new LinkedHashMap<>();
+        Map<String, Long> completedStepsMap = new LinkedHashMap<>();
+        for (Object[] row : stepComplianceRows) {
+            String facilityId = (String) row[0];
+            totalStepsMap.put(facilityId, ((Number) row[1]).longValue());
+            completedStepsMap.put(facilityId, ((Number) row[2]).longValue());
+        }
+
+        // Collect all known facility IDs from all sources
+        Set<String> allFacilities = new LinkedHashSet<>();
+        allFacilities.addAll(eventCountMap.keySet());
+        allFacilities.addAll(totalStepsMap.keySet());
+
+        List<FacilityRankingDto> rankings = allFacilities.stream().map(facilityId -> {
             long events = eventCountMap.getOrDefault(facilityId, 0L);
             long patients = activePatientMap.getOrDefault(facilityId, 0L);
             long deviations = deviationCountMap.getOrDefault(facilityId, 0L);
-            double complianceRate = events > 0 && deviations > 0
-                    ? Math.round((1.0 - (double) deviations / events) * 1000.0) / 10.0
+            long totalSteps = totalStepsMap.getOrDefault(facilityId, 0L);
+            long completedSteps = completedStepsMap.getOrDefault(facilityId, 0L);
+            double complianceRate = totalSteps > 0
+                    ? Math.round((double) completedSteps / totalSteps * 1000.0) / 10.0
                     : 100.0;
 
             return FacilityRankingDto.builder()
@@ -62,12 +81,16 @@ public class FacilityRankingService {
                     .build();
         }).collect(Collectors.toList());
 
-        Comparator<FacilityRankingDto> comparator = switch (sortBy != null ? sortBy : "events") {
-            case "compliance" -> Comparator.comparingDouble(FacilityRankingDto::getComplianceRate).reversed();
-            case "deviations" -> Comparator.comparingLong(FacilityRankingDto::getActiveDeviations).reversed();
-            case "patients" -> Comparator.comparingLong(FacilityRankingDto::getTotalEnrollments).reversed();
-            default -> Comparator.comparingLong(FacilityRankingDto::getTotalEvents).reversed();
+        Comparator<FacilityRankingDto> comparator = switch (sortBy != null ? sortBy : "complianceRate") {
+            case "complianceRate" -> Comparator.comparingDouble(FacilityRankingDto::getComplianceRate);
+            case "deviationCount" -> Comparator.comparingLong(FacilityRankingDto::getActiveDeviations);
+            case "eventVolume" -> Comparator.comparingLong(FacilityRankingDto::getTotalEvents);
+            default -> Comparator.comparingDouble(FacilityRankingDto::getComplianceRate);
         };
+
+        if ("desc".equalsIgnoreCase(order)) {
+            comparator = comparator.reversed();
+        }
 
         rankings.sort(comparator);
 

@@ -136,17 +136,20 @@ public class ComplianceSummaryService {
 
     @Cacheable(value = "analytics", key = "'facility-' + #facilityId")
     public FacilitySummaryDto getFacilityComplianceSummary(String facilityId) {
-        List<ProtocolInstance> allInstances = protocolInstanceRepository.findAll();
-        List<ProtocolInstance> facilityInstances = allInstances.stream()
-                .filter(pi -> {
-                    List<StepInstance> steps = stepInstanceRepository.findByProtocolInstanceId(pi.getId());
-                    return !steps.isEmpty();
-                })
-                .collect(Collectors.toList());
+        // Get protocol instances belonging to this facility via event_log
+        List<Object[]> rows = eventLogRepository.findPatientsByFacility(facilityId);
+        Set<UUID> facilityInstanceIds = new HashSet<>();
+        Set<String> patients = new LinkedHashSet<>();
+        for (Object[] row : rows) {
+            patients.add((String) row[1]);
+            facilityInstanceIds.add((UUID) row[2]);
+        }
 
-        Set<String> patients = facilityInstances.stream()
-                .map(ProtocolInstance::getPatientId)
-                .collect(Collectors.toSet());
+        List<ProtocolInstance> facilityInstances = facilityInstanceIds.isEmpty()
+                ? Collections.emptyList()
+                : protocolInstanceRepository.findAll().stream()
+                        .filter(pi -> facilityInstanceIds.contains(pi.getId()))
+                        .collect(Collectors.toList());
 
         Map<UUID, List<ProtocolInstance>> byProtocol = facilityInstances.stream()
                 .collect(Collectors.groupingBy(ProtocolInstance::getProtocolDefinitionId));

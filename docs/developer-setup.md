@@ -97,6 +97,13 @@ curl localhost:8084/v1/insights/ingestion/funnel
 curl localhost:8084/v1/insights/ingestion/rejections
 curl localhost:8084/v1/insights/ingestion/source-quality
 curl localhost:8084/v1/insights/ingestion/pipeline-loss
+
+# Test lookup/filter endpoints
+curl localhost:8084/v1/insights/lookups/protocols
+curl localhost:8084/v1/insights/lookups/facilities
+curl localhost:8084/v1/insights/lookups/practitioners
+curl localhost:8084/v1/insights/lookups/sources
+curl localhost:8084/v1/insights/lookups/patients
 ```
 
 ## 3. Configuration Reference
@@ -153,6 +160,9 @@ management:
 | `DB_USERNAME` | `cce_user` | Database username (shared with Collector Service) |
 | `DB_PASSWORD` | `cce_pass` | Database password (shared with Collector Service) |
 | `DB_POOL_SIZE` | `10` | HikariCP max pool size |
+| `CACHE_TTL_LOOKUPS` | `60` | Lookup cache TTL in minutes |
+| `CACHE_TTL_ANALYTICS` | `30` | Analytics cache TTL in minutes |
+| `CACHE_TTL_METRICS` | `15` | Metrics cache TTL in minutes |
 
 ## 4. Project Structure
 

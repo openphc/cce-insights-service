@@ -15,16 +15,17 @@ First production release of the **CCE Insights Service** — a read-only analyti
 
 ### Highlights
 
-- **32 REST endpoints** across 10 controllers
+- **38 REST endpoints** across 11 controllers
 - **6 database tables** queried (read-only) from the shared `cce_collector` PostgreSQL database
 - **Zero write operations** — fully read-only JPA entities with `@Immutable` annotations
+- **Caffeine caching** — 3-tier in-memory cache (lookups/analytics/metrics) with configurable TTLs
 - **Docker-ready** — multi-stage Dockerfile, docker-compose.yml, and Kubernetes manifests
 - **Comprehensive observability** — Prometheus metrics, structured JSON logging, custom health indicators
 - **Integration tested** — Testcontainers-based tests covering all endpoint groups
 
 ---
 
-### API Endpoints (32 total)
+### API Endpoints (38 total)
 
 #### Compliance Summaries (3 endpoints) — S4
 | # | Endpoint |
@@ -60,7 +61,7 @@ First production release of the **CCE Insights Service** — a read-only analyti
 | 17 | `GET /v1/insights/events/by-facility` |
 | 18 | `GET /v1/insights/events/by-practitioner` |
 | 19 | `GET /v1/insights/events/by-source` |
-| 20 | `GET /v1/insights/events/compare-sources` |
+| 20 | `GET /v1/insights/events/source-comparison` |
 
 #### Protocol Analytics (4 endpoints) — S8
 | # | Endpoint |
@@ -99,6 +100,15 @@ First production release of the **CCE Insights Service** — a read-only analyti
 |---|----------|
 | 33 | `GET /v1/insights/exports/compliance-report` |
 
+#### Lookup Endpoints (5 endpoints) — S16
+| # | Endpoint |
+|---|----------|
+| 34 | `GET /v1/insights/lookups/protocols` |
+| 35 | `GET /v1/insights/lookups/facilities` |
+| 36 | `GET /v1/insights/lookups/practitioners` |
+| 37 | `GET /v1/insights/lookups/sources` |
+| 38 | `GET /v1/insights/lookups/patients` |
+
 ---
 
 ### Architecture
@@ -111,8 +121,9 @@ First production release of the **CCE Insights Service** — a read-only analyti
 | **Entities** | 6: ProtocolDefinition, ProtocolInstance, StepInstance, Deviation, EventLog, InboundEvent |
 | **Repositories** | 7 (including ReadOnlyRepository base) |
 | **Services** | 10 + DateUtil utility |
-| **Controllers** | 10 |
+| **Controllers** | 11 (incl. LookupController) |
 | **DTOs** | ~30 |
+| **Configs** | 5 (JpaConfig, MetricsConfig, ObservabilityConfig, CacheConfig, DatabaseHealthIndicator) |
 | **Integration Tests** | 10 IT classes with Testcontainers |
 
 ---
@@ -134,12 +145,19 @@ First production release of the **CCE Insights Service** — a read-only analyti
 
 - **Fixed:** `FacilityRankingService.deviationCountMap` was never populated — compliance rate always returned 100%. Now queries deviation counts per facility.
 - **Fixed:** Missing `logstash-logback-encoder` dependency — JSON logging (docker profile) would fail at runtime.
+- **Fixed:** PostgreSQL nullable parameter CAST issue — native queries with nullable parameters now use `CAST(:param AS type)` across all 4 repository files.
+- **Fixed:** `EventVolumeService.getSummary()` indexing bug — `countByFacility()` returns 3 columns but code indexed wrong column as count.
+- **Fixed:** `java.time.Instant` casting — PostgreSQL returns `Instant` for `timestamptz` columns in native queries, not `Timestamp`. Added `DateUtil.toOffsetDateTime()` utility.
+- **Fixed:** CSV export `HttpMessageNotWritableException` — `StreamingResponseBody` in `ResponseEntity` fails content negotiation. Rewritten to use `HttpServletResponse` directly.
+- **Fixed:** `GlobalExceptionHandler` was silently swallowing exceptions — added `@Slf4j` and `log.error()` calls.
 
 ### Code Quality Improvements
 
 - Extracted `DateUtil` utility — eliminated 4x duplicated `mapInterval()` and `extractDate()` methods across services.
+- Added `DateUtil.toOffsetDateTime()` helper — handles `Instant`, `OffsetDateTime`, and `Timestamp` type conversion from native query results.
 - Added `.dockerignore` for optimized Docker builds.
 - Added `.env.example` for environment variable documentation.
+- Implemented Caffeine caching with `@Cacheable` annotations on 25 service methods across 9 classes.
 
 ---
 
@@ -147,8 +165,8 @@ First production release of the **CCE Insights Service** — a read-only analyti
 
 - **N+1 query patterns** in `ComplianceSummaryService`, `PatientTimelineService`, `ExportService`, and `PatientRiskService` — acceptable at current scale, targeted for Phase 2 optimization.
 - **PatientController** accesses repositories directly — business logic should be delegated to services in a future refactor.
-- **No caching layer** — Phase 2 will introduce Redis for high-frequency dashboard queries.
 - **No pagination** on some list endpoints — cursor pagination to be added where missing.
+- **Per-instance caching** — Caffeine caches are not shared across instances. Phase 2 will introduce Redis for distributed caching.
 
 ---
 
@@ -158,6 +176,7 @@ First production release of the **CCE Insights Service** — a read-only analyti
 |------------|---------|
 | Spring Boot | 3.4.4 |
 | Spring Data JPA | (managed) |
+| Caffeine | (managed) |
 | Micrometer Prometheus | (managed) |
 | Logstash Logback Encoder | 7.4 |
 | PostgreSQL JDBC Driver | (managed) |

@@ -1781,3 +1781,122 @@ Detects events that were ACCEPTED by the Collector (published to Kafka) but neve
 ```
 
 **How it works:** Joins `inbound_event` (where `status = 'ACCEPTED'`) with `event_log` on `(cloudevents_id, source)`. Events in the first table with no match in the second are considered "lost" in the pipeline. A non-zero `lossRate` warrants investigation of Kafka consumer lag, compliance service errors, or dead-letter queues.
+
+---
+
+## 14. Lookup Endpoints
+
+Lookup endpoints provide dropdown/filter data for the Analytics UI dashboard. All responses are cached with the `lookups` cache tier (60-minute default TTL).
+
+---
+
+### 14.1 GET `/v1/insights/lookups/protocols`
+
+Returns all protocol definitions for use in dropdown filters.
+
+**Required Scope:** `dashboard:read`
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `status` | String | — | Filter by protocol status (e.g., `active`) |
+
+**Response: `200 OK`**
+
+```json
+{
+  "data": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440001",
+      "url": "https://fhir.openphc.org/PlanDefinition/anc-contact-schedule",
+      "version": "1.0.0",
+      "name": "ANC Contact Schedule",
+      "status": "active"
+    }
+  ]
+}
+```
+
+---
+
+### 14.2 GET `/v1/insights/lookups/facilities`
+
+Returns distinct facility IDs from event data.
+
+**Required Scope:** `dashboard:read`
+
+**Response: `200 OK`**
+
+```json
+{
+  "data": [
+    "FAC-KGL-001",
+    "FAC-KGL-002",
+    "FAC-HYE-003"
+  ]
+}
+```
+
+---
+
+### 14.3 GET `/v1/insights/lookups/practitioners`
+
+Returns distinct practitioner references from event data.
+
+**Required Scope:** `dashboard:read`
+
+**Response: `200 OK`**
+
+```json
+{
+  "data": [
+    "Practitioner/HLC-PRAC-2025-00005",
+    "Practitioner/HLC-PRAC-2025-00012"
+  ]
+}
+```
+
+---
+
+### 14.4 GET `/v1/insights/lookups/sources`
+
+Returns distinct source system identifiers from inbound event data.
+
+**Required Scope:** `dashboard:read`
+
+**Response: `200 OK`**
+
+```json
+{
+  "data": [
+    "rhie-mediator",
+    "ebuzima/kigali-south"
+  ]
+}
+```
+
+---
+
+### 14.5 GET `/v1/insights/lookups/patients`
+
+Returns distinct patient IDs from protocol instances.
+
+**Required Scope:** `dashboard:read`
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `protocolDefinitionId` | UUID | — | Filter patients enrolled in a specific protocol |
+
+**Response: `200 OK`**
+
+```json
+{
+  "data": [
+    "Patient/260225-0002-5501",
+    "Patient/260225-0003-6612"
+  ]
+}
+```

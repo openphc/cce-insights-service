@@ -171,4 +171,19 @@ public interface EventLogRepository extends ReadOnlyRepository<EventLog, UUID> {
             "GROUP BY el.facility_id",
             nativeQuery = true)
     List<Object[]> findActivePatientsByFacility(@Param("protocolDefId") UUID protocolDefId);
+
+    @Query(value = "SELECT DISTINCT el.facility_id, pi.patient_id " +
+            "FROM event_log el " +
+            "JOIN protocol_instance pi ON el.protocol_instance_id = pi.id " +
+            "WHERE el.facility_id IS NOT NULL",
+            nativeQuery = true)
+    List<Object[]> findFacilityPatientMapping();
+
+    @Query(value = "SELECT DISTINCT el.facility_id, pi.patient_id, pi.id AS protocol_instance_id " +
+            "FROM event_log el " +
+            "JOIN protocol_instance pi ON el.protocol_instance_id = pi.id " +
+            "WHERE el.facility_id IS NOT NULL " +
+            "AND el.facility_id = CAST(:facilityId AS text)",
+            nativeQuery = true)
+    List<Object[]> findPatientsByFacility(@Param("facilityId") String facilityId);
 }
