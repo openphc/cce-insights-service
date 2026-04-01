@@ -6,6 +6,7 @@ import org.openphc.cce.insights.domain.entity.ProtocolDefinition;
 import org.openphc.cce.insights.domain.repository.*;
 import org.openphc.cce.insights.web.dto.*;
 import org.springframework.stereotype.Service;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.Timestamp;
@@ -23,6 +24,7 @@ public class ProtocolAnalyticsService {
     private final ProtocolInstanceRepository protocolInstanceRepository;
     private final StepInstanceRepository stepInstanceRepository;
 
+    @Cacheable(value = "analytics", key = "'step-analytics-' + #protocolDefinitionId")
     public StepAnalyticsDto getStepAnalytics(UUID protocolDefinitionId) {
         ProtocolDefinition pd = protocolDefinitionRepository.findById(protocolDefinitionId)
                 .orElseThrow(() -> new EntityNotFoundException(
@@ -61,6 +63,7 @@ public class ProtocolAnalyticsService {
                 .build();
     }
 
+    @Cacheable(value = "analytics", key = "'funnel-' + #protocolDefinitionId")
     public CompletionFunnelDto getCompletionFunnel(UUID protocolDefinitionId) {
         ProtocolDefinition pd = protocolDefinitionRepository.findById(protocolDefinitionId)
                 .orElseThrow(() -> new EntityNotFoundException(
@@ -95,6 +98,7 @@ public class ProtocolAnalyticsService {
                 .build();
     }
 
+    @Cacheable(value = "analytics", key = "'outcome-' + #protocolDefinitionId")
     public OutcomeDistributionDto getOutcomeDistribution(UUID protocolDefinitionId) {
         ProtocolDefinition pd = protocolDefinitionRepository.findById(protocolDefinitionId)
                 .orElseThrow(() -> new EntityNotFoundException(
@@ -120,6 +124,7 @@ public class ProtocolAnalyticsService {
                 .build();
     }
 
+    @Cacheable(value = "analytics", key = "'enrollment-' + #protocolDefinitionId + '-' + #interval")
     public EnrollmentTrendDto getEnrollmentTrends(UUID protocolDefinitionId, String interval,
                                                    OffsetDateTime startDate, OffsetDateTime endDate) {
         protocolDefinitionRepository.findById(protocolDefinitionId)

@@ -1,6 +1,8 @@
 package org.openphc.cce.insights.service;
 
 import java.sql.Timestamp;
+import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 
 public final class DateUtil {
@@ -21,6 +23,20 @@ public final class DateUtil {
         if (obj instanceof Timestamp ts) {
             return ts.toInstant().atOffset(ZoneOffset.UTC).toLocalDate().toString();
         }
+        if (obj instanceof Instant inst) {
+            return inst.atOffset(ZoneOffset.UTC).toLocalDate().toString();
+        }
+        if (obj instanceof OffsetDateTime odt) {
+            return odt.toLocalDate().toString();
+        }
         return obj.toString();
+    }
+
+    public static OffsetDateTime toOffsetDateTime(Object obj) {
+        if (obj == null) return null;
+        if (obj instanceof OffsetDateTime odt) return odt;
+        if (obj instanceof Instant inst) return inst.atOffset(ZoneOffset.UTC);
+        if (obj instanceof Timestamp ts) return ts.toInstant().atOffset(ZoneOffset.UTC);
+        return OffsetDateTime.parse(obj.toString());
     }
 }

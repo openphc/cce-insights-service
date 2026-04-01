@@ -13,6 +13,7 @@ import org.openphc.cce.insights.web.dto.ComplianceSummaryDto;
 import org.openphc.cce.insights.web.dto.FacilitySummaryDto;
 import org.openphc.cce.insights.web.dto.PatientComplianceDto;
 import org.springframework.stereotype.Service;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
@@ -29,6 +30,7 @@ public class ComplianceSummaryService {
     private final DeviationRepository deviationRepository;
     private final EventLogRepository eventLogRepository;
 
+    @Cacheable(value = "analytics", key = "'compliance-' + #protocolDefinitionId")
     public ComplianceSummaryDto getProtocolComplianceSummary(UUID protocolDefinitionId) {
         ProtocolDefinition pd = protocolDefinitionRepository.findById(protocolDefinitionId)
                 .orElseThrow(() -> new EntityNotFoundException(
@@ -91,6 +93,7 @@ public class ComplianceSummaryService {
                 .build();
     }
 
+    @Cacheable(value = "analytics", key = "'protocol-patients-' + #protocolDefinitionId + '-' + #statusFilter + '-' + #limit")
     public List<PatientComplianceDto> getProtocolPatients(UUID protocolDefinitionId, String statusFilter, int limit) {
         protocolDefinitionRepository.findById(protocolDefinitionId)
                 .orElseThrow(() -> new EntityNotFoundException(
@@ -131,6 +134,7 @@ public class ComplianceSummaryService {
         return results;
     }
 
+    @Cacheable(value = "analytics", key = "'facility-' + #facilityId")
     public FacilitySummaryDto getFacilityComplianceSummary(String facilityId) {
         List<ProtocolInstance> allInstances = protocolInstanceRepository.findAll();
         List<ProtocolInstance> facilityInstances = allInstances.stream()

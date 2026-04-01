@@ -10,6 +10,11 @@ import java.util.UUID;
 
 public interface InboundEventRepository extends ReadOnlyRepository<InboundEvent, UUID> {
 
+    @Query(value = "SELECT DISTINCT ie.source FROM inbound_event ie " +
+            "WHERE ie.source IS NOT NULL ORDER BY ie.source",
+            nativeQuery = true)
+    List<String> findDistinctSources();
+
     // --- Ingestion Funnel ---
 
     @Query(value = "SELECT ie.status, COUNT(*) AS event_count " +

@@ -6,6 +6,7 @@ import org.openphc.cce.insights.domain.repository.EventLogRepository;
 import org.openphc.cce.insights.domain.repository.ProtocolInstanceRepository;
 import org.openphc.cce.insights.web.dto.FacilityRankingDto;
 import org.springframework.stereotype.Service;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
@@ -20,6 +21,7 @@ public class FacilityRankingService {
     private final EventLogRepository eventLogRepository;
     private final DeviationRepository deviationRepository;
 
+    @Cacheable(value = "analytics", key = "'rankings-' + #sortBy + '-' + #limit")
     public List<FacilityRankingDto> getRankings(OffsetDateTime startDate, OffsetDateTime endDate,
                                                  String sortBy, int limit) {
         List<Object[]> facilityEvents = eventLogRepository.findFacilityEventCounts(null);

@@ -1,5 +1,6 @@
 package org.openphc.cce.insights.web;
 
+import lombok.extern.slf4j.Slf4j;
 import org.openphc.cce.insights.web.dto.ApiResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -9,6 +10,7 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 
 import jakarta.persistence.EntityNotFoundException;
 
+@Slf4j
 @ControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -26,12 +28,14 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(org.springframework.dao.DataAccessException.class)
     public ResponseEntity<ApiResponse<Void>> handleDatabaseError(org.springframework.dao.DataAccessException ex) {
+        log.error("Database error", ex);
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .body(ApiResponse.error("SERVICE_UNAVAILABLE", "Database unavailable"));
     }
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleGenericError(Exception ex) {
+        log.error("Unhandled exception", ex);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(ApiResponse.error("INTERNAL_ERROR", "An unexpected error occurred"));
     }

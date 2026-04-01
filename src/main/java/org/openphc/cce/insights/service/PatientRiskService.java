@@ -10,6 +10,7 @@ import org.openphc.cce.insights.domain.repository.ProtocolInstanceRepository;
 import org.openphc.cce.insights.domain.repository.StepInstanceRepository;
 import org.openphc.cce.insights.web.dto.AtRiskHotspotDto;
 import org.openphc.cce.insights.web.dto.RepeatDeviationPatientDto;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,6 +28,7 @@ public class PatientRiskService {
     private final StepInstanceRepository stepInstanceRepository;
     private final EventLogRepository eventLogRepository;
 
+    @Cacheable(value = "analytics", key = "'risk-hotspots'")
     public List<AtRiskHotspotDto> getAtRiskHotspots(OffsetDateTime startDate, OffsetDateTime endDate) {
         List<Object[]> facilityPatients = eventLogRepository.findActivePatientsByFacility(null);
 
@@ -76,6 +78,7 @@ public class PatientRiskService {
         }).collect(Collectors.toList());
     }
 
+    @Cacheable(value = "analytics", key = "'repeat-deviations-' + #minDeviations")
     public List<RepeatDeviationPatientDto> getRepeatDeviationPatients(int minDeviations,
                                                                        OffsetDateTime startDate,
                                                                        OffsetDateTime endDate) {

@@ -6,6 +6,7 @@ import org.openphc.cce.insights.domain.enums.DeviationType;
 import org.openphc.cce.insights.domain.repository.DeviationRepository;
 import org.openphc.cce.insights.domain.repository.EventLogRepository;
 import org.openphc.cce.insights.web.dto.*;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,12 +37,12 @@ public class DeviationAnalyticsService {
                 .stepInstanceId((UUID) row[4])
                 .actionId((String) row[5])
                 .deviationType((String) row[6])
-                .detectedAt(row[7] instanceof java.sql.Timestamp ts
-                        ? ts.toInstant().atOffset(java.time.ZoneOffset.UTC) : (OffsetDateTime) row[7])
+                .detectedAt(DateUtil.toOffsetDateTime(row[7]))
                 .facilityId((String) row[8])
                 .build()).collect(Collectors.toList());
     }
 
+    @Cacheable(value = "analytics", key = "'dev-trends-' + #interval + '-' + #facilityId")
     public DeviationTrendDto getDeviationTrends(String interval, OffsetDateTime startDate,
                                                  OffsetDateTime endDate, String facilityId) {
         String dbInterval = DateUtil.mapInterval(interval);
@@ -71,6 +72,7 @@ public class DeviationAnalyticsService {
         return DeviationTrendDto.builder().interval(interval).trends(trends).build();
     }
 
+    @Cacheable(value = "analytics", key = "'intelligence-summary'")
     public IntelligenceSummaryDto getIntelligenceSummary() {
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         List<Object[]> last24h = deviationRepository.countByTypeSince(now.minusHours(24));
@@ -98,6 +100,7 @@ public class DeviationAnalyticsService {
                 .build();
     }
 
+    @Cacheable(value = "analytics", key = "'dev-action-' + #protocolDefId")
     public List<DeviationByActionDto> getDeviationsByAction(UUID protocolDefId,
                                                              OffsetDateTime startDate,
                                                              OffsetDateTime endDate) {
@@ -113,6 +116,7 @@ public class DeviationAnalyticsService {
                 .build()).collect(Collectors.toList());
     }
 
+    @Cacheable(value = "analytics", key = "'dev-resolution-' + #protocolDefId")
     public DeviationResolutionDto getResolutionRate(UUID protocolDefId,
                                                      OffsetDateTime startDate,
                                                      OffsetDateTime endDate) {

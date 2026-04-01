@@ -7,8 +7,8 @@ import org.openphc.cce.insights.domain.repository.ProtocolInstanceRepository;
 import org.openphc.cce.insights.domain.repository.StepInstanceRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
+import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
@@ -24,39 +24,38 @@ public class ExportService {
     private final ProtocolInstanceRepository protocolInstanceRepository;
     private final StepInstanceRepository stepInstanceRepository;
 
-    public StreamingResponseBody exportComplianceCsv(UUID protocolDefinitionId, String facilityId,
-                                                      OffsetDateTime startDate, OffsetDateTime endDate) {
-        return outputStream -> {
-            PrintWriter writer = new PrintWriter(new OutputStreamWriter(outputStream, StandardCharsets.UTF_8));
-            writer.println("patient_id,protocol_canonical,status,enrolled_at," +
-                    "total_steps,completed_steps,overdue_steps,missed_steps,compliance_rate");
+    public void writeComplianceCsv(UUID protocolDefinitionId, String facilityId,
+                                     OffsetDateTime startDate, OffsetDateTime endDate,
+                                     OutputStream outputStream) {
+        PrintWriter writer = new PrintWriter(new OutputStreamWriter(outputStream, StandardCharsets.UTF_8));
+        writer.println("patient_id,protocol_canonical,status,enrolled_at," +
+                "total_steps,completed_steps,overdue_steps,missed_steps,compliance_rate");
 
-            List<ProtocolInstance> instances;
-            if (protocolDefinitionId != null) {
-                instances = protocolInstanceRepository.findByProtocolDefinitionId(protocolDefinitionId);
-            } else {
-                instances = protocolInstanceRepository.findAll();
-            }
+        List<ProtocolInstance> instances;
+        if (protocolDefinitionId != null) {
+            instances = protocolInstanceRepository.findByProtocolDefinitionId(protocolDefinitionId);
+        } else {
+            instances = protocolInstanceRepository.findAll();
+        }
 
-            for (ProtocolInstance pi : instances) {
-                List<StepInstance> steps = stepInstanceRepository.findByProtocolInstanceId(pi.getId());
-                long total = steps.size();
-                long completed = steps.stream().filter(s -> s.getCompletedAt() != null).count();
-                long overdue = steps.stream()
-                        .filter(s -> s.getState().name().equals("OVERDUE")).count();
-                long missed = steps.stream()
-                        .filter(s -> s.getState().name().equals("MISSED")).count();
-                double rate = total > 0 ? Math.round((double) completed / total * 100.0) / 100.0 : 0;
+        for (ProtocolInstance pi : instances) {
+            List<StepInstance> steps = stepInstanceRepository.findByProtocolInstanceId(pi.getId());
+            long total = steps.size();
+            long completed = steps.stream().filter(s -> s.getCompletedAt() != null).count();
+            long overdue = steps.stream()
+                    .filter(s -> s.getState().name().equals("OVERDUE")).count();
+            long missed = steps.stream()
+                    .filter(s -> s.getState().name().equals("MISSED")).count();
+            double rate = total > 0 ? Math.round((double) completed / total * 100.0) / 100.0 : 0;
 
-                writer.printf("%s,%s,%s,%s,%d,%d,%d,%d,%.2f%n",
-                        escapeCsv(pi.getPatientId()),
-                        escapeCsv(pi.getProtocolCanonical()),
-                        pi.getStatus(),
-                        pi.getEnrolledAt(),
-                        total, completed, overdue, missed, rate);
-            }
-            writer.flush();
-        };
+            writer.printf("%s,%s,%s,%s,%d,%d,%d,%d,%.2f%n",
+                    escapeCsv(pi.getPatientId()),
+                    escapeCsv(pi.getProtocolCanonical()),
+                    pi.getStatus(),
+                    pi.getEnrolledAt(),
+                    total, completed, overdue, missed, rate);
+        }
+        writer.flush();
     }
 
     public List<Map<String, Object>> exportComplianceJson(UUID protocolDefinitionId, String facilityId,

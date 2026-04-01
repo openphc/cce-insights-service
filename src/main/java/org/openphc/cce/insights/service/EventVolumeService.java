@@ -4,10 +4,12 @@ import lombok.RequiredArgsConstructor;
 import org.openphc.cce.insights.domain.repository.EventLogRepository;
 import org.openphc.cce.insights.domain.repository.InboundEventRepository;
 import org.openphc.cce.insights.web.dto.*;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.Timestamp;
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.*;
@@ -21,6 +23,7 @@ public class EventVolumeService {
     private final EventLogRepository eventLogRepository;
     private final InboundEventRepository inboundEventRepository;
 
+    @Cacheable(value = "metrics", key = "'vol-summary'")
     public EventVolumeSummaryDto getSummary(OffsetDateTime startDate, OffsetDateTime endDate) {
         List<Object[]> byFacility = eventLogRepository.countByFacility(startDate, endDate);
         List<Object[]> byResourceType = eventLogRepository.countByResourceType(null, null, startDate, endDate);
@@ -58,6 +61,7 @@ public class EventVolumeService {
                 .build();
     }
 
+    @Cacheable(value = "metrics", key = "'vol-restype'")
     public List<ResourceTypeCountDto> getByResourceType(OffsetDateTime startDate, OffsetDateTime endDate) {
         return eventLogRepository.countByResourceType(null, null, startDate, endDate).stream()
                 .map(row -> ResourceTypeCountDto.builder()
@@ -67,6 +71,7 @@ public class EventVolumeService {
                 .collect(Collectors.toList());
     }
 
+    @Cacheable(value = "metrics", key = "'vol-facility'")
     public List<FacilityEventCountDto> getByFacility(OffsetDateTime startDate, OffsetDateTime endDate) {
         List<Object[]> rows = eventLogRepository.countByFacility(startDate, endDate);
         // rows: [facility_id, resource_type, count] — aggregate by facility
@@ -90,6 +95,7 @@ public class EventVolumeService {
         }).collect(Collectors.toList());
     }
 
+    @Cacheable(value = "metrics", key = "'vol-practitioner'")
     public List<PractitionerEventCountDto> getByPractitioner(OffsetDateTime startDate, OffsetDateTime endDate) {
         List<Object[]> rows = eventLogRepository.countByPractitioner(null, startDate, endDate);
         // rows: [practitioner_ref, practitioner_display, resource_type, count]
@@ -115,6 +121,7 @@ public class EventVolumeService {
         }).collect(Collectors.toList());
     }
 
+    @Cacheable(value = "metrics", key = "'vol-source'")
     public List<SourceSystemCountDto> getBySource(OffsetDateTime startDate, OffsetDateTime endDate) {
         // Source counts from inbound_event — shows ALL events received per source with status breakdown
         List<Object[]> rows = inboundEventRepository.countBySourceAndStatus(null, startDate, endDate);
@@ -144,6 +151,7 @@ public class EventVolumeService {
         }).collect(Collectors.toList());
     }
 
+    @Cacheable(value = "metrics", key = "'vol-trends-' + #interval + '-' + #facilityId")
     public EventVolumeTrendDto getTrends(String interval, OffsetDateTime startDate,
                                           OffsetDateTime endDate, String facilityId) {
         String dbInterval = DateUtil.mapInterval(interval);
@@ -203,15 +211,15 @@ public class EventVolumeService {
         double overlapPctB = totalB > 0 ? Math.round((double) overlapCount / totalB * 1000.0) / 10.0 : 0;
 
         List<SourceComparisonDto.OverlapSample> samples = sampleRows.stream().map(row -> {
-            Timestamp tsA = (Timestamp) row[4];
-            Timestamp tsB = (Timestamp) row[5];
+            OffsetDateTime tsA = DateUtil.toOffsetDateTime(row[4]);
+            OffsetDateTime tsB = DateUtil.toOffsetDateTime(row[5]);
             return SourceComparisonDto.OverlapSample.builder()
                     .eventAId((UUID) row[0])
                     .eventBId((UUID) row[1])
                     .subject((String) row[2])
                     .resourceType((String) row[3])
-                    .eventTimeA(tsA.toInstant().atOffset(ZoneOffset.UTC))
-                    .eventTimeB(tsB.toInstant().atOffset(ZoneOffset.UTC))
+                    .eventTimeA(tsA)
+                    .eventTimeB(tsB)
                     .timeDiffSeconds(((Number) row[6]).doubleValue())
                     .build();
         }).collect(Collectors.toList());
