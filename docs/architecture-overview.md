@@ -15,6 +15,7 @@ graph TB
 
     subgraph CCE Insights Service
         API["REST API<br/>(Spring MVC)"]
+        CACHE["Caffeine Cache<br/>(3-tier)"]
         SUMMARY["Compliance Summary<br/>Service"]
         TIMELINE["Patient Timeline<br/>Service"]
         DEVIATION["Deviation Analytics<br/>Service"]
@@ -25,6 +26,7 @@ graph TB
         RISK["Patient Risk<br/>Service"]
         INGESTION["Ingestion Analytics<br/>Service"]
         EXPORT["Export Service"]
+        LOOKUP["Lookup Service"]
     end
 
     subgraph Shared Infrastructure
@@ -43,22 +45,25 @@ graph TB
     API --> RISK
     API --> INGESTION
     API --> EXPORT
-    SUMMARY --> DB
-    TIMELINE --> DB
-    DEVIATION --> DB
-    EVENTVOLUME --> DB
-    PROTOCOL --> DB
-    FACILITY --> DB
-    QUALITY --> DB
-    RISK --> DB
-    INGESTION --> DB
+    API --> LOOKUP
+    SUMMARY --> CACHE
+    TIMELINE --> CACHE
+    DEVIATION --> CACHE
+    EVENTVOLUME --> CACHE
+    PROTOCOL --> CACHE
+    FACILITY --> CACHE
+    QUALITY --> CACHE
+    RISK --> CACHE
+    INGESTION --> CACHE
+    LOOKUP --> CACHE
+    CACHE --> DB
     EXPORT --> DB
 
     classDef service fill:#4A90D9,stroke:#2C5F8A,color:white
     classDef external fill:#7B8D8E,stroke:#566573,color:white
     classDef data fill:#27AE60,stroke:#1E8449,color:white
 
-    class API,SUMMARY,TIMELINE,DEVIATION,EVENTVOLUME,PROTOCOL,FACILITY,QUALITY,RISK,INGESTION,EXPORT service
+    class API,SUMMARY,TIMELINE,DEVIATION,EVENTVOLUME,PROTOCOL,FACILITY,QUALITY,RISK,INGESTION,EXPORT,LOOKUP,CACHE service
     class UI,GATEWAY external
     class DB data
 ```
@@ -93,6 +98,9 @@ implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 implementation 'org.springframework.boot:spring-boot-starter-actuator'
 implementation 'org.springframework.boot:spring-boot-starter-validation'
 
+// Caching
+implementation 'com.github.ben-manes.caffeine:caffeine'
+
 // Database
 runtimeOnly 'org.postgresql:postgresql'
 
@@ -116,6 +124,7 @@ testImplementation 'org.testcontainers:junit-jupiter'
 src/main/java/org/openphc/cce/insights/
 ├── InsightsServiceApplication.java            # @SpringBootApplication
 ├── config/
+│   ├── CacheConfig.java                       # Caffeine cache configuration (3-tier: lookups/analytics/metrics)
 │   ├── JpaConfig.java                         # Read-only transaction defaults
 │   ├── MetricsConfig.java                     # Custom Micrometer metrics
 │   └── ObservabilityConfig.java               # Observability configuration
@@ -148,15 +157,15 @@ src/main/java/org/openphc/cce/insights/
 │   ├── ProtocolAnalyticsService.java          # Step analytics, completion funnel, outcome distribution, enrollment trends
 │   ├── PatientTimelineService.java            # Patient event timeline + tracking
 │   ├── PatientRiskService.java                # At-risk hotspots, repeat deviations
-│   ├── DeviationAnalyticsService.java         # Deviation trends, by-action, resolution rate
+│   ├── DeviationAnalyticsService.java         # Deviation trends, by-action, resolution rate, paginated list
 │   ├── FacilityRankingService.java            # Facility leaderboard
 │   ├── EventVolumeService.java                # Event volume by resourceType, facility, practitioner, source + source comparison
 │   ├── ProcessingQualityService.java          # Event processing quality (MATCHED/ZERO_MATCH/DUPLICATE)
 │   ├── IngestionAnalyticsService.java         # Ingestion funnel, rejections, source quality, pipeline loss
 │   ├── ExportService.java                     # CSV/JSON export generation
-│   └── DateUtil.java                          # Shared interval mapping & date extraction utility
+│   └── DateUtil.java                          # Shared interval mapping, date extraction & type conversion utility
 ├── web/
-│   ├── GlobalExceptionHandler.java            # @ControllerAdvice error handling
+│   ├── GlobalExceptionHandler.java            # @ControllerAdvice error handling (with logging)
 │   ├── controller/
 │   │   ├── ComplianceSummaryController.java
 │   │   ├── ProtocolAnalyticsController.java
@@ -167,6 +176,7 @@ src/main/java/org/openphc/cce/insights/
 │   │   ├── EventVolumeController.java         # Volume + source comparison
 │   │   ├── ProcessingQualityController.java
 │   │   ├── IngestionAnalyticsController.java  # Ingestion pipeline analytics
+│   │   ├── LookupController.java              # Dropdown filter data (protocols, facilities, practitioners, sources, patients)
 │   │   └── ExportController.java
 │   └── dto/
 │       ├── ApiResponse.java                   # Standard response envelope
@@ -197,7 +207,8 @@ src/main/java/org/openphc/cce/insights/
 │       ├── IngestionFunnelDto.java
 │       ├── RejectionAnalyticsDto.java
 │       ├── SourceDataQualityDto.java
-│       └── PipelineLossDto.java
+│       ├── PipelineLossDto.java
+│       └── PaginationDto.java
 
 src/main/resources/
 ├── application.yml
@@ -213,7 +224,7 @@ src/integrationTest/resources/
 └── seed-data.sql                                  # Sample data
 ```
 
-**Total:** ~90 source files across 12 packages.
+**Total:** ~77 source files across 12 packages.
 
 ---
 
@@ -363,14 +374,28 @@ ORDER BY period;
 
 ---
 
-## 5. Phased Architecture
+## 5. Caching
+
+The Insights Service uses **Caffeine** for in-memory response caching, organized into three tiers with configurable TTLs:
+
+| Cache Name | Default TTL | Max Entries | Purpose |
+|---|---|---|---|
+| `lookups` | 60 minutes | 50 | Dropdown filter data (protocols, facilities, practitioners, sources, patients) |
+| `analytics` | 30 minutes | 200 | Compliance summaries, protocol analytics, deviation analytics, patient risk |
+| `metrics` | 15 minutes | 500 | Event volume, ingestion pipeline, processing quality |
+
+**Configuration:** TTLs are configurable via environment variables `CACHE_TTL_LOOKUPS`, `CACHE_TTL_ANALYTICS`, `CACHE_TTL_METRICS` (in minutes).
+
+**Cache annotations:** `@Cacheable` is applied to 25 service methods across 9 service classes. Cache keys are derived from method parameters (date ranges, filters, IDs).
+
+### Phased Architecture
 
 | Phase | Data Source | Caching | Trade-off |
 |---|---|---|---|
-| **Phase 1 (current)** | Compliance DB `cce_collector` (direct queries) | None | Simpler deployment; acceptable at low-to-moderate scale |
-| **Phase 2 (future)** | Dedicated analytics DB (materialized views or CDC) | Redis | Query performance at scale; eventual consistency |
+| **Phase 1 (current)** | Compliance DB `cce_collector` (direct queries) | Caffeine (in-memory, 3-tier) | Simple deployment; good for low-to-moderate scale |
+| **Phase 2 (future)** | Dedicated analytics DB (materialized views or CDC) | Redis (distributed) | Query performance at scale; eventual consistency |
 
-Phase 1 is appropriate for initial deployments. Phase 2 transition will be transparent to API consumers — same endpoints, same response schemas.
+Phase 2 transition will be transparent to API consumers — same endpoints, same response schemas.
 
 ---
 

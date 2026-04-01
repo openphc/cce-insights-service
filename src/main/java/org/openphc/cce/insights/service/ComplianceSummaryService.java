@@ -13,6 +13,7 @@ import org.openphc.cce.insights.web.dto.ComplianceSummaryDto;
 import org.openphc.cce.insights.web.dto.FacilitySummaryDto;
 import org.openphc.cce.insights.web.dto.PatientComplianceDto;
 import org.springframework.stereotype.Service;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
@@ -29,6 +30,7 @@ public class ComplianceSummaryService {
     private final DeviationRepository deviationRepository;
     private final EventLogRepository eventLogRepository;
 
+    @Cacheable(value = "analytics", key = "'compliance-' + #protocolDefinitionId")
     public ComplianceSummaryDto getProtocolComplianceSummary(UUID protocolDefinitionId) {
         ProtocolDefinition pd = protocolDefinitionRepository.findById(protocolDefinitionId)
                 .orElseThrow(() -> new EntityNotFoundException(
@@ -91,6 +93,7 @@ public class ComplianceSummaryService {
                 .build();
     }
 
+    @Cacheable(value = "analytics", key = "'protocol-patients-' + #protocolDefinitionId + '-' + #statusFilter + '-' + #limit")
     public List<PatientComplianceDto> getProtocolPatients(UUID protocolDefinitionId, String statusFilter, int limit) {
         protocolDefinitionRepository.findById(protocolDefinitionId)
                 .orElseThrow(() -> new EntityNotFoundException(
@@ -131,18 +134,22 @@ public class ComplianceSummaryService {
         return results;
     }
 
+    @Cacheable(value = "analytics", key = "'facility-' + #facilityId")
     public FacilitySummaryDto getFacilityComplianceSummary(String facilityId) {
-        List<ProtocolInstance> allInstances = protocolInstanceRepository.findAll();
-        List<ProtocolInstance> facilityInstances = allInstances.stream()
-                .filter(pi -> {
-                    List<StepInstance> steps = stepInstanceRepository.findByProtocolInstanceId(pi.getId());
-                    return !steps.isEmpty();
-                })
-                .collect(Collectors.toList());
+        // Get protocol instances belonging to this facility via event_log
+        List<Object[]> rows = eventLogRepository.findPatientsByFacility(facilityId);
+        Set<UUID> facilityInstanceIds = new HashSet<>();
+        Set<String> patients = new LinkedHashSet<>();
+        for (Object[] row : rows) {
+            patients.add((String) row[1]);
+            facilityInstanceIds.add((UUID) row[2]);
+        }
 
-        Set<String> patients = facilityInstances.stream()
-                .map(ProtocolInstance::getPatientId)
-                .collect(Collectors.toSet());
+        List<ProtocolInstance> facilityInstances = facilityInstanceIds.isEmpty()
+                ? Collections.emptyList()
+                : protocolInstanceRepository.findAll().stream()
+                        .filter(pi -> facilityInstanceIds.contains(pi.getId()))
+                        .collect(Collectors.toList());
 
         Map<UUID, List<ProtocolInstance>> byProtocol = facilityInstances.stream()
                 .collect(Collectors.groupingBy(ProtocolInstance::getProtocolDefinitionId));

@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-The **CCE Insights Service** is a stateless, read-only Spring Boot service that queries the shared `cce_collector` PostgreSQL database and exposes 32 REST endpoints consumed by the Analytics UI dashboard. It requires no Kafka, no Flyway, and no authentication — the CCE Gateway handles OAuth enforcement.
+The **CCE Insights Service** is a stateless, read-only Spring Boot service that queries the shared `cce_collector` PostgreSQL database and exposes 38 REST endpoints consumed by the Analytics UI dashboard. It requires no Kafka, no Flyway, and no authentication — the CCE Gateway handles OAuth enforcement.
 
 ---
 
@@ -39,6 +39,9 @@ The **CCE Insights Service** is a stateless, read-only Spring Boot service that 
 | `DB_USERNAME` | `cce_user` | **Yes** | Database username |
 | `DB_PASSWORD` | `cce_pass` | **Yes** | Database password |
 | `DB_POOL_SIZE` | `10` | No | HikariCP max connections |
+| `CACHE_TTL_LOOKUPS` | `60` | No | Lookup cache TTL (minutes) |
+| `CACHE_TTL_ANALYTICS` | `30` | No | Analytics cache TTL (minutes) |
+| `CACHE_TTL_METRICS` | `15` | No | Metrics cache TTL (minutes) |
 | `SPRING_PROFILES_ACTIVE` | — | No | `docker` for containers, `local` for dev |
 
 > **Security:** Never commit credentials. Use environment variables, secrets managers, or Kubernetes Secrets.
@@ -117,7 +120,7 @@ docker run -d \
 curl http://localhost:8084/actuator/health
 
 # Test an endpoint
-curl http://localhost:8084/v1/deviations?limit=5
+curl http://localhost:8084/v1/insights/deviations?limit=5
 
 # Prometheus metrics
 curl http://localhost:8084/actuator/prometheus
@@ -309,8 +312,8 @@ With `SPRING_PROFILES_ACTIVE=docker`, the service outputs JSON-structured logs (
 
 The service is **fully stateless** — scale to N replicas with no coordination required:
 - No Kafka consumer groups
-- No local caches
 - No session state
+- Caffeine caches are per-instance (not shared) — acceptable for dashboard analytics
 
 ### 10.2 Database Connection Pooling
 

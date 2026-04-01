@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/v1/facilities")
+@RequestMapping("/v1/insights/facilities")
 @RequiredArgsConstructor
 public class FacilityRankingController {
 
@@ -28,7 +28,7 @@ public class FacilityRankingController {
             @RequestParam(defaultValue = "50") int limit,
             @RequestParam(required = false) String cursor) {
         List<FacilityRankingDto> rankings = facilityRankingService.getRankings(
-                startDate, endDate, rankBy, limit);
+                startDate, endDate, rankBy, order, limit);
         return ResponseEntity.ok(ApiResponse.ok(rankings));
     }
 }

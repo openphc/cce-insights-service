@@ -13,6 +13,11 @@ import java.util.UUID;
 
 public interface ProtocolInstanceRepository extends ReadOnlyRepository<ProtocolInstance, UUID> {
 
+    @Query(value = "SELECT DISTINCT pi.patient_id FROM protocol_instance pi " +
+            "ORDER BY pi.patient_id",
+            nativeQuery = true)
+    List<String> findDistinctPatientIds();
+
     List<ProtocolInstance> findByPatientId(String patientId);
 
     List<ProtocolInstance> findByProtocolDefinitionId(UUID protocolDefinitionId);

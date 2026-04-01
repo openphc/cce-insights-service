@@ -10,6 +10,11 @@ import java.util.UUID;
 
 public interface InboundEventRepository extends ReadOnlyRepository<InboundEvent, UUID> {
 
+    @Query(value = "SELECT DISTINCT ie.source FROM inbound_event ie " +
+            "WHERE ie.source IS NOT NULL ORDER BY ie.source",
+            nativeQuery = true)
+    List<String> findDistinctSources();
+
     // --- Ingestion Funnel ---
 
     @Query(value = "SELECT ie.status, COUNT(*) AS event_count " +
@@ -201,6 +206,25 @@ public interface InboundEventRepository extends ReadOnlyRepository<InboundEvent,
                                                 @Param("startDate") OffsetDateTime startDate,
                                                 @Param("endDate") OffsetDateTime endDate,
                                                 @Param("limit") int limit);
+
+    // --- Event Volume Trends (by period + resource type) ---
+
+    @Query(value = "SELECT DATE_TRUNC(:interval, ie.event_time) AS period, " +
+            "COALESCE(ie.raw_payload->'data'->>'resourceType', ie.raw_payload->>'resourceType', ie.type) AS resource_type, " +
+            "COUNT(*) AS event_count " +
+            "FROM inbound_event ie " +
+            "WHERE ie.status != 'DUPLICATE' " +
+            "AND (CAST(:facilityId AS text) IS NULL OR ie.facility_id = :facilityId) " +
+            "AND (CAST(:source AS text) IS NULL OR ie.source = :source) " +
+            "AND (CAST(:startDate AS timestamptz) IS NULL OR ie.event_time >= :startDate) " +
+            "AND (CAST(:endDate AS timestamptz) IS NULL OR ie.event_time <= :endDate) " +
+            "GROUP BY period, resource_type ORDER BY period",
+            nativeQuery = true)
+    List<Object[]> findEventTrends(@Param("interval") String interval,
+                                    @Param("facilityId") String facilityId,
+                                    @Param("source") String source,
+                                    @Param("startDate") OffsetDateTime startDate,
+                                    @Param("endDate") OffsetDateTime endDate);
 
     // --- Ingestion by source (events received, with status breakdown) ---
 

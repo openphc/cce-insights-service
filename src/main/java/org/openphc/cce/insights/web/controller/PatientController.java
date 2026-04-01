@@ -20,7 +20,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 @RestController
-@RequestMapping("/v1/patients")
+@RequestMapping("/v1/insights/patients")
 @RequiredArgsConstructor
 public class PatientController {
 

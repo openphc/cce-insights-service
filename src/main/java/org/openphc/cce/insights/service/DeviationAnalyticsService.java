@@ -1,16 +1,13 @@
 package org.openphc.cce.insights.service;
 
 import lombok.RequiredArgsConstructor;
-import org.openphc.cce.insights.domain.entity.Deviation;
 import org.openphc.cce.insights.domain.enums.DeviationType;
 import org.openphc.cce.insights.domain.repository.DeviationRepository;
-import org.openphc.cce.insights.domain.repository.EventLogRepository;
 import org.openphc.cce.insights.web.dto.*;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
-import java.sql.Timestamp;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.*;
@@ -23,6 +20,25 @@ public class DeviationAnalyticsService {
 
     private final DeviationRepository deviationRepository;
 
+    public List<DeviationDto> getDeviations(String deviationType, String facilityId,
+                                             OffsetDateTime startDate, OffsetDateTime endDate,
+                                             int limit) {
+        List<Object[]> rows = deviationRepository.findFilteredDeviations(
+                deviationType, facilityId, startDate, endDate, limit);
+        return rows.stream().map(row -> DeviationDto.builder()
+                .deviationId((UUID) row[0])
+                .patientId((String) row[1])
+                .protocolInstanceId((UUID) row[2])
+                .protocolCanonical((String) row[3])
+                .stepInstanceId((UUID) row[4])
+                .actionId((String) row[5])
+                .deviationType((String) row[6])
+                .detectedAt(DateUtil.toOffsetDateTime(row[7]))
+                .facilityId((String) row[8])
+                .build()).collect(Collectors.toList());
+    }
+
+    @Cacheable(value = "analytics", key = "'dev-trends-' + #interval + '-' + #facilityId")
     public DeviationTrendDto getDeviationTrends(String interval, OffsetDateTime startDate,
                                                  OffsetDateTime endDate, String facilityId) {
         String dbInterval = DateUtil.mapInterval(interval);
@@ -52,6 +68,7 @@ public class DeviationAnalyticsService {
         return DeviationTrendDto.builder().interval(interval).trends(trends).build();
     }
 
+    @Cacheable(value = "analytics", key = "'intelligence-summary'")
     public IntelligenceSummaryDto getIntelligenceSummary() {
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         List<Object[]> last24h = deviationRepository.countByTypeSince(now.minusHours(24));
@@ -79,6 +96,7 @@ public class DeviationAnalyticsService {
                 .build();
     }
 
+    @Cacheable(value = "analytics", key = "'dev-action-' + #protocolDefId")
     public List<DeviationByActionDto> getDeviationsByAction(UUID protocolDefId,
                                                              OffsetDateTime startDate,
                                                              OffsetDateTime endDate) {
@@ -94,6 +112,7 @@ public class DeviationAnalyticsService {
                 .build()).collect(Collectors.toList());
     }
 
+    @Cacheable(value = "analytics", key = "'dev-resolution-' + #protocolDefId")
     public DeviationResolutionDto getResolutionRate(UUID protocolDefId,
                                                      OffsetDateTime startDate,
                                                      OffsetDateTime endDate) {

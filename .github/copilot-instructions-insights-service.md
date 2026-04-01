@@ -2,7 +2,7 @@
 
 ## Architecture
 
-Spring Boot 3.4.x / Java 21 microservice that serves compliance analytics — protocol adherence rates, deviation trends, facility-level summaries, and patient compliance timelines. It is a **read-only** service that queries the Compliance DB directly (Phase 1). All requests arrive via the CCE Gateway Service, which handles authentication and authorization.
+Spring Boot 3.4.x / Java 21 microservice that serves compliance analytics — protocol adherence rates, deviation trends, facility-level summaries, patient compliance timelines, ingestion pipeline metrics, and source system quality analysis. It is a **read-only** service that queries the Compliance DB and Collector DB directly (Phase 1). All requests arrive via the CCE Gateway Service, which handles authentication and authorization.
 
 > **Naming:** This service is referred to as "Analytics Service" in the CCE Solution Design v0.3 document. It has been renamed to **Insights Service** (`cce-insights-service`) for the implementation.
 
@@ -10,96 +10,118 @@ Spring Boot 3.4.x / Java 21 microservice that serves compliance analytics — pr
 
 ## Key Conventions
 
-- **Package:** `org.openphc.cce.insights` — ~45 source files across 10 packages
+- **Package:** `org.openphc.cce.insights` — ~95 source files across 12 packages
 - **Read-only database access:** No writes to any table. Uses Spring Data JPA with read-only transactions (`@Transactional(readOnly = true)`)
-- **Shared database:** Connects to the same PostgreSQL database (`cce_collector`) as all other CCE services (Phase 1). Queries `protocol_instance`, `step_instance`, `deviation`, `protocol_definition`, `event_log` tables.
+- **Shared database:** Connects to the same PostgreSQL database (`cce_collector`) as all other CCE services (Phase 1). Queries `protocol_instance`, `step_instance`, `deviation`, `protocol_definition`, `event_log`, `inbound_event` tables.
 - **No Kafka integration:** Does not consume from or produce to any Kafka topic. Purely REST API → Database.
-- **DTOs only:** Never exposes JPA entities in REST responses. Separate DTOs with `DtoMapper`.
+- **DTOs only:** Never exposes JPA entities in REST responses. Separate DTOs.
 - **All timestamps:** `OffsetDateTime` in UTC
 - **IDs:** `UUID` for all entity primary keys
-- **Caching:** Optional Redis caching for frequently requested aggregations (future phase). Initial release queries DB directly.
+- **Caching:** Caffeine in-memory caching with 3 tiers — `lookups` (60 min TTL), `analytics` (30 min TTL), `metrics` (15 min TTL). TTLs configurable via env vars.
 - **Build tool:** Gradle 8.x
 - **No Flyway migrations:** The Insights Service does not own any tables. Schema is managed by the Compliance Service.
 
 ## API Endpoints
 
-All endpoints prefixed with `/v1/`. All require the `dashboard:read` OAuth scope (enforced by Gateway).
+All endpoints prefixed with `/v1/insights/`. All require the `dashboard:read` OAuth scope (enforced by Gateway).
 
 ### Compliance Summaries
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/protocols/{protocolDefinitionId}/compliance-summary` | Aggregate compliance metrics for a protocol |
-| GET | `/v1/facilities/{facilityId}/compliance-summary` | Facility-level compliance metrics across all protocols |
-| GET | `/v1/protocols/{protocolDefinitionId}/patients` | List patients by compliance status for a protocol |
+| GET | `/v1/insights/protocols/{protocolDefinitionId}/compliance-summary` | Aggregate compliance metrics for a protocol |
+| GET | `/v1/insights/facilities/{facilityId}/compliance-summary` | Facility-level compliance metrics across all protocols |
+| GET | `/v1/insights/protocols/{protocolDefinitionId}/patients` | List patients by compliance status for a protocol |
 
 ### Patient Compliance
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/patients/{patientId}/compliance-timeline` | Full compliance timeline across all enrolled protocols |
-| GET | `/v1/patients/{patientId}/protocol-tracking` | All protocol instances for a patient (delegated read from compliance data) |
-| GET | `/v1/patients/{patientId}/protocol-tracking/{protocolInstanceId}` | Detailed tracking with step instances |
+| GET | `/v1/insights/patients/{patientId}/compliance-timeline` | Full compliance timeline across all enrolled protocols |
+| GET | `/v1/insights/patients/{patientId}/protocol-tracking` | All protocol instances for a patient (delegated read from compliance data) |
+| GET | `/v1/insights/patients/{patientId}/protocol-tracking/{protocolInstanceId}` | Detailed tracking with step instances |
+| GET | `/v1/insights/patients/{patientId}/events` | Patient event history from event_log |
+| GET | `/v1/insights/patients/{patientId}/deviations` | Patient deviation history |
 
 ### Intelligence & Deviations
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/intelligence/summary` | Intelligence events summary (counts by type, period) |
-| GET | `/v1/deviations` | List deviations with filter/sort/pagination |
-| GET | `/v1/deviations/trends` | Deviation trends over time (daily/weekly/monthly aggregation) |
+| GET | `/v1/insights/intelligence/summary` | Intelligence events summary (counts by type, period) |
+| GET | `/v1/insights/deviations` | List deviations with filter/sort/pagination |
+| GET | `/v1/insights/deviations/trends` | Deviation trends over time (daily/weekly/monthly aggregation) |
 
 ### Event Volume & Activity Metrics
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/events/summary` | Aggregate event counts by resourceType, facility, source, processing status |
-| GET | `/v1/events/trends` | Event volume over time (daily/weekly/monthly) with resource type breakdown |
-| GET | `/v1/events/by-resource-type` | Event counts grouped by FHIR resourceType |
-| GET | `/v1/events/by-facility` | Event counts grouped by facility with resource type breakdown |
-| GET | `/v1/events/by-practitioner` | Event counts grouped by practitioner (extracted from FHIR data JSONB) |
-| GET | `/v1/events/by-source` | Event counts grouped by source system |
+| GET | `/v1/insights/events/summary` | Aggregate event counts by resourceType, facility, source, processing status |
+| GET | `/v1/insights/events/trends` | Event volume over time (daily/weekly/monthly) with resource type breakdown |
+| GET | `/v1/insights/events/by-resource-type` | Event counts grouped by FHIR resourceType |
+| GET | `/v1/insights/events/by-facility` | Event counts grouped by facility with resource type breakdown |
+| GET | `/v1/insights/events/by-practitioner` | Event counts grouped by practitioner (extracted from FHIR data JSONB) |
+| GET | `/v1/insights/events/by-source` | Event counts grouped by source system |
+| GET | `/v1/insights/events/source-comparison` | Compare two source systems (overlap, unique, samples) |
 
 ### Protocol Analytics
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/protocols/{protocolDefinitionId}/step-analytics` | Per-step completion rates, timeliness (EARLY/ON_TIME/LATE), avg/median time-to-complete |
-| GET | `/v1/protocols/{protocolDefinitionId}/completion-funnel` | Drop-off rates at each sequential step — where patients are lost |
-| GET | `/v1/protocols/{protocolDefinitionId}/outcome-distribution` | % of protocol instances by terminal status (ACTIVE/COMPLETED/WITHDRAWN/EXPIRED) |
-| GET | `/v1/protocols/{protocolDefinitionId}/enrollment-trends` | New enrollments over time (daily/weekly/monthly) |
+| GET | `/v1/insights/protocols/{protocolDefinitionId}/step-analytics` | Per-step completion rates, timeliness (EARLY/ON_TIME/LATE), avg/median time-to-complete |
+| GET | `/v1/insights/protocols/{protocolDefinitionId}/completion-funnel` | Drop-off rates at each sequential step — where patients are lost |
+| GET | `/v1/insights/protocols/{protocolDefinitionId}/outcome-distribution` | % of protocol instances by terminal status (ACTIVE/COMPLETED/WITHDRAWN/EXPIRED) |
+| GET | `/v1/insights/protocols/{protocolDefinitionId}/enrollment-trends` | New enrollments over time (daily/weekly/monthly) |
 
 ### Facility Analytics
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/facilities/ranking` | Facility leaderboard by complianceRate, deviationCount, or eventVolume |
+| GET | `/v1/insights/facilities/ranking` | Facility leaderboard by complianceRate, deviationCount, or eventVolume |
 
 ### Deviation Analytics
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/deviations/by-action` | Most deviated-from protocol steps grouped by actionId |
-| GET | `/v1/deviations/resolution-rate` | OVERDUE→COMPLETED (resolved) vs OVERDUE→MISSED (escalated) ratio |
+| GET | `/v1/insights/deviations/by-action` | Most deviated-from protocol steps grouped by actionId |
+| GET | `/v1/insights/deviations/resolution-rate` | OVERDUE→COMPLETED (resolved) vs OVERDUE→MISSED (escalated) ratio |
 
 ### Event Processing & Integration Health
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/events/processing-quality` | MATCHED/ZERO_MATCH/DUPLICATE ratios per source system |
+| GET | `/v1/insights/events/processing-quality` | MATCHED/ZERO_MATCH/DUPLICATE ratios per source system |
 
 ### Patient Risk Analytics
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/patients/at-risk-hotspots` | Concentration of at_risk/non_compliant patients by facility |
-| GET | `/v1/patients/repeat-deviations` | Patients with deviations >= minDeviations threshold |
+| GET | `/v1/insights/patients/at-risk-hotspots` | Concentration of at_risk/non_compliant patients by facility |
+| GET | `/v1/insights/patients/repeat-deviations` | Patients with deviations >= minDeviations threshold |
 
 ### Exports
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/exports/compliance-report` | Export compliance data in CSV or JSON format |
+| GET | `/v1/insights/exports/compliance-report` | Export compliance data in CSV or JSON format |
+
+### Ingestion Analytics
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/v1/insights/ingestion/funnel` | Ingestion acceptance/rejection/duplicate rates |
+| GET | `/v1/insights/ingestion/rejections` | Rejection reason breakdown by source |
+| GET | `/v1/insights/ingestion/source-quality` | Per-source data quality scores |
+| GET | `/v1/insights/ingestion/pipeline-loss` | Accepted vs compliance-matched loss rate |
+
+### Lookups (Filter Dropdowns)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/v1/insights/lookups/protocols` | List all protocol definitions |
+| GET | `/v1/insights/lookups/facilities` | List all facility IDs |
+| GET | `/v1/insights/lookups/practitioners` | List all practitioner references |
+| GET | `/v1/insights/lookups/sources` | List all source system IDs |
+| GET | `/v1/insights/lookups/patients` | List all patient IDs |
 
 ### Response Envelope
 
@@ -137,6 +159,7 @@ All endpoints prefixed with `/v1/`. All require the `dashboard:read` OAuth scope
 | `deviation` | Compliance Service | Read-only | Deviation records, trends |
 | `protocol_definition` | Compliance Service | Read-only | Protocol metadata (name, version) |
 | `event_log` | Compliance Service | Read-only | Patient event timeline, facility ID source |
+| `inbound_event` | Collector Service | Read-only | Ingestion pipeline, source comparison, source event counts |
 
 ### Key Aggregation Queries
 
@@ -154,6 +177,12 @@ All endpoints prefixed with `/v1/`. All require the `dashboard:read` OAuth scope
 - **At-risk hotspots:** Classify patients per facility as on_track/at_risk/non_compliant using correlated subqueries on `step_instance.state`
 - **Repeat deviations:** COUNT deviations per `patient_id` with `HAVING COUNT(*) >= :minDeviations`
 - **Patient timeline:** JOIN `event_log` + `step_instance` ordered by `event_time`
+- **Ingestion funnel:** COUNT `inbound_event` grouped by `status` (ACCEPTED/REJECTED/DUPLICATE)
+- **Rejection breakdown:** COUNT `inbound_event` WHERE `status = 'REJECTED'` grouped by `rejection_reason`, `source`
+- **Source data quality:** Per-source acceptance/rejection/duplicate rates from `inbound_event`
+- **Pipeline loss:** Compare accepted `inbound_event` count vs matched `event_log` count
+- **Source comparison:** Compare two source systems — overlap, unique-to-each, with sample records
+- **Paginated deviations list:** All deviations with date range filter, full pagination support
 
 ## Build & Run
 
@@ -176,14 +205,26 @@ curl localhost:8084/actuator/health     # Health check
 ## Key Files to Read First
 
 - `docs/architecture-overview.md` — system context, data access patterns, caching strategy
-- `docs/api-reference.md` — all REST endpoints with request/response examples
+- `docs/api-reference.md` — all 38 REST endpoints with request/response examples
 - `docs/data-dictionary.md` — query patterns, aggregation formulas, filter parameters
-- `docs/developer-setup.md` — local setup, shared database requirement
+- `docs/developer-setup.md` — local setup, shared database requirement, cache TTL config
+
+## Key Source Files
+
+| File | Purpose |
+|------|--------|
+| `CacheConfig.java` | Caffeine cache configuration — 3 named caches with configurable TTLs |
+| `LookupController.java` | Filter dropdown endpoints — protocols, facilities, practitioners, sources, patients |
+| `IngestionAnalyticsController.java` | Ingestion pipeline analytics — funnel, rejections, quality, loss |
+| `DateUtil.java` | Shared utility — `mapInterval()`, `extractDate()`, `toOffsetDateTime()` (Instant/Timestamp handling) |
+| `InboundEventRepository.java` | Native queries against `inbound_event` table for ingestion analytics |
+| `GlobalExceptionHandler.java` | Central exception handling with structured error responses and logging |
+| `ReadOnlyRepository.java` | Base repository — removes all write methods for safety |
 
 ## What's NOT in Scope (Release 1.0.0)
 
 - **Dedicated analytics database** (Phase 2) — initial release queries Compliance DB directly
-- **Redis caching** — no caching layer in 1.0.0; all queries hit PostgreSQL
+- **Redis caching** — uses Caffeine in-memory caching; Redis for distributed caching in Phase 2
 - **Real-time streaming analytics** — no Kafka consumption; batch queries only
 - **Data export scheduling** — exports are on-demand via API only
 - **Intelligence event aggregation** — intelligence triggers are not yet published by Compliance Service in 1.0.0

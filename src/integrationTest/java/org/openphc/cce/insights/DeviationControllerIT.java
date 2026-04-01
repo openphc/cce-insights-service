@@ -14,7 +14,7 @@ class DeviationControllerIT extends AbstractIntegrationTest {
 
     @Test
     void getDeviationTrends_returnsTrends() throws Exception {
-        mockMvc.perform(get("/v1/deviations/trends")
+        mockMvc.perform(get("/v1/insights/deviations/trends")
                         .param("interval", "weekly"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.interval").value("weekly"))
@@ -23,7 +23,7 @@ class DeviationControllerIT extends AbstractIntegrationTest {
 
     @Test
     void getIntelligenceSummary_returnsSummary() throws Exception {
-        mockMvc.perform(get("/v1/intelligence/summary"))
+        mockMvc.perform(get("/v1/insights/intelligence/summary"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.totalDeviations").isNumber())
                 .andExpect(jsonPath("$.data.byType").isMap())
@@ -32,14 +32,14 @@ class DeviationControllerIT extends AbstractIntegrationTest {
 
     @Test
     void getDeviationsByAction_returnsResults() throws Exception {
-        mockMvc.perform(get("/v1/deviations/by-action"))
+        mockMvc.perform(get("/v1/insights/deviations/by-action"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").isArray());
     }
 
     @Test
     void getResolutionRate_returnsResult() throws Exception {
-        mockMvc.perform(get("/v1/deviations/resolution-rate"))
+        mockMvc.perform(get("/v1/insights/deviations/resolution-rate"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.totalOverdueDeviations").isNumber());
     }

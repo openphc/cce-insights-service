@@ -10,6 +10,7 @@ import org.openphc.cce.insights.domain.repository.ProtocolInstanceRepository;
 import org.openphc.cce.insights.domain.repository.StepInstanceRepository;
 import org.openphc.cce.insights.web.dto.AtRiskHotspotDto;
 import org.openphc.cce.insights.web.dto.RepeatDeviationPatientDto;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,9 +28,18 @@ public class PatientRiskService {
     private final StepInstanceRepository stepInstanceRepository;
     private final EventLogRepository eventLogRepository;
 
+    @Cacheable(value = "analytics", key = "'risk-hotspots'")
     public List<AtRiskHotspotDto> getAtRiskHotspots(OffsetDateTime startDate, OffsetDateTime endDate) {
-        List<Object[]> facilityPatients = eventLogRepository.findActivePatientsByFacility(null);
+        // Build facility -> set of patient IDs mapping
+        List<Object[]> facilityPatientRows = eventLogRepository.findFacilityPatientMapping();
+        Map<String, Set<String>> facilityPatients = new LinkedHashMap<>();
+        for (Object[] row : facilityPatientRows) {
+            String facilityId = (String) row[0];
+            String patientId = (String) row[1];
+            facilityPatients.computeIfAbsent(facilityId, k -> new LinkedHashSet<>()).add(patientId);
+        }
 
+        // Build patient -> steps mapping (global, loaded once)
         List<ProtocolInstance> allInstances = protocolInstanceRepository.findAll();
         Map<String, List<StepInstance>> patientSteps = new HashMap<>();
         for (ProtocolInstance pi : allInstances) {
@@ -37,18 +47,14 @@ public class PatientRiskService {
             patientSteps.computeIfAbsent(pi.getPatientId(), k -> new ArrayList<>()).addAll(steps);
         }
 
-        List<Object[]> facilityEventCounts = eventLogRepository.findFacilityEventCounts(null);
-        Map<String, Long> facilityTotals = new LinkedHashMap<>();
-        for (Object[] row : facilityEventCounts) {
-            facilityTotals.put((String) row[0], ((Number) row[1]).longValue());
-        }
-
-        return facilityTotals.keySet().stream().map(facilityId -> {
-            long total = facilityTotals.getOrDefault(facilityId, 0L);
+        // For each facility, categorize only its own patients
+        return facilityPatients.entrySet().stream().map(entry -> {
+            String facilityId = entry.getKey();
+            Set<String> patients = entry.getValue();
             long onTrack = 0, atRisk = 0, nonCompliant = 0;
 
-            for (Map.Entry<String, List<StepInstance>> entry : patientSteps.entrySet()) {
-                List<StepInstance> steps = entry.getValue();
+            for (String patientId : patients) {
+                List<StepInstance> steps = patientSteps.getOrDefault(patientId, Collections.emptyList());
                 boolean hasMissed = steps.stream().anyMatch(s -> s.getState() == StepState.MISSED);
                 boolean hasOverdue = steps.stream().anyMatch(s -> s.getState() == StepState.OVERDUE);
                 if (hasMissed) nonCompliant++;
@@ -76,6 +82,7 @@ public class PatientRiskService {
         }).collect(Collectors.toList());
     }
 
+    @Cacheable(value = "analytics", key = "'repeat-deviations-' + #minDeviations")
     public List<RepeatDeviationPatientDto> getRepeatDeviationPatients(int minDeviations,
                                                                        OffsetDateTime startDate,
                                                                        OffsetDateTime endDate) {

@@ -10,7 +10,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 
 @RestController
-@RequestMapping("/v1/events")
+@RequestMapping("/v1/insights/events")
 @RequiredArgsConstructor
 public class EventVolumeController {
 
@@ -35,7 +35,7 @@ public class EventVolumeController {
             @RequestParam(required = false) OffsetDateTime startDate,
             @RequestParam(required = false) OffsetDateTime endDate) {
         EventVolumeTrendDto trends = eventVolumeService.getTrends(
-                interval, startDate, endDate, facilityId);
+                interval, startDate, endDate, facilityId, source);
         return ResponseEntity.ok(ApiResponse.ok(trends));
     }
 

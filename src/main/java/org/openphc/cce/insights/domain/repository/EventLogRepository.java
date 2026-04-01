@@ -12,6 +12,29 @@ public interface EventLogRepository extends ReadOnlyRepository<EventLog, UUID> {
 
     List<EventLog> findBySubjectOrderByEventTimeDesc(String subject);
 
+    @Query(value = "SELECT DISTINCT el.facility_id FROM event_log el " +
+            "WHERE el.facility_id IS NOT NULL ORDER BY el.facility_id",
+            nativeQuery = true)
+    List<String> findDistinctFacilityIds();
+
+    @Query(value = "SELECT DISTINCT COALESCE(" +
+            "el.data->'participant'->0->'individual'->>'reference', " +
+            "el.data->'performer'->0->>'reference', " +
+            "el.data->'asserter'->>'reference', " +
+            "el.data->'requester'->>'reference', " +
+            "el.data->'performer'->0->'actor'->>'reference'" +
+            ") AS practitioner_ref FROM event_log el " +
+            "WHERE COALESCE(" +
+            "el.data->'participant'->0->'individual'->>'reference', " +
+            "el.data->'performer'->0->>'reference', " +
+            "el.data->'asserter'->>'reference', " +
+            "el.data->'requester'->>'reference', " +
+            "el.data->'performer'->0->'actor'->>'reference'" +
+            ") IS NOT NULL " +
+            "ORDER BY practitioner_ref",
+            nativeQuery = true)
+    List<String> findDistinctPractitioners();
+
     @Query(value = "SELECT el.data->>'resourceType' AS resource_type, COUNT(*) AS event_count " +
             "FROM event_log el " +
             "WHERE el.processing_status != 'DUPLICATE' " +
@@ -148,4 +171,19 @@ public interface EventLogRepository extends ReadOnlyRepository<EventLog, UUID> {
             "GROUP BY el.facility_id",
             nativeQuery = true)
     List<Object[]> findActivePatientsByFacility(@Param("protocolDefId") UUID protocolDefId);
+
+    @Query(value = "SELECT DISTINCT el.facility_id, pi.patient_id " +
+            "FROM event_log el " +
+            "JOIN protocol_instance pi ON el.protocol_instance_id = pi.id " +
+            "WHERE el.facility_id IS NOT NULL",
+            nativeQuery = true)
+    List<Object[]> findFacilityPatientMapping();
+
+    @Query(value = "SELECT DISTINCT el.facility_id, pi.patient_id, pi.id AS protocol_instance_id " +
+            "FROM event_log el " +
+            "JOIN protocol_instance pi ON el.protocol_instance_id = pi.id " +
+            "WHERE el.facility_id IS NOT NULL " +
+            "AND el.facility_id = CAST(:facilityId AS text)",
+            nativeQuery = true)
+    List<Object[]> findPatientsByFacility(@Param("facilityId") String facilityId);
 }

@@ -8,7 +8,7 @@ All endpoints are accessed through the **CCE Gateway Service** (not directly by 
 
 ## 1. Compliance Summaries
 
-### 1.1 GET `/v1/protocols/{protocolDefinitionId}/compliance-summary`
+### 1.1 GET `/v1/insights/protocols/{protocolDefinitionId}/compliance-summary`
 
 Aggregate compliance metrics for a specific protocol across all enrolled patients.
 
@@ -64,7 +64,7 @@ Aggregate compliance metrics for a specific protocol across all enrolled patient
 
 ---
 
-### 1.2 GET `/v1/facilities/{facilityId}/compliance-summary`
+### 1.2 GET `/v1/insights/facilities/{facilityId}/compliance-summary`
 
 Facility-level compliance metrics across all protocols.
 
@@ -115,7 +115,7 @@ Facility-level compliance metrics across all protocols.
 
 ---
 
-### 1.3 GET `/v1/protocols/{protocolDefinitionId}/patients`
+### 1.3 GET `/v1/insights/protocols/{protocolDefinitionId}/patients`
 
 List patients enrolled in a protocol, filterable by compliance status.
 
@@ -168,7 +168,7 @@ List patients enrolled in a protocol, filterable by compliance status.
 
 ## 2. Patient Compliance
 
-### 2.1 GET `/v1/patients/{patientId}/compliance-timeline`
+### 2.1 GET `/v1/insights/patients/{patientId}/compliance-timeline`
 
 Full compliance timeline for a patient across all enrolled protocols. Combines event history and step status into a chronological view.
 
@@ -219,7 +219,7 @@ Full compliance timeline for a patient across all enrolled protocols. Combines e
 }
 ```
 
-### 2.2 GET `/v1/patients/{patientId}/protocol-tracking`
+### 2.2 GET `/v1/insights/patients/{patientId}/protocol-tracking`
 
 List all protocol instances for a patient.
 
@@ -243,7 +243,7 @@ List all protocol instances for a patient.
 }
 ```
 
-### 2.3 GET `/v1/patients/{patientId}/protocol-tracking/{protocolInstanceId}`
+### 2.3 GET `/v1/insights/patients/{patientId}/protocol-tracking/{protocolInstanceId}`
 
 Detailed tracking for a specific protocol instance with all step instances.
 
@@ -299,7 +299,7 @@ Detailed tracking for a specific protocol instance with all step instances.
 
 ---
 
-### 2.4 GET `/v1/patients/{patientId}/events`
+### 2.4 GET `/v1/insights/patients/{patientId}/events`
 
 Raw clinical events (from `event_log`) for a specific patient, ordered by event time descending. Shows the FHIR events that triggered step completions and protocol matching.
 
@@ -358,7 +358,7 @@ Raw clinical events (from `event_log`) for a specific patient, ordered by event 
 
 ---
 
-### 2.5 GET `/v1/patients/{patientId}/deviations`
+### 2.5 GET `/v1/insights/patients/{patientId}/deviations`
 
 All deviations for a patient across all protocol enrollments, ordered by detection time descending. Provides a cross-protocol deviation history for targeted outreach.
 
@@ -399,7 +399,7 @@ All deviations for a patient across all protocol enrollments, ordered by detecti
 
 ## 3. Deviations & Intelligence
 
-### 3.1 GET `/v1/deviations`
+### 3.1 GET `/v1/insights/deviations`
 
 List deviations with filtering, sorting, and pagination.
 
@@ -443,7 +443,7 @@ List deviations with filtering, sorting, and pagination.
 }
 ```
 
-### 3.2 GET `/v1/deviations/trends`
+### 3.2 GET `/v1/insights/deviations/trends`
 
 Deviation trends aggregated by time period.
 
@@ -489,7 +489,7 @@ Deviation trends aggregated by time period.
 }
 ```
 
-### 3.3 GET `/v1/intelligence/summary`
+### 3.3 GET `/v1/insights/intelligence/summary`
 
 Intelligence events summary — counts by type and time period.
 
@@ -526,7 +526,7 @@ Intelligence events summary — counts by type and time period.
 
 Event volume endpoints provide aggregate counts of clinical events received by CCE, discoverable by FHIR `resourceType`, facility (location), practitioner, and source system. These metrics are derived from the Compliance Service's `event_log` table. Duplicate events (`processing_status = 'DUPLICATE'`) are excluded from all counts.
 
-### 4.1 GET `/v1/events/summary`
+### 4.1 GET `/v1/insights/events/summary`
 
 High-level event volume summary with breakdowns by resource type, facility, and processing status.
 
@@ -548,9 +548,9 @@ High-level event volume summary with breakdowns by resource type, facility, and 
   "data": {
     "totalEvents": 12480,
     "processingStatusBreakdown": {
-      "matched": 9820,
-      "zeroMatch": 2540,
-      "duplicate": 120
+      "matched": { "count": 9820, "percentage": 78.7 },
+      "zeroMatch": { "count": 2540, "percentage": 20.4 },
+      "duplicate": { "count": 120, "percentage": 0.9 }
     },
     "byResourceType": [
       { "resourceType": "Encounter", "count": 4200 },
@@ -576,7 +576,7 @@ High-level event volume summary with breakdowns by resource type, facility, and 
 
 ---
 
-### 4.2 GET `/v1/events/trends`
+### 4.2 GET `/v1/insights/events/trends`
 
 Event volume trends over time, grouped by aggregation interval.
 
@@ -631,7 +631,7 @@ Event volume trends over time, grouped by aggregation interval.
 
 ---
 
-### 4.3 GET `/v1/events/by-resource-type`
+### 4.3 GET `/v1/insights/events/by-resource-type`
 
 Event counts grouped by FHIR `resourceType` with optional facility and date range filtering.
 
@@ -692,7 +692,7 @@ Event counts grouped by FHIR `resourceType` with optional facility and date rang
 
 ---
 
-### 4.4 GET `/v1/events/by-facility`
+### 4.4 GET `/v1/insights/events/by-facility`
 
 Event counts grouped by facility, with resource type breakdown per facility.
 
@@ -746,7 +746,7 @@ Event counts grouped by facility, with resource type breakdown per facility.
 
 ---
 
-### 4.5 GET `/v1/events/by-practitioner`
+### 4.5 GET `/v1/insights/events/by-practitioner`
 
 Event counts grouped by practitioner, with resource type breakdown. Practitioner references are extracted from the `event_log.data` JSONB payload using resource-type-specific paths (e.g., `participant[0].individual.reference` for Encounter, `performer[0].reference` for Observation).
 
@@ -818,7 +818,7 @@ Event counts grouped by practitioner, with resource type breakdown. Practitioner
 
 ---
 
-### 4.6 GET `/v1/events/by-source`
+### 4.6 GET `/v1/insights/events/by-source`
 
 Event counts grouped by source system, based on `inbound_event` table. Shows ALL events received per source (not just compliance-matched) with **status breakdown** (ACCEPTED, REJECTED, DUPLICATE).
 
@@ -861,11 +861,11 @@ Event counts grouped by source system, based on `inbound_event` table. Shows ALL
 }
 ```
 
-> **Note:** The `byResourceType` field reuses the existing DTO structure but contains status categories (ACCEPTED, REJECTED, DUPLICATE) instead of FHIR resource types. For FHIR resource type breakdowns, use `/v1/events/by-resource-type`.
+> **Note:** The `byResourceType` field reuses the existing DTO structure but contains status categories (ACCEPTED, REJECTED, DUPLICATE) instead of FHIR resource types. For FHIR resource type breakdowns, use `/v1/insights/events/by-resource-type`.
 
 ---
 
-### 4.7 GET `/v1/events/source-comparison`
+### 4.7 GET `/v1/insights/events/source-comparison`
 
 Compare two source systems to identify overlapping (potentially duplicate) events and events unique to each source. Overlap is determined by matching `subject` (patient), CloudEvents `type`, and `event_time` within a configurable time window.
 
@@ -969,7 +969,7 @@ Compare two source systems to identify overlapping (potentially duplicate) event
 
 ## 5. Exports
 
-### 5.1 GET `/v1/exports/compliance-report`
+### 5.1 GET `/v1/insights/exports/compliance-report`
 
 Export compliance data in CSV or JSON format.
 
@@ -1028,7 +1028,7 @@ All error responses follow the standard CCE envelope:
 
 ## 8. Protocol Analytics
 
-### 8.1 GET `/v1/protocols/{protocolDefinitionId}/step-analytics`
+### 8.1 GET `/v1/insights/protocols/{protocolDefinitionId}/step-analytics`
 
 Per-step completion rates, average time-to-complete, and timeliness distribution (`EARLY` / `ON_TIME` / `LATE`) for each protocol action. Identifies which steps in a care pathway are consistently delayed.
 
@@ -1102,7 +1102,7 @@ Per-step completion rates, average time-to-complete, and timeliness distribution
 
 ---
 
-### 8.2 GET `/v1/protocols/{protocolDefinitionId}/completion-funnel`
+### 8.2 GET `/v1/insights/protocols/{protocolDefinitionId}/completion-funnel`
 
 Drop-off rates at each sequential step — percentage of enrolled patients who complete each step. Shows where in the care pathway patients are lost.
 
@@ -1177,7 +1177,7 @@ Drop-off rates at each sequential step — percentage of enrolled patients who c
 
 ---
 
-### 8.3 GET `/v1/protocols/{protocolDefinitionId}/outcome-distribution`
+### 8.3 GET `/v1/insights/protocols/{protocolDefinitionId}/outcome-distribution`
 
 Percentage of protocol instances ending in each terminal status. Measures overall program effectiveness.
 
@@ -1217,7 +1217,7 @@ Percentage of protocol instances ending in each terminal status. Measures overal
 
 ---
 
-### 8.4 GET `/v1/protocols/{protocolDefinitionId}/enrollment-trends`
+### 8.4 GET `/v1/insights/protocols/{protocolDefinitionId}/enrollment-trends`
 
 New protocol enrollments over time, with optional facility breakdown. Tracks program adoption and seasonal demand.
 
@@ -1260,7 +1260,7 @@ New protocol enrollments over time, with optional facility breakdown. Tracks pro
 
 ## 9. Facility Analytics
 
-### 9.1 GET `/v1/facilities/ranking`
+### 9.1 GET `/v1/insights/facilities/ranking`
 
 Facility leaderboard ranked by compliance rate, deviation count, or event volume. Enables management oversight and targeted interventions.
 
@@ -1320,7 +1320,7 @@ Facility leaderboard ranked by compliance rate, deviation count, or event volume
 
 ## 10. Deviation Analytics
 
-### 10.1 GET `/v1/deviations/by-action`
+### 10.1 GET `/v1/insights/deviations/by-action`
 
 Most commonly deviated-from protocol steps, grouped by `actionId`. Identifies systemic bottlenecks in care delivery.
 
@@ -1366,7 +1366,7 @@ Most commonly deviated-from protocol steps, grouped by `actionId`. Identifies sy
 
 ---
 
-### 10.2 GET `/v1/deviations/resolution-rate`
+### 10.2 GET `/v1/insights/deviations/resolution-rate`
 
 Percentage of `OVERDUE` steps that eventually reach `COMPLETED` (recovered) vs. those that progress to `MISSED` (unrecoverable). Measures the system's ability to recover from compliance delays.
 
@@ -1419,7 +1419,7 @@ Percentage of `OVERDUE` steps that eventually reach `COMPLETED` (recovered) vs. 
 
 ## 11. Event Processing & Integration Health
 
-### 11.1 GET `/v1/events/processing-quality`
+### 11.1 GET `/v1/insights/events/processing-quality`
 
 `MATCHED` / `ZERO_MATCH` / `DUPLICATE` ratios per source system. Monitors integration health — a high `ZERO_MATCH` rate signals misconfigured emitters or protocols that don't cover the incoming event types.
 
@@ -1469,7 +1469,7 @@ Percentage of `OVERDUE` steps that eventually reach `COMPLETED` (recovered) vs. 
 
 ## 12. Patient Risk Analytics
 
-### 12.1 GET `/v1/patients/at-risk-hotspots`
+### 12.1 GET `/v1/insights/patients/at-risk-hotspots`
 
 Concentration of `at_risk` and `non_compliant` patients by facility. Directs field supervision and outreach resources to the facilities that need them most.
 
@@ -1524,7 +1524,7 @@ Concentration of `at_risk` and `non_compliant` patients by facility. Directs fie
 
 ---
 
-### 12.2 GET `/v1/patients/repeat-deviations`
+### 12.2 GET `/v1/insights/patients/repeat-deviations`
 
 Patients with deviations across multiple protocols or multiple steps within the same protocol. Identifies patients who need targeted outreach.
 
@@ -1587,7 +1587,7 @@ Metrics derived from the `inbound_event` table (owned by the Collector Service).
 
 > **Data Source:** `inbound_event` table (Collector Service). Unlike sections 4 and 11 which use `event_log` (compliance-matched events only), these endpoints see **every event received** by the platform.
 
-### 13.1 GET `/v1/ingestion/funnel`
+### 13.1 GET `/v1/insights/ingestion/funnel`
 
 Ingestion pipeline status breakdown. Shows how many events were received, accepted, rejected, and deduplicated, with optional time-series trends.
 
@@ -1630,7 +1630,7 @@ Ingestion pipeline status breakdown. Shows how many events were received, accept
 
 ---
 
-### 13.2 GET `/v1/ingestion/rejections`
+### 13.2 GET `/v1/insights/ingestion/rejections`
 
 Rejection reason analytics — breakdown by `rejection_reason` (from `RejectionReason` enum) with per-source detail.
 
@@ -1702,7 +1702,7 @@ Rejection reason analytics — breakdown by `rejection_reason` (from `RejectionR
 
 ---
 
-### 13.3 GET `/v1/ingestion/source-quality`
+### 13.3 GET `/v1/insights/ingestion/source-quality`
 
 Source data quality scorecard — per-source acceptance, rejection, and duplicate rates. Ranks sources by reliability.
 
@@ -1749,7 +1749,7 @@ Source data quality scorecard — per-source acceptance, rejection, and duplicat
 
 ---
 
-### 13.4 GET `/v1/ingestion/pipeline-loss`
+### 13.4 GET `/v1/insights/ingestion/pipeline-loss`
 
 Detects events that were ACCEPTED by the Collector (published to Kafka) but never appeared in the Compliance Service's `event_log`. Indicates events lost in Kafka transit or dropped during compliance processing.
 
@@ -1781,3 +1781,122 @@ Detects events that were ACCEPTED by the Collector (published to Kafka) but neve
 ```
 
 **How it works:** Joins `inbound_event` (where `status = 'ACCEPTED'`) with `event_log` on `(cloudevents_id, source)`. Events in the first table with no match in the second are considered "lost" in the pipeline. A non-zero `lossRate` warrants investigation of Kafka consumer lag, compliance service errors, or dead-letter queues.
+
+---
+
+## 14. Lookup Endpoints
+
+Lookup endpoints provide dropdown/filter data for the Analytics UI dashboard. All responses are cached with the `lookups` cache tier (60-minute default TTL).
+
+---
+
+### 14.1 GET `/v1/insights/lookups/protocols`
+
+Returns all protocol definitions for use in dropdown filters.
+
+**Required Scope:** `dashboard:read`
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `status` | String | — | Filter by protocol status (e.g., `active`) |
+
+**Response: `200 OK`**
+
+```json
+{
+  "data": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440001",
+      "url": "https://fhir.openphc.org/PlanDefinition/anc-contact-schedule",
+      "version": "1.0.0",
+      "name": "ANC Contact Schedule",
+      "status": "active"
+    }
+  ]
+}
+```
+
+---
+
+### 14.2 GET `/v1/insights/lookups/facilities`
+
+Returns distinct facility IDs from event data.
+
+**Required Scope:** `dashboard:read`
+
+**Response: `200 OK`**
+
+```json
+{
+  "data": [
+    "FAC-KGL-001",
+    "FAC-KGL-002",
+    "FAC-HYE-003"
+  ]
+}
+```
+
+---
+
+### 14.3 GET `/v1/insights/lookups/practitioners`
+
+Returns distinct practitioner references from event data.
+
+**Required Scope:** `dashboard:read`
+
+**Response: `200 OK`**
+
+```json
+{
+  "data": [
+    "Practitioner/HLC-PRAC-2025-00005",
+    "Practitioner/HLC-PRAC-2025-00012"
+  ]
+}
+```
+
+---
+
+### 14.4 GET `/v1/insights/lookups/sources`
+
+Returns distinct source system identifiers from inbound event data.
+
+**Required Scope:** `dashboard:read`
+
+**Response: `200 OK`**
+
+```json
+{
+  "data": [
+    "rhie-mediator",
+    "ebuzima/kigali-south"
+  ]
+}
+```
+
+---
+
+### 14.5 GET `/v1/insights/lookups/patients`
+
+Returns distinct patient IDs from protocol instances.
+
+**Required Scope:** `dashboard:read`
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `protocolDefinitionId` | UUID | — | Filter patients enrolled in a specific protocol |
+
+**Response: `200 OK`**
+
+```json
+{
+  "data": [
+    "Patient/260225-0002-5501",
+    "Patient/260225-0003-6612"
+  ]
+}
+```

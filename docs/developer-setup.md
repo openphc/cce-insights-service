@@ -67,36 +67,43 @@ The Insights Service connects to the **same PostgreSQL database** (`cce_collecto
 curl localhost:8084/actuator/health
 
 # Test an endpoint
-curl localhost:8084/v1/deviations?limit=5
+curl localhost:8084/v1/insights/deviations?limit=5
 
 # Test protocol analytics
-curl localhost:8084/v1/protocols/{protocolDefinitionId}/step-analytics
-curl localhost:8084/v1/protocols/{protocolDefinitionId}/completion-funnel
-curl localhost:8084/v1/protocols/{protocolDefinitionId}/outcome-distribution
-curl localhost:8084/v1/protocols/{protocolDefinitionId}/enrollment-trends?interval=weekly
+curl localhost:8084/v1/insights/protocols/{protocolDefinitionId}/step-analytics
+curl localhost:8084/v1/insights/protocols/{protocolDefinitionId}/completion-funnel
+curl localhost:8084/v1/insights/protocols/{protocolDefinitionId}/outcome-distribution
+curl localhost:8084/v1/insights/protocols/{protocolDefinitionId}/enrollment-trends?interval=weekly
 
 # Test facility ranking and deviation analytics
-curl localhost:8084/v1/facilities/ranking?rankBy=complianceRate&order=desc
-curl localhost:8084/v1/deviations/by-action?limit=10
-curl localhost:8084/v1/deviations/resolution-rate
+curl localhost:8084/v1/insights/facilities/ranking?rankBy=complianceRate&order=desc
+curl localhost:8084/v1/insights/deviations/by-action?limit=10
+curl localhost:8084/v1/insights/deviations/resolution-rate
 
 # Test event processing quality and patient risk
-curl localhost:8084/v1/events/processing-quality
-curl localhost:8084/v1/patients/at-risk-hotspots
-curl localhost:8084/v1/patients/repeat-deviations?minDeviations=3
+curl localhost:8084/v1/insights/events/processing-quality
+curl localhost:8084/v1/insights/patients/at-risk-hotspots
+curl localhost:8084/v1/insights/patients/repeat-deviations?minDeviations=3
 
 # Test patient events and deviations
-curl localhost:8084/v1/patients/{patientId}/events?limit=10
-curl localhost:8084/v1/patients/{patientId}/deviations
+curl localhost:8084/v1/insights/patients/{patientId}/events?limit=10
+curl localhost:8084/v1/insights/patients/{patientId}/deviations
 
 # Test source comparison
-curl "localhost:8084/v1/events/compare-sources?sourceA=ehr-system-a&sourceB=ehr-system-b&windowSeconds=300"
+curl "localhost:8084/v1/insights/events/source-comparison?sourceA=ehr-system-a&sourceB=ehr-system-b&windowSeconds=300"
 
 # Test ingestion analytics
-curl localhost:8084/v1/ingestion/funnel
-curl localhost:8084/v1/ingestion/rejections
-curl localhost:8084/v1/ingestion/source-quality
-curl localhost:8084/v1/ingestion/pipeline-loss
+curl localhost:8084/v1/insights/ingestion/funnel
+curl localhost:8084/v1/insights/ingestion/rejections
+curl localhost:8084/v1/insights/ingestion/source-quality
+curl localhost:8084/v1/insights/ingestion/pipeline-loss
+
+# Test lookup/filter endpoints
+curl localhost:8084/v1/insights/lookups/protocols
+curl localhost:8084/v1/insights/lookups/facilities
+curl localhost:8084/v1/insights/lookups/practitioners
+curl localhost:8084/v1/insights/lookups/sources
+curl localhost:8084/v1/insights/lookups/patients
 ```
 
 ## 3. Configuration Reference
@@ -153,6 +160,9 @@ management:
 | `DB_USERNAME` | `cce_user` | Database username (shared with Collector Service) |
 | `DB_PASSWORD` | `cce_pass` | Database password (shared with Collector Service) |
 | `DB_POOL_SIZE` | `10` | HikariCP max pool size |
+| `CACHE_TTL_LOOKUPS` | `60` | Lookup cache TTL in minutes |
+| `CACHE_TTL_ANALYTICS` | `30` | Analytics cache TTL in minutes |
+| `CACHE_TTL_METRICS` | `15` | Metrics cache TTL in minutes |
 
 ## 4. Project Structure
 
@@ -182,13 +192,13 @@ cce-insights-service/
     ├── main/
     │   ├── java/org/openphc/cce/insights/
     │   │   ├── InsightsServiceApplication.java
-    │   │   ├── config/          # JpaConfig, MetricsConfig, ObservabilityConfig
+    │   │   ├── config/          # CacheConfig, JpaConfig, MetricsConfig, ObservabilityConfig
     │   │   ├── domain/entity/   # 6 @Immutable entities (incl. InboundEvent)
     │   │   ├── domain/enums/    # 5 enums
     │   │   ├── domain/repository/ # 7 repos (ReadOnlyRepository + 6)
     │   │   ├── health/          # DatabaseHealthIndicator
-    │   │   ├── service/         # 10 services + DateUtil
-    │   │   └── web/controller/ + web/dto/  # 10 controllers, ~30 DTOs
+    │   │   ├── service/         # 10 services + DateUtil utility
+    │   │   └── web/controller/ + web/dto/  # 11 controllers (incl. LookupController), ~30 DTOs
     │   └── resources/
     │       ├── application.yml
     │       ├── application-local.yml

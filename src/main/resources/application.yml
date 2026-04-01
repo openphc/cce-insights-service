@@ -34,3 +34,11 @@ management:
   metrics:
     tags:
       application: cce-insights-service
+
+# Cache TTL configuration (minutes)
+cce:
+  cache:
+    ttl:
+      lookups: ${CACHE_TTL_LOOKUPS:60}
+      analytics: ${CACHE_TTL_ANALYTICS:30}
+      metrics: ${CACHE_TTL_METRICS:15}

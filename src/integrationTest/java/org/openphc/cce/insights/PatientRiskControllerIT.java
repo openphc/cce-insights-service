@@ -14,14 +14,14 @@ class PatientRiskControllerIT extends AbstractIntegrationTest {
 
     @Test
     void getAtRiskHotspots_returnsHotspots() throws Exception {
-        mockMvc.perform(get("/v1/patients/at-risk-hotspots"))
+        mockMvc.perform(get("/v1/insights/patients/at-risk-hotspots"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").isArray());
     }
 
     @Test
     void getRepeatDeviations_returnsPatientsAboveThreshold() throws Exception {
-        mockMvc.perform(get("/v1/patients/repeat-deviations")
+        mockMvc.perform(get("/v1/insights/patients/repeat-deviations")
                         .param("minDeviations", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").isArray());

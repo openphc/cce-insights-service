@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.*;
 import java.time.OffsetDateTime;
 
 @RestController
-@RequestMapping("/v1/events")
+@RequestMapping("/v1/insights/events")
 @RequiredArgsConstructor
 public class ProcessingQualityController {
 
