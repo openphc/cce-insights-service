@@ -188,7 +188,10 @@ public class EventVolumeService {
     public EventVolumeTrendDto getTrends(String interval, OffsetDateTime startDate,
                                           OffsetDateTime endDate, String facilityId, String source) {
         String dbInterval = DateUtil.mapInterval(interval);
-        List<Object[]> rows = eventLogRepository.findEventTrends(dbInterval, facilityId, source, null, startDate, endDate);
+        // When filtering by source, use inbound_event to capture ALL received events (not just compliance-matched)
+        List<Object[]> rows = (source != null && !source.isBlank())
+                ? inboundEventRepository.findEventTrends(dbInterval, facilityId, source, startDate, endDate)
+                : eventLogRepository.findEventTrends(dbInterval, facilityId, source, null, startDate, endDate);
 
         // rows: [period, resource_type, count] — aggregate by period
         Map<String, Map<String, Long>> periodMap = new LinkedHashMap<>();
