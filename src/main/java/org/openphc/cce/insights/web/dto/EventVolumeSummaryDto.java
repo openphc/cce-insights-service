@@ -10,10 +10,17 @@ import java.util.Map;
 @Builder
 public class EventVolumeSummaryDto {
     private long totalEvents;
-    private Map<String, Long> processingStatusBreakdown;
+    private Map<String, StatusCount> processingStatusBreakdown;
     private List<ResourceTypeCountDto> byResourceType;
     private List<FacilityCount> byFacility;
     private List<SourceCount> bySource;
+
+    @Data
+    @Builder
+    public static class StatusCount {
+        private long count;
+        private double percentage;
+    }
 
     @Data
     @Builder

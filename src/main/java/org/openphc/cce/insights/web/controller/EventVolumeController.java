@@ -35,7 +35,7 @@ public class EventVolumeController {
             @RequestParam(required = false) OffsetDateTime startDate,
             @RequestParam(required = false) OffsetDateTime endDate) {
         EventVolumeTrendDto trends = eventVolumeService.getTrends(
-                interval, startDate, endDate, facilityId);
+                interval, startDate, endDate, facilityId, source);
         return ResponseEntity.ok(ApiResponse.ok(trends));
     }
 

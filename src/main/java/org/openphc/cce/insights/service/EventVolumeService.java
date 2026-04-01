@@ -8,10 +8,7 @@ import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.sql.Timestamp;
-import java.time.Instant;
 import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -29,6 +26,7 @@ public class EventVolumeService {
         List<Object[]> byResourceType = eventLogRepository.countByResourceType(null, null, startDate, endDate);
         // Source counts from inbound_event — captures ALL received events, not just compliance-matched
         List<Object[]> bySource = inboundEventRepository.countBySource(null, startDate, endDate);
+        List<Object[]> byProcessingStatus = eventLogRepository.countByProcessingStatus(null, startDate, endDate);
 
         long totalEvents = byResourceType.stream().mapToLong(r -> ((Number) r[1]).longValue()).sum();
 
@@ -54,11 +52,46 @@ public class EventVolumeService {
                         .build())
                 .collect(Collectors.toList());
 
+        // Build processing status breakdown with counts and percentages
+        Map<String, EventVolumeSummaryDto.StatusCount> statusBreakdown = buildProcessingStatusBreakdown(byProcessingStatus);
+
         return EventVolumeSummaryDto.builder()
                 .totalEvents(totalEvents)
+                .processingStatusBreakdown(statusBreakdown)
                 .byFacility(facilityTop)
                 .bySource(sourceCounts)
                 .build();
+    }
+
+    private Map<String, EventVolumeSummaryDto.StatusCount> buildProcessingStatusBreakdown(List<Object[]> rows) {
+        long total = rows.stream().mapToLong(r -> ((Number) r[1]).longValue()).sum();
+        EventVolumeSummaryDto.StatusCount zero = EventVolumeSummaryDto.StatusCount.builder()
+                .count(0).percentage(0.0).build();
+        Map<String, EventVolumeSummaryDto.StatusCount> breakdown = new LinkedHashMap<>();
+        breakdown.put("matched", zero);
+        breakdown.put("zeroMatch", zero);
+        breakdown.put("duplicate", zero);
+        for (Object[] row : rows) {
+            String status = (String) row[0];
+            long count = ((Number) row[1]).longValue();
+            double percentage = total > 0 ? Math.round(count * 1000.0 / total) / 10.0 : 0.0;
+            String key = mapStatusKey(status);
+            breakdown.put(key, EventVolumeSummaryDto.StatusCount.builder()
+                    .count(count)
+                    .percentage(percentage)
+                    .build());
+        }
+        return breakdown;
+    }
+
+    private String mapStatusKey(String dbStatus) {
+        if (dbStatus == null) return "unknown";
+        switch (dbStatus.toUpperCase()) {
+            case "MATCHED": return "matched";
+            case "ZERO_MATCH": return "zeroMatch";
+            case "DUPLICATE": return "duplicate";
+            default: return dbStatus.toLowerCase();
+        }
     }
 
     @Cacheable(value = "metrics", key = "'vol-restype'")
@@ -151,11 +184,11 @@ public class EventVolumeService {
         }).collect(Collectors.toList());
     }
 
-    @Cacheable(value = "metrics", key = "'vol-trends-' + #interval + '-' + #facilityId")
+    @Cacheable(value = "metrics", key = "'vol-trends-' + #interval + '-' + #facilityId + '-' + #source")
     public EventVolumeTrendDto getTrends(String interval, OffsetDateTime startDate,
-                                          OffsetDateTime endDate, String facilityId) {
+                                          OffsetDateTime endDate, String facilityId, String source) {
         String dbInterval = DateUtil.mapInterval(interval);
-        List<Object[]> rows = eventLogRepository.findEventTrends(dbInterval, facilityId, null, null, startDate, endDate);
+        List<Object[]> rows = eventLogRepository.findEventTrends(dbInterval, facilityId, source, null, startDate, endDate);
 
         // rows: [period, resource_type, count] — aggregate by period
         Map<String, Map<String, Long>> periodMap = new LinkedHashMap<>();
