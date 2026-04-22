@@ -67,8 +67,11 @@ configurations {
 }
 
 dependencies {
-    integrationTestImplementation 'org.testcontainers:postgresql'
-    integrationTestImplementation 'org.testcontainers:junit-jupiter'
+    integrationTestImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+
+tasks.named('processIntegrationTestResources') {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
 tasks.register('integrationTest', Test) {

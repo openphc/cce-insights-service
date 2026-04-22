@@ -18,7 +18,7 @@ public class IngestionAnalyticsService {
 
     private final InboundEventRepository inboundEventRepository;
 
-    @Cacheable(value = "metrics", key = "'funnel-' + #facilityId + '-' + #source")
+    @Cacheable(value = "metrics", key = "'funnel-' + #facilityId + '-' + #source + '-' + #startDate + '-' + #endDate")
     public IngestionFunnelDto getIngestionFunnel(String facilityId, String source,
                                                   OffsetDateTime startDate, OffsetDateTime endDate,
                                                   String interval) {
@@ -73,7 +73,7 @@ public class IngestionAnalyticsService {
                 .build();
     }
 
-    @Cacheable(value = "metrics", key = "'rejections-' + #facilityId + '-' + #source")
+    @Cacheable(value = "metrics", key = "'rejections-' + #facilityId + '-' + #source + '-' + #startDate + '-' + #endDate")
     public RejectionAnalyticsDto getRejectionAnalytics(String facilityId, String source,
                                                         OffsetDateTime startDate, OffsetDateTime endDate) {
         List<Object[]> reasonRows = inboundEventRepository.countByRejectionReason(
@@ -148,7 +148,7 @@ public class IngestionAnalyticsService {
                 .build();
     }
 
-    @Cacheable(value = "metrics", key = "'quality-' + #facilityId")
+    @Cacheable(value = "metrics", key = "'quality-' + #facilityId + '-' + #startDate + '-' + #endDate")
     public SourceDataQualityDto getSourceDataQuality(String facilityId,
                                                       OffsetDateTime startDate, OffsetDateTime endDate) {
         List<Object[]> rows = inboundEventRepository.countBySourceAndStatus(facilityId, startDate, endDate);
@@ -185,7 +185,7 @@ public class IngestionAnalyticsService {
         return SourceDataQualityDto.builder().sources(sources).build();
     }
 
-    @Cacheable(value = "metrics", key = "'pipeline-loss-' + #facilityId")
+    @Cacheable(value = "metrics", key = "'pipeline-loss-' + #facilityId + '-' + #startDate + '-' + #endDate")
     public PipelineLossDto getPipelineLoss(String facilityId,
                                             OffsetDateTime startDate, OffsetDateTime endDate) {
         long totalAccepted = inboundEventRepository.countAccepted(facilityId, startDate, endDate);
