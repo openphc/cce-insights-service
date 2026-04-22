@@ -1,6 +1,13 @@
 server:
   port: ${SERVER_PORT:8084}
 
+cce:
+  cache:
+    ttl:
+      metrics: 5
+      analytics: 10
+      lookups: 15
+
 spring:
   datasource:
     url: jdbc:postgresql://${DB_HOST:cce-db}:${DB_PORT:5432}/${DB_NAME:cce_collector}

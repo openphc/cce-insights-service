@@ -18,13 +18,13 @@ public class CacheConfig {
     public static final String ANALYTICS = "analytics";
     public static final String METRICS = "metrics";
 
-    @Value("${cce.cache.ttl.lookups:60}")
+    @Value("${cce.cache.ttl.lookups:3600}")
     private long lookupsTtl;
 
-    @Value("${cce.cache.ttl.analytics:30}")
+    @Value("${cce.cache.ttl.analytics:1800}")
     private long analyticsTtl;
 
-    @Value("${cce.cache.ttl.metrics:15}")
+    @Value("${cce.cache.ttl.metrics:900}")
     private long metricsTtl;
 
     @Bean
@@ -35,10 +35,10 @@ public class CacheConfig {
                 Caffeine<Object, Object> builder = Caffeine.newBuilder()
                         .recordStats();
                 switch (name) {
-                    case LOOKUPS -> builder.expireAfterWrite(lookupsTtl, TimeUnit.MINUTES).maximumSize(50);
-                    case ANALYTICS -> builder.expireAfterWrite(analyticsTtl, TimeUnit.MINUTES).maximumSize(200);
-                    case METRICS -> builder.expireAfterWrite(metricsTtl, TimeUnit.MINUTES).maximumSize(500);
-                    default -> builder.expireAfterWrite(analyticsTtl, TimeUnit.MINUTES).maximumSize(100);
+                    case LOOKUPS -> builder.expireAfterWrite(lookupsTtl, TimeUnit.SECONDS).maximumSize(50);
+                    case ANALYTICS -> builder.expireAfterWrite(analyticsTtl, TimeUnit.SECONDS).maximumSize(200);
+                    case METRICS -> builder.expireAfterWrite(metricsTtl, TimeUnit.SECONDS).maximumSize(500);
+                    default -> builder.expireAfterWrite(analyticsTtl, TimeUnit.SECONDS).maximumSize(100);
                 }
                 return builder.build();
             }

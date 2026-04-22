@@ -20,7 +20,7 @@ public class EventVolumeService {
     private final EventLogRepository eventLogRepository;
     private final InboundEventRepository inboundEventRepository;
 
-    @Cacheable(value = "metrics", key = "'vol-summary'")
+    @Cacheable(value = "metrics", key = "'vol-summary-' + #startDate + '-' + #endDate")
     public EventVolumeSummaryDto getSummary(OffsetDateTime startDate, OffsetDateTime endDate) {
         List<Object[]> byFacility = eventLogRepository.countByFacility(startDate, endDate);
         List<Object[]> byResourceType = eventLogRepository.countByResourceType(null, null, startDate, endDate);
@@ -94,7 +94,7 @@ public class EventVolumeService {
         }
     }
 
-    @Cacheable(value = "metrics", key = "'vol-restype'")
+    @Cacheable(value = "metrics", key = "'vol-restype-' + #startDate + '-' + #endDate")
     public List<ResourceTypeCountDto> getByResourceType(OffsetDateTime startDate, OffsetDateTime endDate) {
         return eventLogRepository.countByResourceType(null, null, startDate, endDate).stream()
                 .map(row -> ResourceTypeCountDto.builder()
@@ -104,7 +104,7 @@ public class EventVolumeService {
                 .collect(Collectors.toList());
     }
 
-    @Cacheable(value = "metrics", key = "'vol-facility'")
+    @Cacheable(value = "metrics", key = "'vol-facility-' + #startDate + '-' + #endDate")
     public List<FacilityEventCountDto> getByFacility(OffsetDateTime startDate, OffsetDateTime endDate) {
         List<Object[]> rows = eventLogRepository.countByFacility(startDate, endDate);
         // rows: [facility_id, resource_type, count] — aggregate by facility
@@ -128,7 +128,7 @@ public class EventVolumeService {
         }).collect(Collectors.toList());
     }
 
-    @Cacheable(value = "metrics", key = "'vol-practitioner'")
+    @Cacheable(value = "metrics", key = "'vol-practitioner-' + #startDate + '-' + #endDate")
     public List<PractitionerEventCountDto> getByPractitioner(OffsetDateTime startDate, OffsetDateTime endDate) {
         List<Object[]> rows = eventLogRepository.countByPractitioner(null, startDate, endDate);
         // rows: [practitioner_ref, practitioner_display, resource_type, count]
@@ -154,7 +154,7 @@ public class EventVolumeService {
         }).collect(Collectors.toList());
     }
 
-    @Cacheable(value = "metrics", key = "'vol-source'")
+    @Cacheable(value = "metrics", key = "'vol-source-' + #startDate + '-' + #endDate")
     public List<SourceSystemCountDto> getBySource(OffsetDateTime startDate, OffsetDateTime endDate) {
         // Source counts from inbound_event — shows ALL events received per source with status breakdown
         List<Object[]> rows = inboundEventRepository.countBySourceAndStatus(null, startDate, endDate);
@@ -184,7 +184,7 @@ public class EventVolumeService {
         }).collect(Collectors.toList());
     }
 
-    @Cacheable(value = "metrics", key = "'vol-trends-' + #interval + '-' + #facilityId + '-' + #source")
+    @Cacheable(value = "metrics", key = "'vol-trends-' + #interval + '-' + #facilityId + '-' + #source + '-' + #startDate + '-' + #endDate")
     public EventVolumeTrendDto getTrends(String interval, OffsetDateTime startDate,
                                           OffsetDateTime endDate, String facilityId, String source) {
         String dbInterval = DateUtil.mapInterval(interval);
