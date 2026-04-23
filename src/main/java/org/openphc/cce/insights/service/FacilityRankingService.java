@@ -32,7 +32,7 @@ public class FacilityRankingService {
 
         for (Object[] row : facilityEvents) {
             String facilityId = (String) row[0];
-            eventCountMap.put(facilityId, ((Number) row[1]).longValue());
+            eventCountMap.put(facilityId, ((Number) row[2]).longValue());
         }
 
         List<Object[]> activePatients = eventLogRepository.findActivePatientsByFacility(null);
