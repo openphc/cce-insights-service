@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -39,9 +40,20 @@ public class PatientTimelineService {
                     .count();
             double rate = steps.isEmpty() ? 0.0 : (double) completed / steps.size();
 
-            // Resolve step titles from protocol definition
-            Map<String, String> stepTitles = resolveStepTitles(pi.getProtocolDefinitionId());
+            // Resolve ordered action list and titles from protocol definition
+            List<String[]> orderedActions = resolveOrderedActions(pi.getProtocolDefinitionId());
+            Map<String, String> stepTitles = new LinkedHashMap<>();
+            for (String[] pair : orderedActions) {
+                stepTitles.put(pair[0], pair[1]);
+            }
 
+            // Build effectiveDateTime lookup: stepInstance.matchedEventId → event_log.data.effectiveDateTime
+            Map<UUID, String> effectiveDateTimeMap = resolveEffectiveDateTimes(steps);
+
+            // Build Protocol Journey (one row per protocol-defined action)
+            List<PatientTimelineDto.JourneyStep> journey = buildJourney(orderedActions, steps, stepTitles, effectiveDateTimeMap);
+
+            // Build Compliance Timeline events
             List<PatientTimelineDto.TimelineEvent> events = new ArrayList<>();
 
             events.add(PatientTimelineDto.TimelineEvent.builder()
@@ -62,7 +74,8 @@ public class PatientTimelineService {
                                 .type(type)
                                 .actionId(si.getActionId())
                                 .stepName(stepName)
-                                .state(si.getState().name());
+                                .state(si.getState().name())
+                                .effectiveDateTime(effectiveDateTimeMap.get(si.getId()));
 
                 if (si.getState() == StepState.COMPLETED) {
                     builder.completionStatus(si.getCompletionStatus() != null ?
@@ -84,6 +97,7 @@ public class PatientTimelineService {
                     .protocolCanonical(pi.getProtocolCanonical())
                     .status(pi.getStatus().name().toLowerCase())
                     .complianceRate(Math.round(rate * 100.0) / 100.0)
+                    .journey(journey)
                     .timeline(events)
                     .build());
         }
@@ -94,20 +108,162 @@ public class PatientTimelineService {
                 .build();
     }
 
-    private Map<String, String> resolveStepTitles(UUID protocolDefinitionId) {
-        Map<String, String> titles = new HashMap<>();
-        if (protocolDefinitionId == null) return titles;
+    /**
+     * Build a consolidated journey: one row per protocol-defined action, in definition order.
+     * Shows the latest/best status for each action.
+     */
+    private List<PatientTimelineDto.JourneyStep> buildJourney(
+            List<String[]> orderedActions, List<StepInstance> steps,
+            Map<String, String> stepTitles, Map<UUID, String> effectiveDateTimeMap) {
+
+        // Group steps by actionId
+        Map<String, List<StepInstance>> stepsByAction = steps.stream()
+                .collect(Collectors.groupingBy(StepInstance::getActionId, LinkedHashMap::new, Collectors.toList()));
+
+        List<PatientTimelineDto.JourneyStep> journey = new ArrayList<>();
+        for (String[] action : orderedActions) {
+            String actionId = action[0];
+            String title = action[1];
+            List<StepInstance> actionSteps = stepsByAction.getOrDefault(actionId, List.of());
+
+            if (actionSteps.isEmpty()) {
+                // No step_instance exists for this action
+                journey.add(PatientTimelineDto.JourneyStep.builder()
+                        .actionId(actionId)
+                        .stepName(title)
+                        .status("NOT_STARTED")
+                        .completionCount(0)
+                        .build());
+            } else {
+                // Pick the "best" status: COMPLETED > OVERDUE > MISSED > PENDING > SKIPPED
+                StepInstance best = pickBestStep(actionSteps);
+                int completedCount = (int) actionSteps.stream()
+                        .filter(s -> s.getState() == StepState.COMPLETED)
+                        .count();
+                String effectiveDt = effectiveDateTimeMap.get(best.getId());
+                // For completed, prefer the first completion's effectiveDateTime
+                if (best.getState() == StepState.COMPLETED && effectiveDt == null) {
+                    actionSteps.stream()
+                            .filter(s -> s.getState() == StepState.COMPLETED)
+                            .map(s -> effectiveDateTimeMap.get(s.getId()))
+                            .filter(Objects::nonNull)
+                            .findFirst()
+                            .ifPresent(dt -> {});
+                    effectiveDt = actionSteps.stream()
+                            .filter(s -> s.getState() == StepState.COMPLETED)
+                            .map(s -> effectiveDateTimeMap.get(s.getId()))
+                            .filter(Objects::nonNull)
+                            .findFirst()
+                            .orElse(null);
+                }
+
+                journey.add(PatientTimelineDto.JourneyStep.builder()
+                        .actionId(actionId)
+                        .stepName(title)
+                        .status(best.getState().name())
+                        .completionCount(completedCount)
+                        .effectiveDateTime(effectiveDt)
+                        .completionStatus(best.getCompletionStatus() != null ? best.getCompletionStatus().name() : null)
+                        .source(best.getCompletedBySource())
+                        .build());
+            }
+        }
+        return journey;
+    }
+
+    /**
+     * Pick the most representative step for a given action.
+     * Priority: COMPLETED > OVERDUE > MISSED > PENDING > DUE > SKIPPED
+     */
+    private StepInstance pickBestStep(List<StepInstance> steps) {
+        Map<StepState, Integer> priority = Map.of(
+                StepState.COMPLETED, 0,
+                StepState.OVERDUE, 1,
+                StepState.MISSED, 2,
+                StepState.PENDING, 3,
+                StepState.DUE, 4,
+                StepState.SKIPPED, 5
+        );
+        return steps.stream()
+                .min(Comparator.comparingInt(s -> priority.getOrDefault(s.getState(), 99)))
+                .orElse(steps.get(0));
+    }
+
+    /**
+     * Resolve effectiveDateTime for all steps that have a matched_event_id.
+     * Returns a map of stepInstance.id → effectiveDateTime string.
+     */
+    private Map<UUID, String> resolveEffectiveDateTimes(List<StepInstance> steps) {
+        Map<UUID, String> result = new HashMap<>();
+        // Collect all matched event IDs
+        Map<UUID, UUID> stepToEvent = new LinkedHashMap<>();
+        for (StepInstance si : steps) {
+            if (si.getMatchedEventId() != null) {
+                stepToEvent.put(si.getId(), si.getMatchedEventId());
+            }
+        }
+        if (stepToEvent.isEmpty()) return result;
+
+        // Batch load event_log entries
+        List<EventLog> eventLogs = eventLogRepository.findAllById(stepToEvent.values().stream().distinct().collect(Collectors.toList()));
+        Map<UUID, EventLog> eventMap = eventLogs.stream().collect(Collectors.toMap(EventLog::getId, e -> e));
+
+        for (Map.Entry<UUID, UUID> entry : stepToEvent.entrySet()) {
+            EventLog el = eventMap.get(entry.getValue());
+            if (el != null && el.getData() != null) {
+                String effectiveDt = extractEffectiveDateTime(el.getData());
+                if (effectiveDt != null) {
+                    result.put(entry.getKey(), effectiveDt);
+                }
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Extract effectiveDateTime (or period.start for Encounter) from FHIR JSON data.
+     */
+    private String extractEffectiveDateTime(String jsonData) {
+        try {
+            JsonNode root = objectMapper.readTree(jsonData);
+            JsonNode effectiveDt = root.get("effectiveDateTime");
+            if (effectiveDt != null && !effectiveDt.isNull()) {
+                return effectiveDt.asText();
+            }
+            // Fallback: Encounter.period.start
+            JsonNode periodStart = root.path("period").get("start");
+            if (periodStart != null && !periodStart.isNull()) {
+                return periodStart.asText();
+            }
+            // Fallback: authoredOn (ServiceRequest)
+            JsonNode authoredOn = root.get("authoredOn");
+            if (authoredOn != null && !authoredOn.isNull()) {
+                return authoredOn.asText();
+            }
+        } catch (Exception e) {
+            log.debug("Failed to extract effectiveDateTime: {}", e.getMessage());
+        }
+        return null;
+    }
+
+    /**
+     * Resolve ordered action list from PlanDefinition JSON.
+     * Returns list of [actionId, title] pairs in definition order.
+     */
+    private List<String[]> resolveOrderedActions(UUID protocolDefinitionId) {
+        List<String[]> actions = new ArrayList<>();
+        if (protocolDefinitionId == null) return actions;
         try {
             ProtocolDefinition pd = protocolDefinitionRepository.findById(protocolDefinitionId).orElse(null);
             if (pd != null && pd.getDefinition() != null) {
                 JsonNode root = objectMapper.readTree(pd.getDefinition());
-                JsonNode actions = root.get("action");
-                if (actions != null && actions.isArray()) {
-                    for (JsonNode action : actions) {
+                JsonNode actionNodes = root.get("action");
+                if (actionNodes != null && actionNodes.isArray()) {
+                    for (JsonNode action : actionNodes) {
                         String id = action.has("id") ? action.get("id").asText() : null;
                         String title = action.has("title") ? action.get("title").asText() : null;
-                        if (id != null && title != null) {
-                            titles.put(id, title);
+                        if (id != null) {
+                            actions.add(new String[]{id, title != null ? title : formatActionId(id)});
                         }
                     }
                 }
@@ -115,7 +271,7 @@ public class PatientTimelineService {
         } catch (Exception e) {
             log.warn("Failed to parse protocol definition {}: {}", protocolDefinitionId, e.getMessage());
         }
-        return titles;
+        return actions;
     }
 
     private OffsetDateTime resolveTimestamp(StepInstance si) {
