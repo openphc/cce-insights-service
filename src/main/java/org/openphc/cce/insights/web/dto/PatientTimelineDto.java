@@ -29,6 +29,8 @@ public class PatientTimelineDto {
         private String type;
         private String description;
         private String actionId;
+        private String stepName;
+        private String state;
         private String completionStatus;
         private String source;
         private Integer daysOverdue;
