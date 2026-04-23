@@ -50,8 +50,8 @@ public interface StepInstanceRepository extends ReadOnlyRepository<StepInstance,
     List<Object[]> findCompletionFunnel(@Param("protocolDefId") UUID protocolDefId);
 
     @Query(value = "SELECT el.facility_id, " +
-            "COUNT(*) AS total_steps, " +
-            "COUNT(CASE WHEN si.state IN ('COMPLETED','SKIPPED') THEN 1 END) AS completed_steps " +
+            "COUNT(DISTINCT si.id) AS total_steps, " +
+            "COUNT(DISTINCT CASE WHEN si.state IN ('COMPLETED','SKIPPED') THEN si.id END) AS completed_steps " +
             "FROM step_instance si " +
             "JOIN protocol_instance pi ON si.protocol_instance_id = pi.id " +
             "JOIN event_log el ON el.protocol_instance_id = pi.id " +

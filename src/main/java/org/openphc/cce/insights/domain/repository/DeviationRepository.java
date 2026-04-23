@@ -115,7 +115,7 @@ public interface DeviationRepository extends ReadOnlyRepository<Deviation, UUID>
                                                @Param("startDate") OffsetDateTime startDate,
                                                @Param("endDate") OffsetDateTime endDate);
 
-    @Query(value = "SELECT el.facility_id, COUNT(*) AS deviation_count " +
+    @Query(value = "SELECT el.facility_id, COUNT(DISTINCT d.id) AS deviation_count " +
             "FROM deviation d " +
             "JOIN protocol_instance pi ON d.protocol_instance_id = pi.id " +
             "JOIN event_log el ON el.protocol_instance_id = pi.id " +
