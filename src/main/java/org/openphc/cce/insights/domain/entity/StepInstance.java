@@ -50,6 +50,9 @@ public class StepInstance {
     @Column(name = "completion_status")
     private CompletionStatus completionStatus;
 
+    @Column(name = "matched_event_id")
+    private UUID matchedEventId;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "protocol_instance_id", insertable = false, updatable = false)
     private ProtocolInstance protocolInstance;

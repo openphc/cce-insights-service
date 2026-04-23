@@ -19,7 +19,20 @@ public class PatientTimelineDto {
         private String protocolCanonical;
         private String status;
         private double complianceRate;
+        private List<JourneyStep> journey;
         private List<TimelineEvent> timeline;
+    }
+
+    @Data
+    @Builder
+    public static class JourneyStep {
+        private String actionId;
+        private String stepName;
+        private String status;       // COMPLETED, PENDING, NOT_STARTED, OVERDUE, MISSED, SKIPPED
+        private int completionCount;
+        private String effectiveDateTime;
+        private String completionStatus;
+        private String source;
     }
 
     @Data
@@ -34,5 +47,6 @@ public class PatientTimelineDto {
         private String completionStatus;
         private String source;
         private Integer daysOverdue;
+        private String effectiveDateTime;
     }
 }
