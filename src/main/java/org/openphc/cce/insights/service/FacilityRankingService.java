@@ -22,7 +22,7 @@ public class FacilityRankingService {
     private final DeviationRepository deviationRepository;
     private final StepInstanceRepository stepInstanceRepository;
 
-    @Cacheable(value = "analytics", key = "'rankings-' + #sortBy + '-' + #order + '-' + #limit")
+    @Cacheable(value = "analytics", key = "'rankings-' + #sortBy + '-' + #order + '-' + #limit + '-' + #startDate + '-' + #endDate")
     public List<FacilityRankingDto> getRankings(OffsetDateTime startDate, OffsetDateTime endDate,
                                                  String sortBy, String order, int limit) {
         List<Object[]> facilityEvents = eventLogRepository.findFacilityEventCounts(null);
@@ -83,7 +83,7 @@ public class FacilityRankingService {
         Comparator<FacilityRankingDto> comparator = switch (sortBy != null ? sortBy : "complianceRate") {
             case "complianceRate" -> Comparator.comparingDouble(FacilityRankingDto::getComplianceRate);
             case "deviationCount" -> Comparator.comparingLong(FacilityRankingDto::getActiveDeviations);
-            case "eventVolume" -> Comparator.comparingLong(FacilityRankingDto::getTotalEvents);
+            case "eventVolume", "totalEvents" -> Comparator.comparingLong(FacilityRankingDto::getTotalEvents);
             default -> Comparator.comparingDouble(FacilityRankingDto::getComplianceRate);
         };
 
