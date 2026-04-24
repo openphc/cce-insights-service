@@ -45,7 +45,7 @@ public class ComplianceSummaryService {
                 .collect(Collectors.groupingBy(pi -> pi.getStatus().name().toLowerCase(), Collectors.counting()));
 
         long totalSteps = 0, completed = 0, onTime = 0, late = 0, early = 0, overdue = 0, missed = 0, pending = 0;
-        long totalDeviations = 0, overdueDeviations = 0, missedDeviations = 0;
+        long totalDeviations = 0, overdueDeviations = 0, missedDeviations = 0, orderViolationDeviations = 0;
 
         for (ProtocolInstance pi : instances) {
             List<StepInstance> steps = stepInstanceRepository.findByProtocolInstanceId(pi.getId());
@@ -71,8 +71,11 @@ public class ComplianceSummaryService {
             List<Deviation> deviations = deviationRepository.findByProtocolInstanceId(pi.getId());
             totalDeviations += deviations.size();
             for (Deviation d : deviations) {
-                if (d.getDeviationType() == DeviationType.OVERDUE) overdueDeviations++;
-                else missedDeviations++;
+                switch (d.getDeviationType()) {
+                    case OVERDUE -> overdueDeviations++;
+                    case MISSED -> missedDeviations++;
+                    case ORDER_VIOLATION -> orderViolationDeviations++;
+                }
             }
         }
 
@@ -89,7 +92,7 @@ public class ComplianceSummaryService {
                         .late(late).early(early).overdue(overdue).missed(missed).pending(pending)
                         .build())
                 .deviationCount(totalDeviations)
-                .deviationBreakdown(Map.of("overdue", overdueDeviations, "missed", missedDeviations))
+                .deviationBreakdown(Map.of("overdue", overdueDeviations, "missed", missedDeviations, "orderViolation", orderViolationDeviations))
                 .build();
     }
 
@@ -210,7 +213,7 @@ public class ComplianceSummaryService {
                 .complianceRate(0.0)
                 .stepMetrics(ComplianceSummaryDto.StepMetrics.builder().build())
                 .deviationCount(0)
-                .deviationBreakdown(Map.of("overdue", 0L, "missed", 0L))
+                .deviationBreakdown(Map.of("overdue", 0L, "missed", 0L, "orderViolation", 0L))
                 .build();
     }
 }

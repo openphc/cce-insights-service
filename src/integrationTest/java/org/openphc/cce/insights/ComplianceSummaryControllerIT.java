@@ -46,7 +46,7 @@ class ComplianceSummaryControllerIT extends AbstractIntegrationTest {
                                 .totalSteps(9).completed(6).onTime(4).late(1).early(1)
                                 .overdue(1).missed(1).pending(1).build())
                         .deviationCount(2)
-                        .deviationBreakdown(Map.of("overdue", 1L, "missed", 1L))
+                        .deviationBreakdown(Map.of("overdue", 1L, "missed", 1L, "orderViolation", 0L))
                         .build());
 
         mockMvc.perform(get("/v1/insights/protocols/550e8400-e29b-41d4-a716-446655440000/compliance-summary"))

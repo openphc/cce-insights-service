@@ -36,13 +36,13 @@ class DeviationControllerIT extends AbstractIntegrationTest {
                 .thenReturn(DeviationTrendDto.builder()
                         .interval("weekly")
                         .trends(List.of(DeviationTrendDto.TrendPoint.builder()
-                                .period("2026-W12").overdue(2).missed(1).total(3).build()))
+                                .period("2026-W12").overdue(2).missed(1).orderViolation(0).total(3).build()))
                         .build());
 
         when(deviationAnalyticsService.getIntelligenceSummary())
                 .thenReturn(IntelligenceSummaryDto.builder()
                         .totalDeviations(5)
-                        .byType(Map.of("overdue", 3L, "missed", 2L))
+                        .byType(Map.of("overdue", 3L, "missed", 2L, "orderViolation", 0L))
                         .bySeverity(Map.of("warning", 3L, "critical", 2L))
                         .recentActivity(IntelligenceSummaryDto.RecentActivity.builder()
                                 .last24Hours(1).last7Days(3).last30Days(5).build())

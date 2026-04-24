@@ -94,8 +94,9 @@ public class PatientRiskService {
                 .totalDeviations(((Number) row[1]).longValue())
                 .overdueCount(((Number) row[2]).longValue())
                 .missedCount(((Number) row[3]).longValue())
-                .affectedProtocols(((Number) row[4]).longValue())
-                .affectedSteps(((Number) row[5]).longValue())
+                .orderViolationCount(((Number) row[4]).longValue())
+                .affectedProtocols(((Number) row[5]).longValue())
+                .affectedSteps(((Number) row[6]).longValue())
                 .build()
         ).collect(Collectors.toList());
     }

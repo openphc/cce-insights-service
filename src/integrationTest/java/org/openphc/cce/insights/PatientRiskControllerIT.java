@@ -48,7 +48,7 @@ class PatientRiskControllerIT extends AbstractIntegrationTest {
     void getRepeatDeviations_returnsPatientsAboveThreshold() throws Exception {
         when(patientRiskService.getRepeatDeviationPatients(eq(1), any(), any()))
                 .thenReturn(List.of(RepeatDeviationPatientDto.builder()
-                        .patientId("p1").totalDeviations(3).overdueCount(2).missedCount(1)
+                        .patientId("p1").totalDeviations(3).overdueCount(2).missedCount(1).orderViolationCount(0)
                         .affectedProtocols(1).affectedSteps(2).build()));
 
         mockMvc.perform(get("/v1/insights/patients/repeat-deviations")

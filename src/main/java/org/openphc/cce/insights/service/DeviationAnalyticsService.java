@@ -51,11 +51,13 @@ public class DeviationAnalyticsService {
             long count = ((Number) row[2]).longValue();
 
             pointMap.computeIfAbsent(period, p -> DeviationTrendDto.TrendPoint.builder()
-                    .period(p).overdue(0).missed(0).total(0));
+                    .period(p).overdue(0).missed(0).orderViolation(0).total(0));
             DeviationTrendDto.TrendPoint.TrendPointBuilder builder = pointMap.get(period);
             DeviationTrendDto.TrendPoint partial = builder.build();
             if ("OVERDUE".equals(type)) {
                 pointMap.put(period, builder.overdue(count).total(partial.getTotal() + count));
+            } else if ("ORDER_VIOLATION".equals(type)) {
+                pointMap.put(period, builder.orderViolation(count).total(partial.getTotal() + count));
             } else {
                 pointMap.put(period, builder.missed(count).total(partial.getTotal() + count));
             }
@@ -75,19 +77,22 @@ public class DeviationAnalyticsService {
         List<Object[]> last7d = deviationRepository.countByTypeSince(now.minusDays(7));
         List<Object[]> last30d = deviationRepository.countByTypeSince(now.minusDays(30));
 
-        long total = 0, overdueCount = 0, missedCount = 0;
+        long total = 0, overdueCount = 0, missedCount = 0, orderViolationCount = 0;
         for (Object[] row : last30d) {
             long c = ((Number) row[1]).longValue();
             DeviationType type = (DeviationType) row[0];
             total += c;
-            if (type == DeviationType.OVERDUE) overdueCount = c;
-            else missedCount = c;
+            switch (type) {
+                case OVERDUE -> overdueCount = c;
+                case MISSED -> missedCount = c;
+                case ORDER_VIOLATION -> orderViolationCount = c;
+            }
         }
 
         return IntelligenceSummaryDto.builder()
                 .totalDeviations(total)
-                .byType(Map.of("overdue", overdueCount, "missed", missedCount))
-                .bySeverity(Map.of("warning", overdueCount, "critical", missedCount))
+                .byType(Map.of("overdue", overdueCount, "missed", missedCount, "orderViolation", orderViolationCount))
+                .bySeverity(Map.of("warning", overdueCount, "critical", missedCount + orderViolationCount))
                 .recentActivity(IntelligenceSummaryDto.RecentActivity.builder()
                         .last24Hours(sumCounts(last24h))
                         .last7Days(sumCounts(last7d))
@@ -108,7 +113,8 @@ public class DeviationAnalyticsService {
                 .totalDeviations(((Number) row[3]).longValue())
                 .overdueCount(((Number) row[4]).longValue())
                 .missedCount(((Number) row[5]).longValue())
-                .affectedPatients(((Number) row[6]).longValue())
+                .orderViolationCount(((Number) row[6]).longValue())
+                .affectedPatients(((Number) row[7]).longValue())
                 .build()).collect(Collectors.toList());
     }
 

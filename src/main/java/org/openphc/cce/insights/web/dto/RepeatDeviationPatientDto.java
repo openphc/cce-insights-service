@@ -13,6 +13,7 @@ public class RepeatDeviationPatientDto {
     private long totalDeviations;
     private long overdueCount;
     private long missedCount;
+    private long orderViolationCount;
     private long affectedProtocols;
     private long affectedSteps;
     private String facilityId;

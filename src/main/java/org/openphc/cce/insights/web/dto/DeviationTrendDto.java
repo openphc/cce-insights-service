@@ -17,6 +17,7 @@ public class DeviationTrendDto {
         private String period;
         private long overdue;
         private long missed;
+        private long orderViolation;
         private long total;
     }
 }
