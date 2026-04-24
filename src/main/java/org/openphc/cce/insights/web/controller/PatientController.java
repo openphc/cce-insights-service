@@ -1,12 +1,17 @@
 package org.openphc.cce.insights.web.controller;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.openphc.cce.insights.domain.entity.Deviation;
 import org.openphc.cce.insights.domain.entity.EventLog;
+import org.openphc.cce.insights.domain.entity.ProtocolDefinition;
 import org.openphc.cce.insights.domain.entity.ProtocolInstance;
 import org.openphc.cce.insights.domain.entity.StepInstance;
 import org.openphc.cce.insights.domain.repository.DeviationRepository;
 import org.openphc.cce.insights.domain.repository.EventLogRepository;
+import org.openphc.cce.insights.domain.repository.ProtocolDefinitionRepository;
 import org.openphc.cce.insights.domain.repository.ProtocolInstanceRepository;
 import org.openphc.cce.insights.domain.repository.StepInstanceRepository;
 import org.openphc.cce.insights.service.PatientTimelineService;
@@ -19,6 +24,7 @@ import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
+@Slf4j
 @RestController
 @RequestMapping("/v1/insights/patients")
 @RequiredArgsConstructor
@@ -29,6 +35,8 @@ public class PatientController {
     private final StepInstanceRepository stepInstanceRepository;
     private final DeviationRepository deviationRepository;
     private final EventLogRepository eventLogRepository;
+    private final ProtocolDefinitionRepository protocolDefinitionRepository;
+    private final ObjectMapper objectMapper;
 
     @GetMapping("/{patientId}/compliance-timeline")
     public ResponseEntity<ApiResponse<PatientTimelineDto>> getComplianceTimeline(
@@ -162,16 +170,40 @@ public class PatientController {
             @RequestParam(required = false) OffsetDateTime endDate) {
         List<ProtocolInstance> instances = protocolInstanceRepository.findByPatientId(patientId);
 
+        // Build actionId→title map from protocol definitions
+        Map<String, String> stepTitles = new HashMap<>();
+        for (ProtocolInstance pi : instances) {
+            if (pi.getProtocolDefinitionId() != null) {
+                resolveStepTitles(pi.getProtocolDefinitionId(), stepTitles);
+            }
+        }
+
+        // Build stepInstanceId→actionId lookup
+        Map<UUID, String> stepActionIds = new HashMap<>();
+        for (ProtocolInstance pi : instances) {
+            for (StepInstance si : stepInstanceRepository.findByProtocolInstanceId(pi.getId())) {
+                stepActionIds.put(si.getId(), si.getActionId());
+            }
+        }
+
         List<Map<String, Object>> result = instances.stream()
                 .flatMap(pi -> deviationRepository.findByProtocolInstanceId(pi.getId()).stream()
                         .map(d -> {
+                            String actionId = stepActionIds.get(d.getStepInstanceId());
+                            String stepName = actionId != null ? stepTitles.getOrDefault(actionId, formatActionId(actionId)) : null;
+                            Map<String, Object> metadata = parseMetadata(d.getMetadata());
+                            String description = buildDescription(d.getDeviationType().name(), stepName, metadata, stepTitles);
                             Map<String, Object> map = new LinkedHashMap<>();
                             map.put("deviationId", d.getId());
                             map.put("protocolInstanceId", pi.getId());
                             map.put("protocolCanonical", pi.getProtocolCanonical());
                             map.put("stepInstanceId", d.getStepInstanceId());
+                            map.put("actionId", actionId);
+                            map.put("stepName", stepName);
                             map.put("deviationType", d.getDeviationType());
                             map.put("detectedAt", d.getDetectedAt());
+                            map.put("metadata", metadata);
+                            map.put("description", description);
                             return map;
                         }))
                 .filter(m -> deviationType == null ||
@@ -184,6 +216,76 @@ public class PatientController {
                         Comparator.reverseOrder()))
                 .collect(Collectors.toList());
         return ResponseEntity.ok(ApiResponse.ok(result));
+    }
+
+    private void resolveStepTitles(UUID protocolDefinitionId, Map<String, String> titles) {
+        try {
+            ProtocolDefinition pd = protocolDefinitionRepository.findById(protocolDefinitionId).orElse(null);
+            if (pd != null && pd.getDefinition() != null) {
+                JsonNode root = objectMapper.readTree(pd.getDefinition());
+                JsonNode actionNodes = root.get("action");
+                if (actionNodes != null && actionNodes.isArray()) {
+                    for (JsonNode action : actionNodes) {
+                        String id = action.has("id") ? action.get("id").asText() : null;
+                        String title = action.has("title") ? action.get("title").asText() : null;
+                        if (id != null && title != null) {
+                            titles.putIfAbsent(id, title);
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to parse protocol definition {}: {}", protocolDefinitionId, e.getMessage());
+        }
+    }
+
+    private String formatActionId(String actionId) {
+        if (actionId == null) return "Unknown Step";
+        return Arrays.stream(actionId.split("-"))
+                .map(w -> w.substring(0, 1).toUpperCase() + w.substring(1))
+                .reduce((a, b) -> a + " " + b)
+                .orElse(actionId);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> parseMetadata(String metadata) {
+        if (metadata == null || metadata.isBlank()) return Map.of();
+        try {
+            return objectMapper.readValue(metadata, Map.class);
+        } catch (Exception e) {
+            return Map.of();
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private String buildDescription(String deviationType, String stepName,
+                                     Map<String, Object> metadata,
+                                     Map<String, String> stepTitles) {
+        String step = stepName != null ? stepName : "Unknown Step";
+        switch (deviationType) {
+            case "ORDER_VIOLATION":
+                String completedActionId = (String) metadata.get("completedActionId");
+                List<String> prereqs = metadata.get("incompletePrerequisites") instanceof List
+                        ? (List<String>) metadata.get("incompletePrerequisites")
+                        : List.of();
+                String completedName = completedActionId != null
+                        ? stepTitles.getOrDefault(completedActionId, formatActionId(completedActionId))
+                        : step;
+                if (!prereqs.isEmpty()) {
+                    String prereqNames = prereqs.stream()
+                            .map(id -> stepTitles.getOrDefault(id, formatActionId(id)))
+                            .reduce((a, b) -> a + ", " + b)
+                            .orElse("");
+                    return completedName + " completed before " + prereqNames;
+                }
+                return completedName + " completed out of order";
+            case "OVERDUE":
+                return step + " is overdue";
+            case "MISSED":
+                return step + " was missed";
+            default:
+                return step;
+        }
     }
 
     private String extractResourceType(String data) {
