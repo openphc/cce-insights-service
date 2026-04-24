@@ -191,6 +191,8 @@ public class PatientController {
                         .map(d -> {
                             String actionId = stepActionIds.get(d.getStepInstanceId());
                             String stepName = actionId != null ? stepTitles.getOrDefault(actionId, formatActionId(actionId)) : null;
+                            Map<String, Object> metadata = parseMetadata(d.getMetadata());
+                            String description = buildDescription(d.getDeviationType().name(), stepName, metadata, stepTitles);
                             Map<String, Object> map = new LinkedHashMap<>();
                             map.put("deviationId", d.getId());
                             map.put("protocolInstanceId", pi.getId());
@@ -200,6 +202,8 @@ public class PatientController {
                             map.put("stepName", stepName);
                             map.put("deviationType", d.getDeviationType());
                             map.put("detectedAt", d.getDetectedAt());
+                            map.put("metadata", metadata);
+                            map.put("description", description);
                             return map;
                         }))
                 .filter(m -> deviationType == null ||
@@ -241,6 +245,47 @@ public class PatientController {
                 .map(w -> w.substring(0, 1).toUpperCase() + w.substring(1))
                 .reduce((a, b) -> a + " " + b)
                 .orElse(actionId);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> parseMetadata(String metadata) {
+        if (metadata == null || metadata.isBlank()) return Map.of();
+        try {
+            return objectMapper.readValue(metadata, Map.class);
+        } catch (Exception e) {
+            return Map.of();
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private String buildDescription(String deviationType, String stepName,
+                                     Map<String, Object> metadata,
+                                     Map<String, String> stepTitles) {
+        String step = stepName != null ? stepName : "Unknown Step";
+        switch (deviationType) {
+            case "ORDER_VIOLATION":
+                String completedActionId = (String) metadata.get("completedActionId");
+                List<String> prereqs = metadata.get("incompletePrerequisites") instanceof List
+                        ? (List<String>) metadata.get("incompletePrerequisites")
+                        : List.of();
+                String completedName = completedActionId != null
+                        ? stepTitles.getOrDefault(completedActionId, formatActionId(completedActionId))
+                        : step;
+                if (!prereqs.isEmpty()) {
+                    String prereqNames = prereqs.stream()
+                            .map(id -> stepTitles.getOrDefault(id, formatActionId(id)))
+                            .reduce((a, b) -> a + ", " + b)
+                            .orElse("");
+                    return completedName + " completed before " + prereqNames;
+                }
+                return completedName + " completed out of order";
+            case "OVERDUE":
+                return step + " is overdue";
+            case "MISSED":
+                return step + " was missed";
+            default:
+                return step;
+        }
     }
 
     private String extractResourceType(String data) {
