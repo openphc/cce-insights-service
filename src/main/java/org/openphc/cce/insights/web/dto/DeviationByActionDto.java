@@ -14,5 +14,6 @@ public class DeviationByActionDto {
     private long totalDeviations;
     private long overdueCount;
     private long missedCount;
+    private long orderViolationCount;
     private long affectedPatients;
 }

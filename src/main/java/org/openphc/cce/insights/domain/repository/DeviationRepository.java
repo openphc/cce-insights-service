@@ -56,6 +56,7 @@ public interface DeviationRepository extends ReadOnlyRepository<Deviation, UUID>
             "COUNT(*) AS total_deviations, " +
             "COUNT(CASE WHEN d.deviation_type = 'OVERDUE' THEN 1 END) AS overdue_count, " +
             "COUNT(CASE WHEN d.deviation_type = 'MISSED' THEN 1 END) AS missed_count, " +
+            "COUNT(CASE WHEN d.deviation_type = 'ORDER_VIOLATION' THEN 1 END) AS order_violation_count, " +
             "COUNT(DISTINCT pi.patient_id) AS affected_patients " +
             "FROM deviation d " +
             "JOIN step_instance si ON d.step_instance_id = si.id " +
@@ -97,6 +98,7 @@ public interface DeviationRepository extends ReadOnlyRepository<Deviation, UUID>
     @Query(value = "SELECT pi.patient_id, COUNT(*) AS total_deviations, " +
             "COUNT(CASE WHEN d.deviation_type = 'OVERDUE' THEN 1 END) AS overdue_count, " +
             "COUNT(CASE WHEN d.deviation_type = 'MISSED' THEN 1 END) AS missed_count, " +
+            "COUNT(CASE WHEN d.deviation_type = 'ORDER_VIOLATION' THEN 1 END) AS order_violation_count, " +
             "COUNT(DISTINCT pi.id) AS affected_protocols, " +
             "COUNT(DISTINCT d.step_instance_id) AS affected_steps " +
             "FROM deviation d " +
