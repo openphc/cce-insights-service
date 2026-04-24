@@ -39,6 +39,12 @@ public class PatientRiskService {
             facilityPatients.computeIfAbsent(facilityId, k -> new LinkedHashSet<>()).add(patientId);
         }
 
+        // Build facility name lookup
+        Map<String, String> facilityNameMap = new LinkedHashMap<>();
+        for (Object[] row : eventLogRepository.findFacilityNames()) {
+            facilityNameMap.put((String) row[0], (String) row[1]);
+        }
+
         // Build patient -> steps mapping (global, loaded once)
         List<ProtocolInstance> allInstances = protocolInstanceRepository.findAll();
         Map<String, List<StepInstance>> patientSteps = new HashMap<>();
@@ -65,6 +71,7 @@ public class PatientRiskService {
             long totalPatients = onTrack + atRisk + nonCompliant;
             return AtRiskHotspotDto.builder()
                     .facilityId(facilityId)
+                    .facilityName(facilityNameMap.getOrDefault(facilityId, facilityId))
                     .totalPatients(totalPatients)
                     .onTrack(AtRiskHotspotDto.CategoryCount.builder()
                             .count(onTrack)

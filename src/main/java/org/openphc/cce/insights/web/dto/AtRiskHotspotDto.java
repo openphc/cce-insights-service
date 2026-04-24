@@ -7,6 +7,7 @@ import lombok.Data;
 @Builder
 public class AtRiskHotspotDto {
     private String facilityId;
+    private String facilityName;
     private long totalPatients;
     private CategoryCount onTrack;
     private CategoryCount atRisk;
