@@ -17,6 +17,14 @@ public interface EventLogRepository extends ReadOnlyRepository<EventLog, UUID> {
             nativeQuery = true)
     List<String> findDistinctFacilityIds();
 
+    @Query(value = "SELECT DISTINCT el.facility_id, " +
+            "el.data->'location'->0->'location'->>'display' AS facility_name " +
+            "FROM event_log el " +
+            "WHERE el.type = 'Encounter' " +
+            "AND el.data->'location'->0->'location'->>'display' IS NOT NULL",
+            nativeQuery = true)
+    List<Object[]> findFacilityNames();
+
     @Query(value = "SELECT DISTINCT COALESCE(" +
             "el.data->'participant'->0->'individual'->>'reference', " +
             "el.data->'performer'->0->>'reference', " +

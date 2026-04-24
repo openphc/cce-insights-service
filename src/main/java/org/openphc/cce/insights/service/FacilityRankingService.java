@@ -27,6 +27,12 @@ public class FacilityRankingService {
                                                  String sortBy, String order, int limit) {
         List<Object[]> facilityEvents = eventLogRepository.findFacilityEventCounts(null);
 
+        // Build facility name lookup
+        Map<String, String> facilityNameMap = new LinkedHashMap<>();
+        for (Object[] row : eventLogRepository.findFacilityNames()) {
+            facilityNameMap.put((String) row[0], (String) row[1]);
+        }
+
         Map<String, Long> eventCountMap = new LinkedHashMap<>();
         Map<String, Long> activePatientMap = new LinkedHashMap<>();
 
@@ -73,6 +79,7 @@ public class FacilityRankingService {
 
             return FacilityRankingDto.builder()
                     .facilityId(facilityId)
+                    .facilityName(facilityNameMap.getOrDefault(facilityId, facilityId))
                     .totalEvents(events)
                     .totalEnrollments(patients)
                     .activeDeviations(deviations)
@@ -100,6 +107,7 @@ public class FacilityRankingService {
             ranked.add(FacilityRankingDto.builder()
                     .rank(rank++)
                     .facilityId(dto.getFacilityId())
+                    .facilityName(dto.getFacilityName())
                     .totalEvents(dto.getTotalEvents())
                     .totalEnrollments(dto.getTotalEnrollments())
                     .activeDeviations(dto.getActiveDeviations())

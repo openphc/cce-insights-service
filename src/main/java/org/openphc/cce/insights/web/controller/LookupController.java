@@ -46,9 +46,19 @@ public class LookupController {
 
     @GetMapping("/facilities")
     @Cacheable(value = "lookups", key = "'facilities'")
-    public ResponseEntity<ApiResponse<List<String>>> getFacilities() {
-        List<String> facilities = eventLogRepository.findDistinctFacilityIds();
-        return ResponseEntity.ok(ApiResponse.ok(facilities));
+    public ResponseEntity<ApiResponse<List<Map<String, String>>>> getFacilities() {
+        List<String> facilityIds = eventLogRepository.findDistinctFacilityIds();
+        Map<String, String> nameMap = new LinkedHashMap<>();
+        for (Object[] row : eventLogRepository.findFacilityNames()) {
+            nameMap.put((String) row[0], (String) row[1]);
+        }
+        List<Map<String, String>> result = facilityIds.stream().map(id -> {
+            Map<String, String> map = new LinkedHashMap<>();
+            map.put("id", id);
+            map.put("name", nameMap.getOrDefault(id, id));
+            return map;
+        }).collect(Collectors.toList());
+        return ResponseEntity.ok(ApiResponse.ok(result));
     }
 
     @GetMapping("/practitioners")

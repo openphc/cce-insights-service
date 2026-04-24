@@ -8,6 +8,7 @@ import lombok.Data;
 public class FacilityRankingDto {
     private int rank;
     private String facilityId;
+    private String facilityName;
     private long totalEnrollments;
     private double complianceRate;
     private long activeDeviations;
