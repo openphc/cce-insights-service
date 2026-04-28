@@ -37,6 +37,10 @@ public class DashboardService {
         long activeFacilities = inboundEventRepository.countDistinctActiveFacilities(
                 startDate, endDate);
 
+        // Total events from ebuzima source (HIE event count for Data Flow Validation)
+        long hieEventCount = inboundEventRepository.countEventsBySource(
+                "ebuzima", facilityId, startDate, endDate);
+
         double transmissionRate = totalPatientsEBuzima > 0
                 ? Math.round((double) patientsFromHIE / totalPatientsEBuzima * 1000.0) / 10.0
                 : 0.0;
@@ -71,6 +75,7 @@ public class DashboardService {
                 .activeFacilities(activeFacilities)
                 .activeDeviations(activeDeviations)
                 .newDeviations24h(newDeviations24h)
+                .hieEventCount(hieEventCount)
                 .topFacilities(topFacilities)
                 .bottomFacilities(bottomFacilities)
                 .build();
