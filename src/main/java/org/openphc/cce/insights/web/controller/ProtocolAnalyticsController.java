@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -15,6 +16,13 @@ import java.util.UUID;
 public class ProtocolAnalyticsController {
 
     private final ProtocolAnalyticsService protocolAnalyticsService;
+
+    @GetMapping("/{protocolDefinitionId}/action-order")
+    public ResponseEntity<ApiResponse<List<String>>> getActionOrder(
+            @PathVariable UUID protocolDefinitionId) {
+        List<String> actionIds = protocolAnalyticsService.getActionOrder(protocolDefinitionId);
+        return ResponseEntity.ok(ApiResponse.ok(actionIds));
+    }
 
     @GetMapping("/{protocolDefinitionId}/step-analytics")
     public ResponseEntity<ApiResponse<StepAnalyticsDto>> getStepAnalytics(
