@@ -13,4 +13,5 @@ public class FacilityRankingDto {
     private double complianceRate;
     private long activeDeviations;
     private long totalEvents;
+    private long patientsFromHIE;
 }
