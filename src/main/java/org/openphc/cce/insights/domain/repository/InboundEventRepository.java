@@ -15,6 +15,40 @@ public interface InboundEventRepository extends ReadOnlyRepository<InboundEvent,
             nativeQuery = true)
     List<String> findDistinctSources();
 
+    @Query(value = "SELECT COUNT(DISTINCT ie.subject) FROM inbound_event ie " +
+            "WHERE ie.status = 'ACCEPTED' " +
+            "AND ie.subject IS NOT NULL " +
+            "AND (CAST(:source AS text) IS NULL OR ie.source = :source) " +
+            "AND (CAST(:facilityId AS text) IS NULL OR ie.facility_id = :facilityId) " +
+            "AND (CAST(:startDate AS timestamptz) IS NULL OR ie.received_at >= :startDate) " +
+            "AND (CAST(:endDate AS timestamptz) IS NULL OR ie.received_at <= :endDate)",
+            nativeQuery = true)
+    long countDistinctPatientSubjectsBySource(@Param("source") String source,
+                                              @Param("facilityId") String facilityId,
+                                              @Param("startDate") OffsetDateTime startDate,
+                                              @Param("endDate") OffsetDateTime endDate);
+
+    @Query(value = "SELECT COUNT(DISTINCT ie.facility_id) FROM inbound_event ie " +
+            "WHERE ie.status = 'ACCEPTED' " +
+            "AND ie.facility_id IS NOT NULL " +
+            "AND (CAST(:startDate AS timestamptz) IS NULL OR ie.received_at >= :startDate) " +
+            "AND (CAST(:endDate AS timestamptz) IS NULL OR ie.received_at <= :endDate)",
+            nativeQuery = true)
+    long countDistinctActiveFacilities(@Param("startDate") OffsetDateTime startDate,
+                                        @Param("endDate") OffsetDateTime endDate);
+
+    @Query(value = "SELECT ie.facility_id, COUNT(DISTINCT ie.subject) FROM inbound_event ie " +
+            "WHERE ie.status = 'ACCEPTED' " +
+            "AND ie.subject IS NOT NULL " +
+            "AND ie.source = :source " +
+            "AND (CAST(:startDate AS timestamptz) IS NULL OR ie.received_at >= :startDate) " +
+            "AND (CAST(:endDate AS timestamptz) IS NULL OR ie.received_at <= :endDate) " +
+            "GROUP BY ie.facility_id",
+            nativeQuery = true)
+    List<Object[]> countDistinctPatientsBySourceGroupedByFacility(@Param("source") String source,
+                                                                   @Param("startDate") OffsetDateTime startDate,
+                                                                   @Param("endDate") OffsetDateTime endDate);
+
     // --- Ingestion Funnel ---
 
     @Query(value = "SELECT ie.status, COUNT(*) AS event_count " +
