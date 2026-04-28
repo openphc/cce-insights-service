@@ -19,15 +19,15 @@ public interface StepInstanceRepository extends ReadOnlyRepository<StepInstance,
     List<Object[]> countByProtocolInstanceIdGroupByState(@Param("piId") UUID protocolInstanceId);
 
     @Query(value = "SELECT si.action_id, " +
-            "COUNT(*) AS total_instances, " +
-            "COUNT(CASE WHEN si.state = 'COMPLETED' THEN 1 END) AS completed_count, " +
-            "COUNT(CASE WHEN si.completion_status = 'EARLY' THEN 1 END) AS early_count, " +
-            "COUNT(CASE WHEN si.completion_status = 'ON_TIME' THEN 1 END) AS on_time_count, " +
-            "COUNT(CASE WHEN si.completion_status = 'LATE' THEN 1 END) AS late_count, " +
-            "COUNT(CASE WHEN si.state = 'OVERDUE' THEN 1 END) AS overdue_count, " +
-            "COUNT(CASE WHEN si.state = 'MISSED' THEN 1 END) AS missed_count, " +
-            "COUNT(CASE WHEN si.state = 'SKIPPED' THEN 1 END) AS skipped_count, " +
-            "COUNT(CASE WHEN si.state = 'PENDING' OR si.state = 'DUE' THEN 1 END) AS pending_count, " +
+            "COUNT(DISTINCT pi.patient_id) AS total_instances, " +
+            "COUNT(DISTINCT CASE WHEN si.state = 'COMPLETED' THEN pi.patient_id END) AS completed_count, " +
+            "COUNT(DISTINCT CASE WHEN si.completion_status = 'EARLY' THEN pi.patient_id END) AS early_count, " +
+            "COUNT(DISTINCT CASE WHEN si.completion_status = 'ON_TIME' THEN pi.patient_id END) AS on_time_count, " +
+            "COUNT(DISTINCT CASE WHEN si.completion_status = 'LATE' THEN pi.patient_id END) AS late_count, " +
+            "COUNT(DISTINCT CASE WHEN si.state = 'OVERDUE' THEN pi.patient_id END) AS overdue_count, " +
+            "COUNT(DISTINCT CASE WHEN si.state = 'MISSED' THEN pi.patient_id END) AS missed_count, " +
+            "COUNT(DISTINCT CASE WHEN si.state = 'SKIPPED' THEN pi.patient_id END) AS skipped_count, " +
+            "COUNT(DISTINCT CASE WHEN si.state = 'PENDING' OR si.state = 'DUE' THEN pi.patient_id END) AS pending_count, " +
             "AVG(EXTRACT(EPOCH FROM (si.completed_at - si.due_date)) / 86400.0) " +
             "  FILTER (WHERE si.state = 'COMPLETED' AND si.due_date IS NOT NULL) AS avg_days_to_complete, " +
             "PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (si.completed_at - si.due_date)) / 86400.0) " +
