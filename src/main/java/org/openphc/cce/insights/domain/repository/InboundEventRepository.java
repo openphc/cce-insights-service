@@ -37,6 +37,17 @@ public interface InboundEventRepository extends ReadOnlyRepository<InboundEvent,
     long countDistinctActiveFacilities(@Param("startDate") OffsetDateTime startDate,
                                         @Param("endDate") OffsetDateTime endDate);
 
+    @Query(value = "SELECT COUNT(*) FROM inbound_event ie " +
+            "WHERE ie.source = :source " +
+            "AND (CAST(:facilityId AS text) IS NULL OR ie.facility_id = :facilityId) " +
+            "AND (CAST(:startDate AS timestamptz) IS NULL OR ie.received_at >= :startDate) " +
+            "AND (CAST(:endDate AS timestamptz) IS NULL OR ie.received_at <= :endDate)",
+            nativeQuery = true)
+    long countEventsBySource(@Param("source") String source,
+                             @Param("facilityId") String facilityId,
+                             @Param("startDate") OffsetDateTime startDate,
+                             @Param("endDate") OffsetDateTime endDate);
+
     @Query(value = "SELECT ie.facility_id, COUNT(DISTINCT ie.subject) FROM inbound_event ie " +
             "WHERE ie.status = 'ACCEPTED' " +
             "AND ie.subject IS NOT NULL " +

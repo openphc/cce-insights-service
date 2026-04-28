@@ -14,6 +14,7 @@ public class DashboardOverviewDto {
     private long activeFacilities;
     private long activeDeviations;
     private long newDeviations24h;
+    private long hieEventCount;
     private List<FacilityRankingDto> topFacilities;
     private List<FacilityRankingDto> bottomFacilities;
 }
