@@ -2,6 +2,8 @@ package org.openphc.cce.insights.service;
 
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.openphc.cce.insights.domain.entity.ProtocolDefinition;
 import org.openphc.cce.insights.domain.repository.*;
 import org.openphc.cce.insights.web.dto.*;
@@ -21,6 +23,31 @@ public class ProtocolAnalyticsService {
     private final ProtocolDefinitionRepository protocolDefinitionRepository;
     private final ProtocolInstanceRepository protocolInstanceRepository;
     private final StepInstanceRepository stepInstanceRepository;
+    private final ObjectMapper objectMapper;
+
+    @Cacheable(value = "analytics", key = "'action-order-' + #protocolDefinitionId")
+    public List<String> getActionOrder(UUID protocolDefinitionId) {
+        ProtocolDefinition pd = protocolDefinitionRepository.findById(protocolDefinitionId)
+                .orElseThrow(() -> new EntityNotFoundException(
+                        "Protocol definition not found: " + protocolDefinitionId));
+
+        List<String> actionIds = new ArrayList<>();
+        try {
+            JsonNode root = objectMapper.readTree(pd.getDefinition());
+            JsonNode actions = root.get("action");
+            if (actions != null && actions.isArray()) {
+                for (JsonNode action : actions) {
+                    JsonNode idNode = action.get("id");
+                    if (idNode != null && !idNode.isNull()) {
+                        actionIds.add(idNode.asText());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // fallback: return empty list, UI will use default order
+        }
+        return actionIds;
+    }
 
     @Cacheable(value = "analytics", key = "'step-analytics-' + #protocolDefinitionId")
     public StepAnalyticsDto getStepAnalytics(UUID protocolDefinitionId) {
