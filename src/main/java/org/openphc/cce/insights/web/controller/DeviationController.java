@@ -41,7 +41,7 @@ public class DeviationController {
         return ResponseEntity.ok(ApiResponse.ok(trends));
     }
 
-    @GetMapping("/intelligence/summary")
+    @GetMapping("/deviations/intelligence-summary")
     public ResponseEntity<ApiResponse<DeviationIntelligenceSummaryDto>> getIntelligenceSummary() {
         DeviationIntelligenceSummaryDto summary = deviationAnalyticsService.getIntelligenceSummary();
         return ResponseEntity.ok(ApiResponse.ok(summary));

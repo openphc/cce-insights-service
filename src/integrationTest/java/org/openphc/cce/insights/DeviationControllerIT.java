@@ -72,7 +72,7 @@ class DeviationControllerIT extends AbstractIntegrationTest {
 
     @Test
     void getIntelligenceSummary_returnsSummary() throws Exception {
-        mockMvc.perform(get("/v1/insights/intelligence/summary"))
+        mockMvc.perform(get("/v1/insights/deviations/intelligence-summary"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.totalDeviations").isNumber())
                 .andExpect(jsonPath("$.data.byType").isMap())
