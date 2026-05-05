@@ -88,3 +88,42 @@ CREATE INDEX idx_inbound_event_subject ON inbound_event(subject);
 CREATE INDEX idx_inbound_event_source ON inbound_event(source);
 CREATE INDEX idx_inbound_event_status ON inbound_event(status);
 CREATE INDEX idx_inbound_event_received ON inbound_event(received_at);
+
+-- Intelligence Service tables (read-only from insights perspective)
+
+CREATE TABLE receiver_adaptor (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(256) NOT NULL,
+    definition JSONB,
+    status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
+    config JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE destination_adaptor_mapping (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    destination VARCHAR(512) NOT NULL,
+    receiver_adaptor_id UUID NOT NULL REFERENCES receiver_adaptor(id),
+    status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE intelligence_delivery (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    intelligence_event_id UUID NOT NULL,
+    action_definition_id UUID,
+    destination_adaptor_mapping_id UUID REFERENCES destination_adaptor_mapping(id),
+    action_type VARCHAR(32) NOT NULL,
+    status VARCHAR(32) NOT NULL DEFAULT 'PENDING',
+    subject VARCHAR(512),
+    protocol_canonical VARCHAR(600),
+    action_id VARCHAR(256),
+    severity VARCHAR(16),
+    destination VARCHAR(512),
+    attempt_count INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    delivered_at TIMESTAMPTZ
+);

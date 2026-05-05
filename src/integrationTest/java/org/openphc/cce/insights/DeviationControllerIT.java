@@ -40,11 +40,11 @@ class DeviationControllerIT extends AbstractIntegrationTest {
                         .build());
 
         when(deviationAnalyticsService.getIntelligenceSummary())
-                .thenReturn(IntelligenceSummaryDto.builder()
+                .thenReturn(DeviationIntelligenceSummaryDto.builder()
                         .totalDeviations(5)
                         .byType(Map.of("overdue", 3L, "missed", 2L, "orderViolation", 0L))
                         .bySeverity(Map.of("warning", 3L, "critical", 2L))
-                        .recentActivity(IntelligenceSummaryDto.RecentActivity.builder()
+                        .recentActivity(DeviationIntelligenceSummaryDto.RecentActivity.builder()
                                 .last24Hours(1).last7Days(3).last30Days(5).build())
                         .build());
 
