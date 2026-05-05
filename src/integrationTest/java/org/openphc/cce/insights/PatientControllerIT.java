@@ -16,6 +16,7 @@ import org.openphc.cce.insights.domain.enums.ProtocolInstanceStatus;
 import org.openphc.cce.insights.domain.enums.StepState;
 import org.openphc.cce.insights.domain.repository.DeviationRepository;
 import org.openphc.cce.insights.domain.repository.EventLogRepository;
+import org.openphc.cce.insights.domain.repository.ProtocolDefinitionRepository;
 import org.openphc.cce.insights.domain.repository.ProtocolInstanceRepository;
 import org.openphc.cce.insights.domain.repository.StepInstanceRepository;
 import org.openphc.cce.insights.service.PatientTimelineService;
@@ -51,6 +52,8 @@ class PatientControllerIT extends AbstractIntegrationTest {
     private DeviationRepository deviationRepository;
     @MockitoBean
     private EventLogRepository eventLogRepository;
+    @MockitoBean
+    private ProtocolDefinitionRepository protocolDefinitionRepository;
 
     private static final String PATIENT_1 = "260225-0002-5501";
     private static final String PATIENT_2 = "260225-0002-5502";
