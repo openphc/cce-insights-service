@@ -48,4 +48,12 @@ public interface ProtocolInstanceRepository extends ReadOnlyRepository<ProtocolI
             @Param("protocolDefId") UUID protocolDefId,
             @Param("status") ProtocolInstanceStatus status,
             Pageable pageable);
+
+    @Query("SELECT pi FROM ProtocolInstance pi " +
+            "WHERE pi.protocolDefinitionId = :protocolDefId " +
+            "AND LOWER(pi.patientId) LIKE LOWER(CONCAT('%', :patientId, '%'))")
+    Page<ProtocolInstance> findByProtocolDefinitionIdAndPatientIdContaining(
+            @Param("protocolDefId") UUID protocolDefId,
+            @Param("patientId") String patientId,
+            Pageable pageable);
 }
