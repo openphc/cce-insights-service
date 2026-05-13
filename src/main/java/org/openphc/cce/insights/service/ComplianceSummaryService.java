@@ -101,15 +101,17 @@ public class ComplianceSummaryService {
                 .build();
     }
 
-    @Cacheable(value = "analytics", key = "'protocol-patients-' + #protocolDefinitionId + '-' + #statusFilter + '-' + #limit + '-' + #offset")
-    public List<PatientComplianceDto> getProtocolPatients(UUID protocolDefinitionId, String statusFilter, int limit, int offset) {
+    @Cacheable(value = "analytics", key = "'protocol-patients-' + #protocolDefinitionId + '-' + #statusFilter + '-' + #patientIdFilter + '-' + #limit + '-' + #offset")
+    public List<PatientComplianceDto> getProtocolPatients(UUID protocolDefinitionId, String statusFilter, String patientIdFilter, int limit, int offset) {
         protocolDefinitionRepository.findById(protocolDefinitionId)
                 .orElseThrow(() -> new EntityNotFoundException(
                         "Protocol definition not found: " + protocolDefinitionId));
 
         Pageable pageable = PageRequest.of(offset / Math.max(limit, 1), limit, Sort.by(Sort.Direction.DESC, "enrolledAt"));
         Page<ProtocolInstance> page;
-        if (statusFilter != null && !statusFilter.isEmpty()) {
+        if (patientIdFilter != null && !patientIdFilter.isEmpty()) {
+            page = protocolInstanceRepository.findByProtocolDefinitionIdAndPatientIdContaining(protocolDefinitionId, patientIdFilter, pageable);
+        } else if (statusFilter != null && !statusFilter.isEmpty()) {
             // Fetch all sorted, then filter in-memory (status is computed, not a DB column)
             page = protocolInstanceRepository.findByProtocolDefinitionId(protocolDefinitionId, pageable);
         } else {
