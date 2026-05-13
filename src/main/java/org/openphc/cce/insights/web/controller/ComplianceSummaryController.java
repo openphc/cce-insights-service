@@ -5,6 +5,7 @@ import org.openphc.cce.insights.service.ComplianceSummaryService;
 import org.openphc.cce.insights.web.dto.ApiResponse;
 import org.openphc.cce.insights.web.dto.ComplianceSummaryDto;
 import org.openphc.cce.insights.web.dto.FacilitySummaryDto;
+import org.openphc.cce.insights.web.dto.PaginationDto;
 import org.openphc.cce.insights.web.dto.PatientComplianceDto;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -45,10 +46,20 @@ public class ComplianceSummaryController {
             @PathVariable UUID protocolDefinitionId,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String facilityId,
-            @RequestParam(defaultValue = "50") int limit,
+            @RequestParam(defaultValue = "20") int limit,
             @RequestParam(required = false) String cursor) {
-        List<PatientComplianceDto> patients = complianceSummaryService.getProtocolPatients(
-                protocolDefinitionId, status, limit);
-        return ResponseEntity.ok(ApiResponse.ok(patients));
+        int offset = 0;
+        if (cursor != null && !cursor.isEmpty()) {
+            try { offset = Integer.parseInt(cursor); } catch (NumberFormatException ignored) {}
+        }
+        var result = complianceSummaryService.getProtocolPatients(
+                protocolDefinitionId, status, limit, offset);
+        String nextCursor = result.size() == limit ? String.valueOf(offset + limit) : null;
+        var pagination = PaginationDto.builder()
+                .limit(limit)
+                .nextCursor(nextCursor)
+                .hasMore(result.size() == limit)
+                .build();
+        return ResponseEntity.ok(ApiResponse.page(result, pagination));
     }
 }
