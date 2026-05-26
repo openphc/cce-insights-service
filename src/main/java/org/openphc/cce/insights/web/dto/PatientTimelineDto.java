@@ -27,12 +27,15 @@ public class PatientTimelineDto {
     @Builder
     public static class JourneyStep {
         private String actionId;
+        private String parentActionId;
         private String stepName;
         private String status;       // COMPLETED, PENDING, NOT_STARTED, OVERDUE, MISSED, SKIPPED
         private int completionCount;
         private String effectiveDateTime;
         private String completionStatus;
         private String source;
+        @Builder.Default
+        private int depth = 0;
     }
 
     @Data

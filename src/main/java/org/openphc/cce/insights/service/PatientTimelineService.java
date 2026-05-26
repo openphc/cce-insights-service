@@ -124,15 +124,19 @@ public class PatientTimelineService {
         for (String[] action : orderedActions) {
             String actionId = action[0];
             String title = action[1];
+            int depth = action.length > 2 ? Integer.parseInt(action[2]) : 0;
+            String parentActionId = action.length > 3 && !action[3].isEmpty() ? action[3] : null;
             List<StepInstance> actionSteps = stepsByAction.getOrDefault(actionId, List.of());
 
             if (actionSteps.isEmpty()) {
                 // No step_instance exists for this action
                 journey.add(PatientTimelineDto.JourneyStep.builder()
                         .actionId(actionId)
+                        .parentActionId(parentActionId)
                         .stepName(title)
                         .status("NOT_STARTED")
                         .completionCount(0)
+                        .depth(depth)
                         .build());
             } else {
                 // Pick the "best" status: COMPLETED > OVERDUE > MISSED > PENDING > SKIPPED
@@ -159,12 +163,14 @@ public class PatientTimelineService {
 
                 journey.add(PatientTimelineDto.JourneyStep.builder()
                         .actionId(actionId)
+                        .parentActionId(parentActionId)
                         .stepName(title)
                         .status(best.getState().name())
                         .completionCount(completedCount)
                         .effectiveDateTime(effectiveDt)
                         .completionStatus(best.getCompletionStatus() != null ? best.getCompletionStatus().name() : null)
                         .source(best.getCompletedBySource())
+                        .depth(depth)
                         .build());
             }
         }
@@ -248,7 +254,7 @@ public class PatientTimelineService {
 
     /**
      * Resolve ordered action list from PlanDefinition JSON.
-     * Returns list of [actionId, title] pairs in definition order.
+     * Returns list of [actionId, title, depth] tuples in definition order, recursing into nested actions.
      */
     private List<String[]> resolveOrderedActions(UUID protocolDefinitionId) {
         List<String[]> actions = new ArrayList<>();
@@ -259,19 +265,47 @@ public class PatientTimelineService {
                 JsonNode root = objectMapper.readTree(pd.getDefinition());
                 JsonNode actionNodes = root.get("action");
                 if (actionNodes != null && actionNodes.isArray()) {
-                    for (JsonNode action : actionNodes) {
-                        String id = action.has("id") ? action.get("id").asText() : null;
-                        String title = action.has("title") ? action.get("title").asText() : null;
-                        if (id != null) {
-                            actions.add(new String[]{id, title != null ? title : formatActionId(id)});
-                        }
-                    }
+                    collectActions(actionNodes, actions, 0, null);
                 }
             }
         } catch (Exception e) {
             log.warn("Failed to parse protocol definition {}: {}", protocolDefinitionId, e.getMessage());
         }
         return actions;
+    }
+
+    private void collectActions(JsonNode actionNodes, List<String[]> actions, int depth, String parentId) {
+        for (JsonNode action : actionNodes) {
+            String id = action.has("id") ? action.get("id").asText() : null;
+            String title = action.has("title") ? action.get("title").asText() : null;
+
+            // Skip fire-event intelligence actions (notifications/escalations) — not compliance steps
+            if (isFireEventAction(action)) {
+                continue;
+            }
+
+            if (id != null) {
+                actions.add(new String[]{id, title != null ? title : formatActionId(id), String.valueOf(depth), parentId != null ? parentId : ""});
+            }
+            // Recurse into nested sub-actions
+            JsonNode subActions = action.get("action");
+            if (subActions != null && subActions.isArray()) {
+                collectActions(subActions, actions, depth + 1, id);
+            }
+        }
+    }
+
+    private boolean isFireEventAction(JsonNode action) {
+        JsonNode type = action.get("type");
+        if (type == null) return false;
+        JsonNode coding = type.get("coding");
+        if (coding == null || !coding.isArray()) return false;
+        for (JsonNode c : coding) {
+            if (c.has("code") && "fire-event".equals(c.get("code").asText())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private OffsetDateTime resolveTimestamp(StepInstance si) {
