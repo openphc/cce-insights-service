@@ -69,7 +69,7 @@ class ComplianceSummaryControllerIT extends AbstractIntegrationTest {
 
     @Test
     void getProtocolPatients_returnsAllPatients() throws Exception {
-        when(complianceSummaryService.getProtocolPatients(eq(PROTOCOL_ID), isNull(), eq(50)))
+        when(complianceSummaryService.getProtocolPatients(eq(PROTOCOL_ID), isNull(), isNull(), eq(20), eq(0)))
                 .thenReturn(List.of(
                         PatientComplianceDto.builder().patientId("p1").complianceCategory("on_track").build(),
                         PatientComplianceDto.builder().patientId("p2").complianceCategory("at_risk").build(),
@@ -83,7 +83,7 @@ class ComplianceSummaryControllerIT extends AbstractIntegrationTest {
 
     @Test
     void getProtocolPatients_filteredByStatus() throws Exception {
-        when(complianceSummaryService.getProtocolPatients(eq(PROTOCOL_ID), eq("at_risk"), eq(50)))
+        when(complianceSummaryService.getProtocolPatients(eq(PROTOCOL_ID), eq("at_risk"), isNull(), eq(20), eq(0)))
                 .thenReturn(List.of(
                         PatientComplianceDto.builder().patientId("p2").complianceCategory("at_risk").build()));
 

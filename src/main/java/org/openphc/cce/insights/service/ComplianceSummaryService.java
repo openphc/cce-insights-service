@@ -16,6 +16,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -96,16 +101,25 @@ public class ComplianceSummaryService {
                 .build();
     }
 
-    @Cacheable(value = "analytics", key = "'protocol-patients-' + #protocolDefinitionId + '-' + #statusFilter + '-' + #limit")
-    public List<PatientComplianceDto> getProtocolPatients(UUID protocolDefinitionId, String statusFilter, int limit) {
+    @Cacheable(value = "analytics", key = "'protocol-patients-' + #protocolDefinitionId + '-' + #statusFilter + '-' + #patientIdFilter + '-' + #limit + '-' + #offset")
+    public List<PatientComplianceDto> getProtocolPatients(UUID protocolDefinitionId, String statusFilter, String patientIdFilter, int limit, int offset) {
         protocolDefinitionRepository.findById(protocolDefinitionId)
                 .orElseThrow(() -> new EntityNotFoundException(
                         "Protocol definition not found: " + protocolDefinitionId));
 
-        List<ProtocolInstance> instances = protocolInstanceRepository.findByProtocolDefinitionId(protocolDefinitionId);
-        List<PatientComplianceDto> results = new ArrayList<>();
+        Pageable pageable = PageRequest.of(offset / Math.max(limit, 1), limit, Sort.by(Sort.Direction.DESC, "enrolledAt"));
+        Page<ProtocolInstance> page;
+        if (patientIdFilter != null && !patientIdFilter.isEmpty()) {
+            page = protocolInstanceRepository.findByProtocolDefinitionIdAndPatientIdContaining(protocolDefinitionId, patientIdFilter, pageable);
+        } else if (statusFilter != null && !statusFilter.isEmpty()) {
+            // Fetch all sorted, then filter in-memory (status is computed, not a DB column)
+            page = protocolInstanceRepository.findByProtocolDefinitionId(protocolDefinitionId, pageable);
+        } else {
+            page = protocolInstanceRepository.findByProtocolDefinitionId(protocolDefinitionId, pageable);
+        }
 
-        for (ProtocolInstance pi : instances) {
+        List<PatientComplianceDto> results = new ArrayList<>();
+        for (ProtocolInstance pi : page.getContent()) {
             List<StepInstance> steps = stepInstanceRepository.findByProtocolInstanceId(pi.getId());
             long completedCount = steps.stream()
                     .filter(s -> s.getState() == StepState.COMPLETED || s.getState() == StepState.SKIPPED)
@@ -131,8 +145,6 @@ public class ComplianceSummaryService {
                     .totalSteps(steps.size())
                     .activeDeviations(activeDevs)
                     .build());
-
-            if (results.size() >= limit) break;
         }
         return results;
     }
