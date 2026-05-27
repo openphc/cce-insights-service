@@ -234,32 +234,43 @@ public class PatientTimelineService {
     private String extractPractitioner(String jsonData) {
         try {
             JsonNode root = objectMapper.readTree(jsonData);
-            // Encounter: participant[].individual.display
+            // Encounter: participant[].individual.display or reference
             JsonNode participants = root.get("participant");
             if (participants != null && participants.isArray()) {
                 for (JsonNode p : participants) {
                     JsonNode individual = p.get("individual");
-                    if (individual != null && individual.has("display")) {
-                        return individual.get("display").asText();
+                    if (individual != null) {
+                        String name = extractDisplayOrReference(individual);
+                        if (name != null) return name;
                     }
                 }
             }
-            // Observation: performer[].display
+            // Observation: performer[].display or reference
             JsonNode performers = root.get("performer");
             if (performers != null && performers.isArray()) {
                 for (JsonNode perf : performers) {
-                    if (perf.has("display")) {
-                        return perf.get("display").asText();
-                    }
+                    String name = extractDisplayOrReference(perf);
+                    if (name != null) return name;
                 }
             }
-            // Condition: asserter.display
+            // Condition: asserter.display or reference
             JsonNode asserter = root.get("asserter");
-            if (asserter != null && asserter.has("display")) {
-                return asserter.get("display").asText();
+            if (asserter != null) {
+                String name = extractDisplayOrReference(asserter);
+                if (name != null) return name;
             }
         } catch (Exception e) {
             log.debug("Failed to extract practitioner: {}", e.getMessage());
+        }
+        return null;
+    }
+
+    private String extractDisplayOrReference(JsonNode node) {
+        if (node.has("display")) {
+            return node.get("display").asText();
+        }
+        if (node.has("reference")) {
+            return node.get("reference").asText();
         }
         return null;
     }
