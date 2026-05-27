@@ -234,24 +234,38 @@ public class PatientTimelineService {
     private String extractPractitioner(String jsonData) {
         try {
             JsonNode root = objectMapper.readTree(jsonData);
-            // Encounter: participant[].individual.display or reference
+            // Encounter: participant[].individual — prefer Practitioner reference
             JsonNode participants = root.get("participant");
             if (participants != null && participants.isArray()) {
+                String fallback = null;
                 for (JsonNode p : participants) {
                     JsonNode individual = p.get("individual");
                     if (individual != null) {
-                        String name = extractDisplayOrReference(individual);
-                        if (name != null) return name;
+                        String ref = individual.has("reference") ? individual.get("reference").asText() : null;
+                        if (ref != null && ref.startsWith("Practitioner/")) {
+                            return extractDisplayOrReference(individual);
+                        }
+                        if (fallback == null) {
+                            fallback = extractDisplayOrReference(individual);
+                        }
                     }
                 }
+                if (fallback != null) return fallback;
             }
-            // Observation: performer[].display or reference
+            // Observation: performer[] — prefer Practitioner reference
             JsonNode performers = root.get("performer");
             if (performers != null && performers.isArray()) {
+                String fallback = null;
                 for (JsonNode perf : performers) {
-                    String name = extractDisplayOrReference(perf);
-                    if (name != null) return name;
+                    String ref = perf.has("reference") ? perf.get("reference").asText() : null;
+                    if (ref != null && ref.startsWith("Practitioner/")) {
+                        return extractDisplayOrReference(perf);
+                    }
+                    if (fallback == null) {
+                        fallback = extractDisplayOrReference(perf);
+                    }
                 }
+                if (fallback != null) return fallback;
             }
             // Condition: asserter.display or reference
             JsonNode asserter = root.get("asserter");
