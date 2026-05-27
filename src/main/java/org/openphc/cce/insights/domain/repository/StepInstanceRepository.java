@@ -64,7 +64,8 @@ public interface StepInstanceRepository extends ReadOnlyRepository<StepInstance,
             "COUNT(DISTINCT si.id) AS total_steps, " +
             "COUNT(DISTINCT CASE WHEN si.state IN ('COMPLETED','SKIPPED') THEN si.id END) AS completed_steps " +
             "FROM step_instance si " +
-            "JOIN event_log el ON el.matched_step_instance_id = si.id " +
+            "JOIN protocol_instance pi ON si.protocol_instance_id = pi.id " +
+            "JOIN event_log el ON el.protocol_instance_id = pi.id " +
             "CROSS JOIN LATERAL ( " +
             "  SELECT COALESCE(" +
             "    el.data->'participant'->0->'individual'->>'reference', " +
