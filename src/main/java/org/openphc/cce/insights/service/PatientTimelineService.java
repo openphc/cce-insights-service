@@ -127,6 +127,7 @@ public class PatientTimelineService {
             String title = action[1];
             int depth = action.length > 2 ? Integer.parseInt(action[2]) : 0;
             String parentActionId = action.length > 3 && !action[3].isEmpty() ? action[3] : null;
+            String requiredBehavior = action.length > 4 && !action[4].isEmpty() ? action[4] : null;
             List<StepInstance> actionSteps = stepsByAction.getOrDefault(actionId, List.of());
 
             if (actionSteps.isEmpty()) {
@@ -137,6 +138,7 @@ public class PatientTimelineService {
                         .stepName(title)
                         .status("NOT_STARTED")
                         .completionCount(0)
+                        .requiredBehavior(requiredBehavior)
                         .depth(depth)
                         .build());
             } else {
@@ -167,6 +169,7 @@ public class PatientTimelineService {
                         .source(best.getCompletedBySource())
                         .practitioner(ctx != null ? ctx.practitioner : null)
                         .facilityId(ctx != null ? ctx.facilityId : null)
+                        .requiredBehavior(requiredBehavior)
                         .depth(depth)
                         .build());
             }
@@ -346,6 +349,7 @@ public class PatientTimelineService {
         for (JsonNode action : actionNodes) {
             String id = action.has("id") ? action.get("id").asText() : null;
             String title = action.has("title") ? action.get("title").asText() : null;
+            String requiredBehavior = action.has("requiredBehavior") ? action.get("requiredBehavior").asText() : null;
 
             // Skip fire-event intelligence actions (notifications/escalations) — not compliance steps
             if (isFireEventAction(action)) {
@@ -353,7 +357,7 @@ public class PatientTimelineService {
             }
 
             if (id != null) {
-                actions.add(new String[]{id, title != null ? title : formatActionId(id), String.valueOf(depth), parentId != null ? parentId : ""});
+                actions.add(new String[]{id, title != null ? title : formatActionId(id), String.valueOf(depth), parentId != null ? parentId : "", requiredBehavior != null ? requiredBehavior : ""});
             }
             // Recurse into nested sub-actions
             JsonNode subActions = action.get("action");

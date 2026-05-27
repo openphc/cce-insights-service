@@ -36,6 +36,7 @@ public class PatientTimelineDto {
         private String source;
         private String practitioner;
         private String facilityId;
+        private String requiredBehavior; // must, could
         @Builder.Default
         private int depth = 0;
     }
