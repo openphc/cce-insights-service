@@ -284,6 +284,11 @@ public class PatientTimelineService {
             if (authoredOn != null && !authoredOn.isNull()) {
                 return authoredOn.asText();
             }
+            // Fallback: meta.lastUpdated
+            JsonNode lastUpdated = root.path("meta").get("lastUpdated");
+            if (lastUpdated != null && !lastUpdated.isNull()) {
+                return lastUpdated.asText();
+            }
         } catch (Exception e) {
             log.debug("Failed to extract effectiveDateTime: {}", e.getMessage());
         }
