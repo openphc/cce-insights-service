@@ -47,11 +47,11 @@ public class PatientTimelineService {
                 stepTitles.put(pair[0], pair[1]);
             }
 
-            // Build effectiveDateTime lookup: stepInstance.matchedEventId → event_log.data.effectiveDateTime
-            Map<UUID, String> effectiveDateTimeMap = resolveEffectiveDateTimes(steps);
+            // Build event context lookup: stepInstance.matchedEventId → EventContext (effectiveDateTime, practitioner, facilityId)
+            Map<UUID, EventContext> eventContextMap = resolveEventContext(steps);
 
             // Build Protocol Journey (one row per protocol-defined action)
-            List<PatientTimelineDto.JourneyStep> journey = buildJourney(orderedActions, steps, stepTitles, effectiveDateTimeMap);
+            List<PatientTimelineDto.JourneyStep> journey = buildJourney(orderedActions, steps, stepTitles, eventContextMap);
 
             // Build Compliance Timeline events
             List<PatientTimelineDto.TimelineEvent> events = new ArrayList<>();
@@ -75,7 +75,8 @@ public class PatientTimelineService {
                                 .actionId(si.getActionId())
                                 .stepName(stepName)
                                 .state(si.getState().name())
-                                .effectiveDateTime(effectiveDateTimeMap.get(si.getId()));
+                                .effectiveDateTime(eventContextMap.containsKey(si.getId()) ?
+                                        eventContextMap.get(si.getId()).effectiveDateTime() : null);
 
                 if (si.getState() == StepState.COMPLETED) {
                     builder.completionStatus(si.getCompletionStatus() != null ?
@@ -114,7 +115,7 @@ public class PatientTimelineService {
      */
     private List<PatientTimelineDto.JourneyStep> buildJourney(
             List<String[]> orderedActions, List<StepInstance> steps,
-            Map<String, String> stepTitles, Map<UUID, String> effectiveDateTimeMap) {
+            Map<String, String> stepTitles, Map<UUID, EventContext> eventContextMap) {
 
         // Group steps by actionId
         Map<String, List<StepInstance>> stepsByAction = steps.stream()
@@ -144,18 +145,12 @@ public class PatientTimelineService {
                 int completedCount = (int) actionSteps.stream()
                         .filter(s -> s.getState() == StepState.COMPLETED)
                         .count();
-                String effectiveDt = effectiveDateTimeMap.get(best.getId());
-                // For completed, prefer the first completion's effectiveDateTime
-                if (best.getState() == StepState.COMPLETED && effectiveDt == null) {
-                    actionSteps.stream()
+                EventContext ctx = eventContextMap.get(best.getId());
+                // For completed, prefer the first completion's context
+                if (best.getState() == StepState.COMPLETED && ctx == null) {
+                    ctx = actionSteps.stream()
                             .filter(s -> s.getState() == StepState.COMPLETED)
-                            .map(s -> effectiveDateTimeMap.get(s.getId()))
-                            .filter(Objects::nonNull)
-                            .findFirst()
-                            .ifPresent(dt -> {});
-                    effectiveDt = actionSteps.stream()
-                            .filter(s -> s.getState() == StepState.COMPLETED)
-                            .map(s -> effectiveDateTimeMap.get(s.getId()))
+                            .map(s -> eventContextMap.get(s.getId()))
                             .filter(Objects::nonNull)
                             .findFirst()
                             .orElse(null);
@@ -167,9 +162,11 @@ public class PatientTimelineService {
                         .stepName(title)
                         .status(best.getState().name())
                         .completionCount(completedCount)
-                        .effectiveDateTime(effectiveDt)
+                        .effectiveDateTime(ctx != null ? ctx.effectiveDateTime : null)
                         .completionStatus(best.getCompletionStatus() != null ? best.getCompletionStatus().name() : null)
                         .source(best.getCompletedBySource())
+                        .practitioner(ctx != null ? ctx.practitioner : null)
+                        .facilityId(ctx != null ? ctx.facilityId : null)
                         .depth(depth)
                         .build());
             }
@@ -196,11 +193,11 @@ public class PatientTimelineService {
     }
 
     /**
-     * Resolve effectiveDateTime for all steps that have a matched_event_id.
-     * Returns a map of stepInstance.id → effectiveDateTime string.
+     * Resolve event context (effectiveDateTime, practitioner, facilityId) for all steps with a matched_event_id.
+     * Returns a map of stepInstance.id → EventContext.
      */
-    private Map<UUID, String> resolveEffectiveDateTimes(List<StepInstance> steps) {
-        Map<UUID, String> result = new HashMap<>();
+    private Map<UUID, EventContext> resolveEventContext(List<StepInstance> steps) {
+        Map<UUID, EventContext> result = new HashMap<>();
         // Collect all matched event IDs
         Map<UUID, UUID> stepToEvent = new LinkedHashMap<>();
         for (StepInstance si : steps) {
@@ -216,14 +213,55 @@ public class PatientTimelineService {
 
         for (Map.Entry<UUID, UUID> entry : stepToEvent.entrySet()) {
             EventLog el = eventMap.get(entry.getValue());
-            if (el != null && el.getData() != null) {
-                String effectiveDt = extractEffectiveDateTime(el.getData());
-                if (effectiveDt != null) {
-                    result.put(entry.getKey(), effectiveDt);
+            if (el != null) {
+                String effectiveDt = el.getData() != null ? extractEffectiveDateTime(el.getData()) : null;
+                String practitioner = el.getData() != null ? extractPractitioner(el.getData()) : null;
+                String facilityId = el.getFacilityId();
+                if (effectiveDt != null || practitioner != null || facilityId != null) {
+                    result.put(entry.getKey(), new EventContext(effectiveDt, practitioner, facilityId));
                 }
             }
         }
         return result;
+    }
+
+    private record EventContext(String effectiveDateTime, String practitioner, String facilityId) {}
+
+    /**
+     * Extract practitioner display name from FHIR JSON data.
+     * Supports: Encounter.participant[].individual, Observation.performer[], Condition.asserter
+     */
+    private String extractPractitioner(String jsonData) {
+        try {
+            JsonNode root = objectMapper.readTree(jsonData);
+            // Encounter: participant[].individual.display
+            JsonNode participants = root.get("participant");
+            if (participants != null && participants.isArray()) {
+                for (JsonNode p : participants) {
+                    JsonNode individual = p.get("individual");
+                    if (individual != null && individual.has("display")) {
+                        return individual.get("display").asText();
+                    }
+                }
+            }
+            // Observation: performer[].display
+            JsonNode performers = root.get("performer");
+            if (performers != null && performers.isArray()) {
+                for (JsonNode perf : performers) {
+                    if (perf.has("display")) {
+                        return perf.get("display").asText();
+                    }
+                }
+            }
+            // Condition: asserter.display
+            JsonNode asserter = root.get("asserter");
+            if (asserter != null && asserter.has("display")) {
+                return asserter.get("display").asText();
+            }
+        } catch (Exception e) {
+            log.debug("Failed to extract practitioner: {}", e.getMessage());
+        }
+        return null;
     }
 
     /**
