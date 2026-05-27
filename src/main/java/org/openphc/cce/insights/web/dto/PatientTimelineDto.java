@@ -34,6 +34,8 @@ public class PatientTimelineDto {
         private String effectiveDateTime;
         private String completionStatus;
         private String source;
+        private String practitioner;
+        private String facilityId;
         @Builder.Default
         private int depth = 0;
     }
