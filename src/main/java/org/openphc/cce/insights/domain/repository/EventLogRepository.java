@@ -194,4 +194,30 @@ public interface EventLogRepository extends ReadOnlyRepository<EventLog, UUID> {
             "AND el.facility_id = CAST(:facilityId AS text)",
             nativeQuery = true)
     List<Object[]> findPatientsByFacility(@Param("facilityId") String facilityId);
+
+    @Query(value = "SELECT practitioner_ref, practitioner_display, el.facility_id, " +
+            "COUNT(DISTINCT el.id) AS total_events, " +
+            "COUNT(DISTINCT pi.patient_id) AS total_patients " +
+            "FROM event_log el " +
+            "JOIN protocol_instance pi ON el.protocol_instance_id = pi.id " +
+            "CROSS JOIN LATERAL ( " +
+            "  SELECT COALESCE(" +
+            "    el.data->'participant'->0->'individual'->>'reference', " +
+            "    el.data->'performer'->0->>'reference', " +
+            "    el.data->'asserter'->>'reference', " +
+            "    el.data->'requester'->>'reference'" +
+            "  ) AS practitioner_ref, " +
+            "  COALESCE(" +
+            "    el.data->'participant'->0->'individual'->>'display', " +
+            "    el.data->'performer'->0->>'display', " +
+            "    el.data->'asserter'->>'display', " +
+            "    el.data->'requester'->>'display'" +
+            "  ) AS practitioner_display " +
+            ") pr " +
+            "WHERE pr.practitioner_ref IS NOT NULL " +
+            "AND el.processing_status != 'DUPLICATE' " +
+            "GROUP BY practitioner_ref, practitioner_display, el.facility_id " +
+            "ORDER BY total_events DESC",
+            nativeQuery = true)
+    List<Object[]> findPractitionerSummary();
 }
