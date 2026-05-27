@@ -59,4 +59,22 @@ public interface StepInstanceRepository extends ReadOnlyRepository<StepInstance,
             "GROUP BY el.facility_id",
             nativeQuery = true)
     List<Object[]> findStepComplianceByFacility();
+
+    @Query(value = "SELECT practitioner_ref, " +
+            "COUNT(DISTINCT si.id) AS total_steps, " +
+            "COUNT(DISTINCT CASE WHEN si.state IN ('COMPLETED','SKIPPED') THEN si.id END) AS completed_steps " +
+            "FROM step_instance si " +
+            "JOIN event_log el ON el.matched_step_instance_id = si.id " +
+            "CROSS JOIN LATERAL ( " +
+            "  SELECT COALESCE(" +
+            "    el.data->'participant'->0->'individual'->>'reference', " +
+            "    el.data->'performer'->0->>'reference', " +
+            "    el.data->'asserter'->>'reference', " +
+            "    el.data->'requester'->>'reference'" +
+            "  ) AS practitioner_ref " +
+            ") pr " +
+            "WHERE pr.practitioner_ref IS NOT NULL " +
+            "GROUP BY practitioner_ref",
+            nativeQuery = true)
+    List<Object[]> findStepComplianceByPractitioner();
 }
