@@ -50,8 +50,12 @@ public class PatientTimelineService {
             // Build event context lookup: stepInstance.matchedEventId → EventContext (effectiveDateTime, practitioner, facilityId)
             Map<UUID, EventContext> eventContextMap = resolveEventContext(steps);
 
+            // Resolve deviations for this protocol instance
+            List<Deviation> deviations = deviationRepository.findByProtocolInstanceId(pi.getId());
+            Map<String, Deviation> deviationByActionId = resolveDeviationsByActionId(deviations, steps);
+
             // Build Protocol Journey (one row per protocol-defined action)
-            List<PatientTimelineDto.JourneyStep> journey = buildJourney(orderedActions, steps, stepTitles, eventContextMap);
+            List<PatientTimelineDto.JourneyStep> journey = buildJourney(orderedActions, steps, stepTitles, eventContextMap, deviationByActionId);
 
             // Build Compliance Timeline events
             List<PatientTimelineDto.TimelineEvent> events = new ArrayList<>();
@@ -115,7 +119,8 @@ public class PatientTimelineService {
      */
     private List<PatientTimelineDto.JourneyStep> buildJourney(
             List<String[]> orderedActions, List<StepInstance> steps,
-            Map<String, String> stepTitles, Map<UUID, EventContext> eventContextMap) {
+            Map<String, String> stepTitles, Map<UUID, EventContext> eventContextMap,
+            Map<String, Deviation> deviationByActionId) {
 
         // Group steps by actionId
         Map<String, List<StepInstance>> stepsByAction = steps.stream()
@@ -169,12 +174,45 @@ public class PatientTimelineService {
                         .source(best.getCompletedBySource())
                         .practitioner(ctx != null ? ctx.practitioner : null)
                         .facilityId(ctx != null ? ctx.facilityId : null)
+                        .facilityName(ctx != null ? ctx.facilityName : null)
                         .requiredBehavior(requiredBehavior)
                         .depth(depth)
+                        .description(resolveDeviationDescription(actionId, deviationByActionId, best))
                         .build());
             }
         }
         return journey;
+    }
+
+    /**
+     * Map deviations to their corresponding actionId via stepInstanceId lookup.
+     */
+    private Map<String, Deviation> resolveDeviationsByActionId(List<Deviation> deviations, List<StepInstance> steps) {
+        Map<UUID, String> stepIdToAction = steps.stream()
+                .collect(Collectors.toMap(StepInstance::getId, StepInstance::getActionId, (a, b) -> a));
+        Map<String, Deviation> result = new HashMap<>();
+        for (Deviation d : deviations) {
+            String actionId = stepIdToAction.get(d.getStepInstanceId());
+            if (actionId != null) {
+                result.putIfAbsent(actionId, d);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Resolve a human-readable description for a deviation on this action, or null if none.
+     */
+    private String resolveDeviationDescription(String actionId, Map<String, Deviation> deviationByActionId, StepInstance best) {
+        Deviation dev = deviationByActionId.get(actionId);
+        if (dev == null) return null;
+        return switch (dev.getDeviationType()) {
+            case OVERDUE -> best.getCompletionStatus() != null && "LATE".equals(best.getCompletionStatus().name())
+                    ? "Completed after SLA window"
+                    : "Step overdue — exceeded expected timeframe";
+            case MISSED -> "Step missed — no completion recorded within window";
+            case ORDER_VIOLATION -> "Completed out of expected protocol order";
+        };
     }
 
     /**
@@ -220,15 +258,16 @@ public class PatientTimelineService {
                 String effectiveDt = el.getData() != null ? extractEffectiveDateTime(el.getData()) : null;
                 String practitioner = el.getData() != null ? extractPractitioner(el.getData()) : null;
                 String facilityId = el.getFacilityId();
-                if (effectiveDt != null || practitioner != null || facilityId != null) {
-                    result.put(entry.getKey(), new EventContext(effectiveDt, practitioner, facilityId));
+                String facilityName = el.getData() != null ? extractFacilityName(el.getData()) : null;
+                if (effectiveDt != null || practitioner != null || facilityId != null || facilityName != null) {
+                    result.put(entry.getKey(), new EventContext(effectiveDt, practitioner, facilityId, facilityName));
                 }
             }
         }
         return result;
     }
 
-    private record EventContext(String effectiveDateTime, String practitioner, String facilityId) {}
+    private record EventContext(String effectiveDateTime, String practitioner, String facilityId, String facilityName) {}
 
     /**
      * Extract practitioner display name from FHIR JSON data.
@@ -288,6 +327,41 @@ public class PatientTimelineService {
         }
         if (node.has("reference")) {
             return node.get("reference").asText();
+        }
+        return null;
+    }
+
+    /**
+     * Extract facility/location name from FHIR JSON data.
+     * Supports: ServiceRequest.locationReference[], Encounter.location[].location
+     */
+    private String extractFacilityName(String jsonData) {
+        try {
+            JsonNode root = objectMapper.readTree(jsonData);
+            // ServiceRequest: locationReference[].display
+            JsonNode locationRef = root.get("locationReference");
+            if (locationRef != null && locationRef.isArray()) {
+                for (JsonNode loc : locationRef) {
+                    if (loc.has("display")) {
+                        return loc.get("display").asText();
+                    }
+                    if (loc.has("reference")) {
+                        return loc.get("reference").asText();
+                    }
+                }
+            }
+            // Encounter: location[].location.display
+            JsonNode locations = root.get("location");
+            if (locations != null && locations.isArray()) {
+                for (JsonNode loc : locations) {
+                    JsonNode location = loc.get("location");
+                    if (location != null && location.has("display")) {
+                        return location.get("display").asText();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.debug("Failed to extract facility name: {}", e.getMessage());
         }
         return null;
     }
