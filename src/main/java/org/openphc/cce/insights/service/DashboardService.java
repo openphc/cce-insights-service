@@ -114,7 +114,7 @@ public class DashboardService {
 
         // Practitioner compliance — get all practitioners (large limit)
         List<PractitionerRankingDto> allPractitioners = practitionerRankingService.getRankings(
-                "complianceRate", "desc", 1000);
+                "complianceRate", "desc", 1000, null, null, null);
         long totalPractitioners = allPractitioners.size();
         long practitionerAbove90 = allPractitioners.stream()
                 .filter(p -> p.getComplianceRate() > 90.0)

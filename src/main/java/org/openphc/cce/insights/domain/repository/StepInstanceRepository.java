@@ -4,6 +4,7 @@ import org.openphc.cce.insights.domain.entity.StepInstance;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -78,4 +79,28 @@ public interface StepInstanceRepository extends ReadOnlyRepository<StepInstance,
             "GROUP BY practitioner_ref",
             nativeQuery = true)
     List<Object[]> findStepComplianceByPractitioner();
+
+    @Query(value = "SELECT practitioner_ref, " +
+            "COUNT(DISTINCT si.id) AS total_steps, " +
+            "COUNT(DISTINCT CASE WHEN si.state IN ('COMPLETED','SKIPPED') THEN si.id END) AS completed_steps " +
+            "FROM step_instance si " +
+            "JOIN protocol_instance pi ON si.protocol_instance_id = pi.id " +
+            "JOIN event_log el ON el.protocol_instance_id = pi.id " +
+            "CROSS JOIN LATERAL ( " +
+            "  SELECT COALESCE(" +
+            "    el.data->'participant'->0->'individual'->>'reference', " +
+            "    el.data->'performer'->0->>'reference', " +
+            "    el.data->'asserter'->>'reference', " +
+            "    el.data->'requester'->>'reference'" +
+            "  ) AS practitioner_ref " +
+            ") pr " +
+            "WHERE pr.practitioner_ref IS NOT NULL " +
+            "AND (CAST(:startDate AS timestamptz) IS NULL OR el.received_at >= :startDate) " +
+            "AND (CAST(:endDate AS timestamptz) IS NULL OR el.received_at <= :endDate) " +
+            "AND (CAST(:facilityId AS text) IS NULL OR el.facility_id = :facilityId) " +
+            "GROUP BY practitioner_ref",
+            nativeQuery = true)
+    List<Object[]> findStepComplianceByPractitionerFiltered(@Param("startDate") OffsetDateTime startDate,
+                                                            @Param("endDate") OffsetDateTime endDate,
+                                                            @Param("facilityId") String facilityId);
 }

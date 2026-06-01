@@ -9,6 +9,7 @@ import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -21,11 +22,13 @@ public class PractitionerRankingService {
     private final StepInstanceRepository stepInstanceRepository;
     private final DeviationRepository deviationRepository;
 
-    @Cacheable(value = "analytics", key = "'practitioner-rankings-' + #sortBy + '-' + #order + '-' + #limit")
-    public List<PractitionerRankingDto> getRankings(String sortBy, String order, int limit) {
+    @Cacheable(value = "analytics", key = "'practitioner-rankings-' + #sortBy + '-' + #order + '-' + #limit + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all') + '-' + (#facilityId ?: 'all')")
+    public List<PractitionerRankingDto> getRankings(String sortBy, String order, int limit,
+                                                     OffsetDateTime startDate, OffsetDateTime endDate,
+                                                     String facilityId) {
 
         // Practitioner summary: ref, display, facilityId, totalEvents, totalPatients
-        List<Object[]> summaryRows = eventLogRepository.findPractitionerSummary();
+        List<Object[]> summaryRows = eventLogRepository.findPractitionerSummaryFiltered(startDate, endDate, facilityId);
 
         // Aggregate by practitioner_ref (may appear in multiple facilities)
         Map<String, String> displayMap = new LinkedHashMap<>();
@@ -36,18 +39,18 @@ public class PractitionerRankingService {
         for (Object[] row : summaryRows) {
             String ref = (String) row[0];
             String display = (String) row[1];
-            String facilityId = (String) row[2];
+            String rowFacilityId = (String) row[2];
             long events = ((Number) row[3]).longValue();
             long patients = ((Number) row[4]).longValue();
 
             displayMap.putIfAbsent(ref, display);
-            facilityMap.putIfAbsent(ref, facilityId);
+            facilityMap.putIfAbsent(ref, rowFacilityId);
             eventCountMap.merge(ref, events, Long::sum);
             patientCountMap.merge(ref, patients, Long::sum);
         }
 
         // Step compliance by practitioner
-        List<Object[]> complianceRows = stepInstanceRepository.findStepComplianceByPractitioner();
+        List<Object[]> complianceRows = stepInstanceRepository.findStepComplianceByPractitionerFiltered(startDate, endDate, facilityId);
         Map<String, Long> totalStepsMap = new LinkedHashMap<>();
         Map<String, Long> completedStepsMap = new LinkedHashMap<>();
         for (Object[] row : complianceRows) {

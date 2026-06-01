@@ -220,4 +220,35 @@ public interface EventLogRepository extends ReadOnlyRepository<EventLog, UUID> {
             "ORDER BY total_events DESC",
             nativeQuery = true)
     List<Object[]> findPractitionerSummary();
+
+    @Query(value = "SELECT practitioner_ref, practitioner_display, el.facility_id, " +
+            "COUNT(DISTINCT el.id) AS total_events, " +
+            "COUNT(DISTINCT pi.patient_id) AS total_patients " +
+            "FROM event_log el " +
+            "JOIN protocol_instance pi ON el.protocol_instance_id = pi.id " +
+            "CROSS JOIN LATERAL ( " +
+            "  SELECT COALESCE(" +
+            "    el.data->'participant'->0->'individual'->>'reference', " +
+            "    el.data->'performer'->0->>'reference', " +
+            "    el.data->'asserter'->>'reference', " +
+            "    el.data->'requester'->>'reference'" +
+            "  ) AS practitioner_ref, " +
+            "  COALESCE(" +
+            "    el.data->'participant'->0->'individual'->>'display', " +
+            "    el.data->'performer'->0->>'display', " +
+            "    el.data->'asserter'->>'display', " +
+            "    el.data->'requester'->>'display'" +
+            "  ) AS practitioner_display " +
+            ") pr " +
+            "WHERE pr.practitioner_ref IS NOT NULL " +
+            "AND el.processing_status != 'DUPLICATE' " +
+            "AND (CAST(:startDate AS timestamptz) IS NULL OR el.received_at >= :startDate) " +
+            "AND (CAST(:endDate AS timestamptz) IS NULL OR el.received_at <= :endDate) " +
+            "AND (CAST(:facilityId AS text) IS NULL OR el.facility_id = :facilityId) " +
+            "GROUP BY practitioner_ref, practitioner_display, el.facility_id " +
+            "ORDER BY total_events DESC",
+            nativeQuery = true)
+    List<Object[]> findPractitionerSummaryFiltered(@Param("startDate") OffsetDateTime startDate,
+                                                    @Param("endDate") OffsetDateTime endDate,
+                                                    @Param("facilityId") String facilityId);
 }
