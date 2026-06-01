@@ -35,6 +35,72 @@ public class ComplianceSummaryService {
     private final DeviationRepository deviationRepository;
     private final EventLogRepository eventLogRepository;
 
+    @Cacheable(value = "analytics", key = "'compliance-all'")
+    public ComplianceSummaryDto getAllProtocolsComplianceSummary() {
+        List<ProtocolInstance> instances = protocolInstanceRepository.findAll();
+        if (instances.isEmpty()) {
+            return ComplianceSummaryDto.builder()
+                    .totalEnrollments(0).compliantPatients(0).complianceRate(0.0)
+                    .stepMetrics(ComplianceSummaryDto.StepMetrics.builder().build())
+                    .deviationCount(0).deviationBreakdown(Map.of())
+                    .build();
+        }
+
+        long totalSteps = 0, completed = 0, onTime = 0, late = 0, early = 0, overdue = 0, missed = 0, due = 0, pending = 0;
+        long totalDeviations = 0, overdueDeviations = 0, missedDeviations = 0, orderViolationDeviations = 0;
+        long compliantPatients = 0;
+
+        for (ProtocolInstance pi : instances) {
+            List<StepInstance> steps = stepInstanceRepository.findByProtocolInstanceId(pi.getId());
+            totalSteps += steps.size();
+            for (StepInstance si : steps) {
+                switch (si.getState()) {
+                    case COMPLETED -> {
+                        completed++;
+                        if (si.getCompletionStatus() != null) {
+                            switch (si.getCompletionStatus()) {
+                                case EARLY -> early++;
+                                case ON_TIME -> onTime++;
+                                case LATE -> late++;
+                            }
+                        }
+                    }
+                    case OVERDUE -> overdue++;
+                    case MISSED -> missed++;
+                    case SKIPPED -> completed++;
+                    case DUE -> due++;
+                    case PENDING -> pending++;
+                }
+            }
+            List<Deviation> deviations = deviationRepository.findByProtocolInstanceId(pi.getId());
+            totalDeviations += deviations.size();
+            if (deviations.isEmpty()) {
+                compliantPatients++;
+            }
+            for (Deviation d : deviations) {
+                switch (d.getDeviationType()) {
+                    case OVERDUE -> overdueDeviations++;
+                    case MISSED -> missedDeviations++;
+                    case ORDER_VIOLATION -> orderViolationDeviations++;
+                }
+            }
+        }
+
+        double complianceRate = instances.size() > 0 ? (double) compliantPatients / instances.size() : 0.0;
+
+        return ComplianceSummaryDto.builder()
+                .totalEnrollments(instances.size())
+                .compliantPatients(compliantPatients)
+                .complianceRate(Math.round(complianceRate * 100.0) / 100.0)
+                .stepMetrics(ComplianceSummaryDto.StepMetrics.builder()
+                        .totalSteps(totalSteps).completed(completed).onTime(onTime)
+                        .late(late).early(early).overdue(overdue).missed(missed).due(due).pending(pending)
+                        .build())
+                .deviationCount(totalDeviations)
+                .deviationBreakdown(Map.of("overdue", overdueDeviations, "missed", missedDeviations, "orderViolation", orderViolationDeviations))
+                .build();
+    }
+
     @Cacheable(value = "analytics", key = "'compliance-' + #protocolDefinitionId")
     public ComplianceSummaryDto getProtocolComplianceSummary(UUID protocolDefinitionId) {
         ProtocolDefinition pd = protocolDefinitionRepository.findById(protocolDefinitionId)
