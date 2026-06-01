@@ -51,6 +51,7 @@ public class ComplianceSummaryService {
 
         long totalSteps = 0, completed = 0, onTime = 0, late = 0, early = 0, overdue = 0, missed = 0, pending = 0;
         long totalDeviations = 0, overdueDeviations = 0, missedDeviations = 0, orderViolationDeviations = 0;
+        long compliantPatients = 0;
 
         for (ProtocolInstance pi : instances) {
             List<StepInstance> steps = stepInstanceRepository.findByProtocolInstanceId(pi.getId());
@@ -75,6 +76,9 @@ public class ComplianceSummaryService {
             }
             List<Deviation> deviations = deviationRepository.findByProtocolInstanceId(pi.getId());
             totalDeviations += deviations.size();
+            if (deviations.isEmpty()) {
+                compliantPatients++;
+            }
             for (Deviation d : deviations) {
                 switch (d.getDeviationType()) {
                     case OVERDUE -> overdueDeviations++;
@@ -90,6 +94,7 @@ public class ComplianceSummaryService {
                 .protocolDefinitionId(protocolDefinitionId)
                 .protocolCanonical(pd.getUrl() + "|" + pd.getVersion())
                 .totalEnrollments(instances.size())
+                .compliantPatients(compliantPatients)
                 .statusBreakdown(statusBreakdown)
                 .complianceRate(Math.round(complianceRate * 100.0) / 100.0)
                 .stepMetrics(ComplianceSummaryDto.StepMetrics.builder()
