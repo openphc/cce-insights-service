@@ -31,6 +31,7 @@ public class ComplianceSummaryDto {
         private long early;
         private long overdue;
         private long missed;
+        private long due;
         private long pending;
     }
 }
