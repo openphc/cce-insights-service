@@ -296,7 +296,7 @@ public class ComplianceSummaryService {
         boolean hasMissed = steps.stream().anyMatch(s -> s.getState() == StepState.MISSED);
         if (hasMissed) return "non_compliant";
         boolean hasOverdue = steps.stream().anyMatch(s -> s.getState() == StepState.OVERDUE);
-        if (hasOverdue) return "at_risk";
+        if (hasOverdue) return "non_compliant";
         return "on_track";
     }
 
