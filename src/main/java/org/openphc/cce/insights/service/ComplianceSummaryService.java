@@ -89,7 +89,7 @@ public class ComplianceSummaryService {
             }
         }
 
-        double complianceRate = totalSteps > 0 ? (double) completed / totalSteps : 0.0;
+        double complianceRate = instances.size() > 0 ? (double) compliantPatients / instances.size() : 0.0;
 
         return ComplianceSummaryDto.builder()
                 .protocolDefinitionId(protocolDefinitionId)
