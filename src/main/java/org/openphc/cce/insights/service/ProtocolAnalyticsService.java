@@ -36,17 +36,25 @@ public class ProtocolAnalyticsService {
             JsonNode root = objectMapper.readTree(pd.getDefinition());
             JsonNode actions = root.get("action");
             if (actions != null && actions.isArray()) {
-                for (JsonNode action : actions) {
-                    JsonNode idNode = action.get("id");
-                    if (idNode != null && !idNode.isNull()) {
-                        actionIds.add(idNode.asText());
-                    }
-                }
+                collectActionIdsRecursive(actions, actionIds);
             }
         } catch (Exception e) {
             // fallback: return empty list, UI will use default order
         }
         return actionIds;
+    }
+
+    private void collectActionIdsRecursive(JsonNode actions, List<String> actionIds) {
+        for (JsonNode action : actions) {
+            JsonNode idNode = action.get("id");
+            if (idNode != null && !idNode.isNull()) {
+                actionIds.add(idNode.asText());
+            }
+            JsonNode subActions = action.get("action");
+            if (subActions != null && subActions.isArray()) {
+                collectActionIdsRecursive(subActions, actionIds);
+            }
+        }
     }
 
     @Cacheable(value = "analytics", key = "'step-analytics-' + #protocolDefinitionId")
@@ -55,15 +63,19 @@ public class ProtocolAnalyticsService {
                 .orElseThrow(() -> new EntityNotFoundException(
                         "Protocol definition not found: " + protocolDefinitionId));
 
+        // Resolve requiredBehavior per actionId from PlanDefinition
+        Map<String, String> requiredBehaviorMap = resolveRequiredBehaviorMap(pd);
+
         List<Object[]> rows = stepInstanceRepository.findStepAnalytics(protocolDefinitionId);
 
         List<StepAnalyticsDto.StepMetric> steps = rows.stream().map(row -> {
+            String actionId = (String) row[0];
             long totalInst = ((Number) row[1]).longValue();
             long completedCount = ((Number) row[2]).longValue();
             double completionRate = totalInst > 0 ? Math.round((double) completedCount / totalInst * 100.0) / 100.0 : 0;
 
             return StepAnalyticsDto.StepMetric.builder()
-                    .actionId((String) row[0])
+                    .actionId(actionId)
                     .totalInstances(totalInst)
                     .completedCount(completedCount)
                     .completionRate(completionRate)
@@ -78,6 +90,7 @@ public class ProtocolAnalyticsService {
                     .pendingCount(((Number) row[9]).longValue())
                     .avgDaysToComplete(row[10] != null ? ((Number) row[10]).doubleValue() : null)
                     .medianDaysToComplete(row[11] != null ? ((Number) row[11]).doubleValue() : null)
+                    .requiredBehavior(requiredBehaviorMap.get(actionId))
                     .build();
         }).collect(Collectors.toList());
 
@@ -86,6 +99,34 @@ public class ProtocolAnalyticsService {
                 .protocolCanonical(pd.getUrl() + "|" + pd.getVersion())
                 .steps(steps)
                 .build();
+    }
+
+    private Map<String, String> resolveRequiredBehaviorMap(ProtocolDefinition pd) {
+        Map<String, String> map = new HashMap<>();
+        try {
+            JsonNode root = objectMapper.readTree(pd.getDefinition());
+            JsonNode actions = root.get("action");
+            if (actions != null && actions.isArray()) {
+                collectRequiredBehavior(actions, map);
+            }
+        } catch (Exception e) {
+            // fallback: empty map
+        }
+        return map;
+    }
+
+    private void collectRequiredBehavior(JsonNode actions, Map<String, String> map) {
+        for (JsonNode action : actions) {
+            JsonNode idNode = action.get("id");
+            JsonNode rbNode = action.get("requiredBehavior");
+            if (idNode != null && !idNode.isNull() && rbNode != null && !rbNode.isNull()) {
+                map.put(idNode.asText(), rbNode.asText());
+            }
+            JsonNode subActions = action.get("action");
+            if (subActions != null && subActions.isArray()) {
+                collectRequiredBehavior(subActions, map);
+            }
+        }
     }
 
     @Cacheable(value = "analytics", key = "'funnel-' + #protocolDefinitionId")
