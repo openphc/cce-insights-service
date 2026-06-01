@@ -24,8 +24,12 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           review-message: "Auto-approved: PR targets demo-intelligence and authored by Jayaprakash8887."
 
-      - name: Enable auto-merge (squash)
+      - name: Merge PR (squash)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_URL: ${{ github.event.pull_request.html_url }}
-        run: gh pr merge --auto --squash "$PR_URL"
+        # Try immediate squash-merge first; if the PR is blocked by a protection rule,
+        # fall back to enabling auto-merge so it merges once requirements are satisfied.
+        run: |
+          gh pr merge --squash --delete-branch=false "$PR_URL" \
+            || gh pr merge --auto --squash "$PR_URL"
