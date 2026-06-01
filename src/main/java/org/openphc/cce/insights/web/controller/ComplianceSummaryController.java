@@ -21,6 +21,12 @@ public class ComplianceSummaryController {
 
     private final ComplianceSummaryService complianceSummaryService;
 
+    @GetMapping("/protocols/compliance-summary")
+    public ResponseEntity<ApiResponse<ComplianceSummaryDto>> getAllProtocolsComplianceSummary() {
+        ComplianceSummaryDto summary = complianceSummaryService.getAllProtocolsComplianceSummary();
+        return ResponseEntity.ok(ApiResponse.ok(summary));
+    }
+
     @GetMapping("/protocols/{protocolDefinitionId}/compliance-summary")
     public ResponseEntity<ApiResponse<ComplianceSummaryDto>> getProtocolComplianceSummary(
             @PathVariable UUID protocolDefinitionId,
