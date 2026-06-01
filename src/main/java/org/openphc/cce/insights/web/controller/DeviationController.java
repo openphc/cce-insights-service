@@ -42,8 +42,12 @@ public class DeviationController {
     }
 
     @GetMapping("/deviations/intelligence-summary")
-    public ResponseEntity<ApiResponse<DeviationIntelligenceSummaryDto>> getIntelligenceSummary() {
-        DeviationIntelligenceSummaryDto summary = deviationAnalyticsService.getIntelligenceSummary();
+    public ResponseEntity<ApiResponse<DeviationIntelligenceSummaryDto>> getIntelligenceSummary(
+            @RequestParam(required = false) OffsetDateTime startDate,
+            @RequestParam(required = false) OffsetDateTime endDate,
+            @RequestParam(required = false) String facilityId) {
+        DeviationIntelligenceSummaryDto summary = deviationAnalyticsService.getIntelligenceSummary(
+                startDate, endDate, facilityId);
         return ResponseEntity.ok(ApiResponse.ok(summary));
     }
 

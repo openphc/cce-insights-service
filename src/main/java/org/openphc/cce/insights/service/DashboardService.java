@@ -53,7 +53,7 @@ public class DashboardService {
                 : 0.0;
 
         // Deviation summary
-        var intel = deviationAnalyticsService.getIntelligenceSummary();
+        var intel = deviationAnalyticsService.getIntelligenceSummary(startDate, endDate, facilityId);
         long activeDeviations = intel.getTotalDeviations();
         long newDeviations24h = intel.getRecentActivity() != null
                 ? intel.getRecentActivity().getLast24Hours() : 0;

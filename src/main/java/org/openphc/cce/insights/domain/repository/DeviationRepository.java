@@ -95,6 +95,20 @@ public interface DeviationRepository extends ReadOnlyRepository<Deviation, UUID>
             "GROUP BY d.deviationType")
     List<Object[]> countByTypeSince(@Param("since") OffsetDateTime since);
 
+    @Query(value = "SELECT d.deviation_type, COUNT(*) " +
+            "FROM deviation d " +
+            "JOIN protocol_instance pi ON d.protocol_instance_id = pi.id " +
+            "WHERE (CAST(:startDate AS timestamptz) IS NULL OR d.detected_at >= :startDate) " +
+            "AND (CAST(:endDate AS timestamptz) IS NULL OR d.detected_at <= :endDate) " +
+            "AND (CAST(:facilityId AS text) IS NULL OR EXISTS (" +
+            "  SELECT 1 FROM event_log el WHERE el.protocol_instance_id = pi.id " +
+            "  AND el.facility_id = :facilityId)) " +
+            "GROUP BY d.deviation_type",
+            nativeQuery = true)
+    List<Object[]> countByTypeInRange(@Param("startDate") OffsetDateTime startDate,
+                                      @Param("endDate") OffsetDateTime endDate,
+                                      @Param("facilityId") String facilityId);
+
     @Query(value = "SELECT pi.patient_id, COUNT(*) AS total_deviations, " +
             "COUNT(CASE WHEN d.deviation_type = 'OVERDUE' THEN 1 END) AS overdue_count, " +
             "COUNT(CASE WHEN d.deviation_type = 'MISSED' THEN 1 END) AS missed_count, " +
