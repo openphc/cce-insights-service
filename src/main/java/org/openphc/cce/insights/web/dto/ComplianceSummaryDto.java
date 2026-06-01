@@ -14,6 +14,7 @@ public class ComplianceSummaryDto {
     private UUID protocolDefinitionId;
     private String protocolCanonical;
     private long totalEnrollments;
+    private long compliantPatients;
     private Map<String, Long> statusBreakdown;
     private double complianceRate;
     private StepMetrics stepMetrics;

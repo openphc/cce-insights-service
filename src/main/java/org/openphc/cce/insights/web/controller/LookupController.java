@@ -18,6 +18,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 @RestController
 @RequestMapping("/v1/insights/lookups")
 @RequiredArgsConstructor
@@ -27,6 +30,7 @@ public class LookupController {
     private final ProtocolInstanceRepository protocolInstanceRepository;
     private final EventLogRepository eventLogRepository;
     private final InboundEventRepository inboundEventRepository;
+    private final ObjectMapper objectMapper;
 
     @GetMapping("/protocols")
     @Cacheable(value = "lookups", key = "'protocols'")
@@ -39,9 +43,24 @@ public class LookupController {
             map.put("version", pd.getVersion());
             map.put("canonical", pd.getUrl() + "|" + pd.getVersion());
             map.put("status", pd.getStatus());
+            map.put("title", extractTitle(pd));
             return map;
         }).collect(Collectors.toList());
         return ResponseEntity.ok(ApiResponse.ok(result));
+    }
+
+    private String extractTitle(ProtocolDefinition pd) {
+        try {
+            if (pd.getDefinition() != null) {
+                JsonNode node = objectMapper.readTree(pd.getDefinition());
+                JsonNode titleNode = node.get("title");
+                if (titleNode != null && !titleNode.isNull()) {
+                    return titleNode.asText();
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return pd.getUrl().substring(pd.getUrl().lastIndexOf('/') + 1);
     }
 
     @GetMapping("/facilities")
