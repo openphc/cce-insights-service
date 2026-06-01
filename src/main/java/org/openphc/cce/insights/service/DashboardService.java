@@ -102,25 +102,29 @@ public class DashboardService {
         List<FacilityRankingDto> allFacilities = facilityRankingService.getRankings(
                 null, null, "complianceRate", "desc", 1000);
         long totalFacilities = allFacilities.size();
-        long compliantFacilities = allFacilities.stream()
-                .filter(f -> f.getActiveDeviations() == 0)
+        long facilityAbove90 = allFacilities.stream()
+                .filter(f -> f.getComplianceRate() > 90.0)
                 .count();
-        long nonCompliantFacilities = totalFacilities - compliantFacilities;
-        double facilityComplianceRate = totalFacilities > 0
-                ? Math.round((double) compliantFacilities / totalFacilities * 1000.0) / 10.0
-                : 0.0;
+        long facilityBetween75And90 = allFacilities.stream()
+                .filter(f -> f.getComplianceRate() >= 75.0 && f.getComplianceRate() <= 90.0)
+                .count();
+        long facilityBelow75 = allFacilities.stream()
+                .filter(f -> f.getComplianceRate() < 75.0)
+                .count();
 
         // Practitioner compliance — get all practitioners (large limit)
         List<PractitionerRankingDto> allPractitioners = practitionerRankingService.getRankings(
                 "complianceRate", "desc", 1000);
         long totalPractitioners = allPractitioners.size();
-        long compliantPractitioners = allPractitioners.stream()
-                .filter(p -> p.getActiveDeviations() == 0)
+        long practitionerAbove90 = allPractitioners.stream()
+                .filter(p -> p.getComplianceRate() > 90.0)
                 .count();
-        long nonCompliantPractitioners = totalPractitioners - compliantPractitioners;
-        double practitionerComplianceRate = totalPractitioners > 0
-                ? Math.round((double) compliantPractitioners / totalPractitioners * 1000.0) / 10.0
-                : 0.0;
+        long practitionerBetween75And90 = allPractitioners.stream()
+                .filter(p -> p.getComplianceRate() >= 75.0 && p.getComplianceRate() <= 90.0)
+                .count();
+        long practitionerBelow75 = allPractitioners.stream()
+                .filter(p -> p.getComplianceRate() < 75.0)
+                .count();
 
         return DashboardComplianceSummaryDto.builder()
                 .patients(DashboardComplianceSummaryDto.PatientComplianceDto.builder()
@@ -131,15 +135,15 @@ public class DashboardService {
                         .build())
                 .facilities(DashboardComplianceSummaryDto.FacilityComplianceDto.builder()
                         .trackedFacilities(totalFacilities)
-                        .compliantFacilities(compliantFacilities)
-                        .nonCompliantFacilities(nonCompliantFacilities)
-                        .complianceRate(facilityComplianceRate)
+                        .above90(facilityAbove90)
+                        .between75And90(facilityBetween75And90)
+                        .below75(facilityBelow75)
                         .build())
                 .practitioners(DashboardComplianceSummaryDto.PractitionerComplianceDto.builder()
                         .trackedPractitioners(totalPractitioners)
-                        .compliantPractitioners(compliantPractitioners)
-                        .nonCompliantPractitioners(nonCompliantPractitioners)
-                        .complianceRate(practitionerComplianceRate)
+                        .above90(practitionerAbove90)
+                        .between75And90(practitionerBetween75And90)
+                        .below75(practitionerBelow75)
                         .build())
                 .build();
     }

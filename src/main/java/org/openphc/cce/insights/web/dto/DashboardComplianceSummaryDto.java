@@ -24,17 +24,17 @@ public class DashboardComplianceSummaryDto {
     @Builder
     public static class FacilityComplianceDto {
         private long trackedFacilities;
-        private long compliantFacilities;
-        private long nonCompliantFacilities;
-        private double complianceRate;
+        private long above90;
+        private long between75And90;
+        private long below75;
     }
 
     @Data
     @Builder
     public static class PractitionerComplianceDto {
         private long trackedPractitioners;
-        private long compliantPractitioners;
-        private long nonCompliantPractitioners;
-        private double complianceRate;
+        private long above90;
+        private long between75And90;
+        private long below75;
     }
 }
