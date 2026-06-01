@@ -1,0 +1,31 @@
+name: Auto-approve and auto-merge PRs targeting demo-intelligence
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review]
+    branches:
+      - demo-intelligence
+
+permissions:
+  pull-requests: write
+  contents: write
+
+jobs:
+  auto-approve-and-merge:
+    if: >-
+      github.event.pull_request.base.ref == 'demo-intelligence' &&
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.user.login == 'Jayaprakash8887'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Auto-approve PR
+        uses: hmarr/auto-approve-action@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          review-message: "Auto-approved: PR targets demo-intelligence and authored by Jayaprakash8887."
+
+      - name: Enable auto-merge (squash)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: gh pr merge --auto --squash "$PR_URL"
