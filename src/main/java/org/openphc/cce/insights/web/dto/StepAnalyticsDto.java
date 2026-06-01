@@ -27,6 +27,7 @@ public class StepAnalyticsDto {
         private long pendingCount;
         private Double avgDaysToComplete;
         private Double medianDaysToComplete;
+        private String requiredBehavior;
     }
 
     @Data
