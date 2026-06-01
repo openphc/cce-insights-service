@@ -73,12 +73,13 @@ public class DeviationAnalyticsService {
     @Cacheable(value = "analytics", key = "'intelligence-summary'")
     public DeviationIntelligenceSummaryDto getIntelligenceSummary() {
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        List<Object[]> allDeviations = deviationRepository.countByTypeSince(OffsetDateTime.MIN);
         List<Object[]> last24h = deviationRepository.countByTypeSince(now.minusHours(24));
         List<Object[]> last7d = deviationRepository.countByTypeSince(now.minusDays(7));
         List<Object[]> last30d = deviationRepository.countByTypeSince(now.minusDays(30));
 
         long total = 0, overdueCount = 0, missedCount = 0, orderViolationCount = 0;
-        for (Object[] row : last30d) {
+        for (Object[] row : allDeviations) {
             long c = ((Number) row[1]).longValue();
             DeviationType type = (DeviationType) row[0];
             total += c;
@@ -96,7 +97,7 @@ public class DeviationAnalyticsService {
                 .recentActivity(DeviationIntelligenceSummaryDto.RecentActivity.builder()
                         .last24Hours(sumCounts(last24h))
                         .last7Days(sumCounts(last7d))
-                        .last30Days(total)
+                        .last30Days(sumCounts(last30d))
                         .build())
                 .build();
     }
