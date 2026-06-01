@@ -35,9 +35,15 @@ public class ComplianceSummaryService {
     private final DeviationRepository deviationRepository;
     private final EventLogRepository eventLogRepository;
 
-    @Cacheable(value = "analytics", key = "'compliance-all'")
-    public ComplianceSummaryDto getAllProtocolsComplianceSummary() {
+    @Cacheable(value = "analytics", key = "'compliance-all-' + (#facilityId ?: 'all')")
+    public ComplianceSummaryDto getAllProtocolsComplianceSummary(String facilityId) {
         List<ProtocolInstance> instances = protocolInstanceRepository.findAll();
+        if (facilityId != null && !facilityId.isEmpty()) {
+            Set<UUID> facilityInstanceIds = getFacilityInstanceIds(facilityId);
+            instances = instances.stream()
+                    .filter(pi -> facilityInstanceIds.contains(pi.getId()))
+                    .collect(Collectors.toList());
+        }
         if (instances.isEmpty()) {
             return ComplianceSummaryDto.builder()
                     .totalEnrollments(0).compliantPatients(0).complianceRate(0.0)
@@ -101,13 +107,19 @@ public class ComplianceSummaryService {
                 .build();
     }
 
-    @Cacheable(value = "analytics", key = "'compliance-' + #protocolDefinitionId")
-    public ComplianceSummaryDto getProtocolComplianceSummary(UUID protocolDefinitionId) {
+    @Cacheable(value = "analytics", key = "'compliance-' + #protocolDefinitionId + '-' + (#facilityId ?: 'all')")
+    public ComplianceSummaryDto getProtocolComplianceSummary(UUID protocolDefinitionId, String facilityId) {
         ProtocolDefinition pd = protocolDefinitionRepository.findById(protocolDefinitionId)
                 .orElseThrow(() -> new EntityNotFoundException(
                         "Protocol definition not found: " + protocolDefinitionId));
 
         List<ProtocolInstance> instances = protocolInstanceRepository.findByProtocolDefinitionId(protocolDefinitionId);
+        if (facilityId != null && !facilityId.isEmpty()) {
+            Set<UUID> facilityInstanceIds = getFacilityInstanceIds(facilityId);
+            instances = instances.stream()
+                    .filter(pi -> facilityInstanceIds.contains(pi.getId()))
+                    .collect(Collectors.toList());
+        }
         if (instances.isEmpty()) {
             return buildEmptySummary(pd);
         }
@@ -284,7 +296,7 @@ public class ComplianceSummaryService {
         boolean hasMissed = steps.stream().anyMatch(s -> s.getState() == StepState.MISSED);
         if (hasMissed) return "non_compliant";
         boolean hasOverdue = steps.stream().anyMatch(s -> s.getState() == StepState.OVERDUE);
-        if (hasOverdue) return "at_risk";
+        if (hasOverdue) return "non_compliant";
         return "on_track";
     }
 
@@ -299,5 +311,14 @@ public class ComplianceSummaryService {
                 .deviationCount(0)
                 .deviationBreakdown(Map.of("overdue", 0L, "missed", 0L, "orderViolation", 0L))
                 .build();
+    }
+
+    private Set<UUID> getFacilityInstanceIds(String facilityId) {
+        List<Object[]> rows = eventLogRepository.findPatientsByFacility(facilityId);
+        Set<UUID> ids = new HashSet<>();
+        for (Object[] row : rows) {
+            ids.add((UUID) row[2]);
+        }
+        return ids;
     }
 }

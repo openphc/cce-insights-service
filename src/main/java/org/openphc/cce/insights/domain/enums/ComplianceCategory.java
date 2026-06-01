@@ -6,6 +6,5 @@ package org.openphc.cce.insights.domain.enums;
  */
 public enum ComplianceCategory {
     ON_TRACK,
-    AT_RISK,
     NON_COMPLIANT
 }
