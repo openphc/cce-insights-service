@@ -49,7 +49,7 @@ public class ComplianceSummaryService {
         Map<String, Long> statusBreakdown = instances.stream()
                 .collect(Collectors.groupingBy(pi -> pi.getStatus().name().toLowerCase(), Collectors.counting()));
 
-        long totalSteps = 0, completed = 0, onTime = 0, late = 0, early = 0, overdue = 0, missed = 0, pending = 0;
+        long totalSteps = 0, completed = 0, onTime = 0, late = 0, early = 0, overdue = 0, missed = 0, due = 0, pending = 0;
         long totalDeviations = 0, overdueDeviations = 0, missedDeviations = 0, orderViolationDeviations = 0;
         long compliantPatients = 0;
 
@@ -71,7 +71,8 @@ public class ComplianceSummaryService {
                     case OVERDUE -> overdue++;
                     case MISSED -> missed++;
                     case SKIPPED -> completed++;
-                    case PENDING, DUE -> pending++;
+                    case DUE -> due++;
+                    case PENDING -> pending++;
                 }
             }
             List<Deviation> deviations = deviationRepository.findByProtocolInstanceId(pi.getId());
@@ -99,7 +100,7 @@ public class ComplianceSummaryService {
                 .complianceRate(Math.round(complianceRate * 100.0) / 100.0)
                 .stepMetrics(ComplianceSummaryDto.StepMetrics.builder()
                         .totalSteps(totalSteps).completed(completed).onTime(onTime)
-                        .late(late).early(early).overdue(overdue).missed(missed).pending(pending)
+                        .late(late).early(early).overdue(overdue).missed(missed).due(due).pending(pending)
                         .build())
                 .deviationCount(totalDeviations)
                 .deviationBreakdown(Map.of("overdue", overdueDeviations, "missed", missedDeviations, "orderViolation", orderViolationDeviations))
