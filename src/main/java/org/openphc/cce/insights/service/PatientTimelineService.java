@@ -170,6 +170,7 @@ public class PatientTimelineService {
                         .status(best.getState().name())
                         .completionCount(completedCount)
                         .effectiveDateTime(ctx != null ? ctx.effectiveDateTime : null)
+                        .dueDate(best.getDueDate() != null ? best.getDueDate().toString() : null)
                         .completionStatus(best.getCompletionStatus() != null ? best.getCompletionStatus().name() : null)
                         .source(best.getCompletedBySource())
                         .practitioner(ctx != null ? ctx.practitioner : null)
