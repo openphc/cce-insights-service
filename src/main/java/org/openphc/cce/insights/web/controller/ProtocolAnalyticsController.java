@@ -18,10 +18,10 @@ public class ProtocolAnalyticsController {
     private final ProtocolAnalyticsService protocolAnalyticsService;
 
     @GetMapping("/{protocolDefinitionId}/action-order")
-    public ResponseEntity<ApiResponse<List<String>>> getActionOrder(
+    public ResponseEntity<ApiResponse<List<ActionOrderEntryDto>>> getActionOrder(
             @PathVariable UUID protocolDefinitionId) {
-        List<String> actionIds = protocolAnalyticsService.getActionOrder(protocolDefinitionId);
-        return ResponseEntity.ok(ApiResponse.ok(actionIds));
+        List<ActionOrderEntryDto> entries = protocolAnalyticsService.getActionOrder(protocolDefinitionId);
+        return ResponseEntity.ok(ApiResponse.ok(entries));
     }
 
     @GetMapping("/{protocolDefinitionId}/step-analytics")

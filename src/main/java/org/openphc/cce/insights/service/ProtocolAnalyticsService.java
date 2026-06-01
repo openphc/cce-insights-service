@@ -26,33 +26,37 @@ public class ProtocolAnalyticsService {
     private final ObjectMapper objectMapper;
 
     @Cacheable(value = "analytics", key = "'action-order-' + #protocolDefinitionId")
-    public List<String> getActionOrder(UUID protocolDefinitionId) {
+    public List<ActionOrderEntryDto> getActionOrder(UUID protocolDefinitionId) {
         ProtocolDefinition pd = protocolDefinitionRepository.findById(protocolDefinitionId)
                 .orElseThrow(() -> new EntityNotFoundException(
                         "Protocol definition not found: " + protocolDefinitionId));
 
-        List<String> actionIds = new ArrayList<>();
+        List<ActionOrderEntryDto> entries = new ArrayList<>();
         try {
             JsonNode root = objectMapper.readTree(pd.getDefinition());
             JsonNode actions = root.get("action");
             if (actions != null && actions.isArray()) {
-                collectActionIdsRecursive(actions, actionIds);
+                collectActionEntriesRecursive(actions, null, entries);
             }
         } catch (Exception e) {
             // fallback: return empty list, UI will use default order
         }
-        return actionIds;
+        return entries;
     }
 
-    private void collectActionIdsRecursive(JsonNode actions, List<String> actionIds) {
+    private void collectActionEntriesRecursive(JsonNode actions, String parentActionId, List<ActionOrderEntryDto> entries) {
         for (JsonNode action : actions) {
             JsonNode idNode = action.get("id");
             if (idNode != null && !idNode.isNull()) {
-                actionIds.add(idNode.asText());
-            }
-            JsonNode subActions = action.get("action");
-            if (subActions != null && subActions.isArray()) {
-                collectActionIdsRecursive(subActions, actionIds);
+                String actionId = idNode.asText();
+                entries.add(ActionOrderEntryDto.builder()
+                        .actionId(actionId)
+                        .parentActionId(parentActionId)
+                        .build());
+                JsonNode subActions = action.get("action");
+                if (subActions != null && subActions.isArray()) {
+                    collectActionEntriesRecursive(subActions, actionId, entries);
+                }
             }
         }
     }
