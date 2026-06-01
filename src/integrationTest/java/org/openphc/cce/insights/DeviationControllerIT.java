@@ -39,7 +39,7 @@ class DeviationControllerIT extends AbstractIntegrationTest {
                                 .period("2026-W12").overdue(2).missed(1).orderViolation(0).total(3).build()))
                         .build());
 
-        when(deviationAnalyticsService.getIntelligenceSummary())
+        when(deviationAnalyticsService.getIntelligenceSummary(any(), any(), any()))
                 .thenReturn(DeviationIntelligenceSummaryDto.builder()
                         .totalDeviations(5)
                         .byType(Map.of("overdue", 3L, "missed", 2L, "orderViolation", 0L))

@@ -7,6 +7,7 @@ import org.openphc.cce.insights.web.dto.PractitionerRankingDto;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 
 @RestController
@@ -20,8 +21,12 @@ public class PractitionerRankingController {
     public ResponseEntity<ApiResponse<List<PractitionerRankingDto>>> getPractitionerRanking(
             @RequestParam(defaultValue = "complianceRate") String rankBy,
             @RequestParam(defaultValue = "desc") String order,
-            @RequestParam(defaultValue = "50") int limit) {
-        List<PractitionerRankingDto> rankings = practitionerRankingService.getRankings(rankBy, order, limit);
+            @RequestParam(defaultValue = "50") int limit,
+            @RequestParam(required = false) OffsetDateTime startDate,
+            @RequestParam(required = false) OffsetDateTime endDate,
+            @RequestParam(required = false) String facilityId) {
+        List<PractitionerRankingDto> rankings = practitionerRankingService.getRankings(
+                rankBy, order, limit, startDate, endDate, facilityId);
         return ResponseEntity.ok(ApiResponse.ok(rankings));
     }
 }

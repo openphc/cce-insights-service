@@ -11,6 +11,7 @@ import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -23,28 +24,28 @@ public class IntelligenceAnalyticsService {
     private final ReceiverAdaptorRepository adaptorRepository;
     private final DestinationAdaptorMappingRepository mappingRepository;
 
-    @Cacheable(value = "metrics", key = "'intelligence-summary'")
-    public IntelligenceSummaryDto getSummary() {
-        long total = deliveryRepository.count();
-        long delivered = deliveryRepository.countDelivered();
-        long failed = deliveryRepository.countFailed();
+    @Cacheable(value = "metrics", key = "'intelligence-summary-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all')")
+    public IntelligenceSummaryDto getSummary(OffsetDateTime startDate, OffsetDateTime endDate) {
+        long total = deliveryRepository.countFiltered(startDate, endDate);
+        long delivered = deliveryRepository.countDeliveredFiltered(startDate, endDate);
+        long failed = deliveryRepository.countFailedFiltered(startDate, endDate);
         long pending = total - delivered - failed;
         double successRate = total > 0 ? Math.round((double) delivered / total * 1000.0) / 10.0 : 0;
-        Double avgLatency = deliveryRepository.avgDeliveryLatencySeconds();
+        Double avgLatency = deliveryRepository.avgDeliveryLatencySecondsFiltered(startDate, endDate);
 
-        List<IntelligenceSummaryDto.StatusBreakdown> byStatus = deliveryRepository.countByStatus().stream()
+        List<IntelligenceSummaryDto.StatusBreakdown> byStatus = deliveryRepository.countByStatusFiltered(startDate, endDate).stream()
                 .map(row -> new IntelligenceSummaryDto.StatusBreakdown((String) row[0], ((Number) row[1]).longValue()))
                 .toList();
 
-        List<IntelligenceSummaryDto.StatusBreakdown> byActionType = deliveryRepository.countByActionType().stream()
+        List<IntelligenceSummaryDto.StatusBreakdown> byActionType = deliveryRepository.countByActionTypeFiltered(startDate, endDate).stream()
                 .map(row -> new IntelligenceSummaryDto.StatusBreakdown((String) row[0], ((Number) row[1]).longValue()))
                 .toList();
 
-        List<IntelligenceSummaryDto.StatusBreakdown> bySeverity = deliveryRepository.countBySeverity().stream()
+        List<IntelligenceSummaryDto.StatusBreakdown> bySeverity = deliveryRepository.countBySeverityFiltered(startDate, endDate).stream()
                 .map(row -> new IntelligenceSummaryDto.StatusBreakdown((String) row[0], ((Number) row[1]).longValue()))
                 .toList();
 
-        List<IntelligenceSummaryDto.DestinationBreakdown> byDestination = deliveryRepository.countByDestination().stream()
+        List<IntelligenceSummaryDto.DestinationBreakdown> byDestination = deliveryRepository.countByDestinationFiltered(startDate, endDate).stream()
                 .map(row -> new IntelligenceSummaryDto.DestinationBreakdown((String) row[0], ((Number) row[1]).longValue()))
                 .toList();
 

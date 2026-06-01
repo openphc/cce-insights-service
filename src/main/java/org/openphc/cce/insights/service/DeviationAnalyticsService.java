@@ -1,7 +1,6 @@
 package org.openphc.cce.insights.service;
 
 import lombok.RequiredArgsConstructor;
-import org.openphc.cce.insights.domain.enums.DeviationType;
 import org.openphc.cce.insights.domain.repository.DeviationRepository;
 import org.openphc.cce.insights.web.dto.*;
 import org.springframework.cache.annotation.Cacheable;
@@ -70,22 +69,25 @@ public class DeviationAnalyticsService {
         return DeviationTrendDto.builder().interval(interval).trends(trends).build();
     }
 
-    @Cacheable(value = "analytics", key = "'intelligence-summary'")
-    public DeviationIntelligenceSummaryDto getIntelligenceSummary() {
+    @Cacheable(value = "analytics", key = "'intelligence-summary-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all') + '-' + (#facilityId ?: 'all')")
+    public DeviationIntelligenceSummaryDto getIntelligenceSummary(OffsetDateTime startDate,
+                                                                   OffsetDateTime endDate,
+                                                                   String facilityId) {
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        List<Object[]> allDeviations = deviationRepository.countByTypeInRange(startDate, endDate, facilityId);
         List<Object[]> last24h = deviationRepository.countByTypeSince(now.minusHours(24));
         List<Object[]> last7d = deviationRepository.countByTypeSince(now.minusDays(7));
         List<Object[]> last30d = deviationRepository.countByTypeSince(now.minusDays(30));
 
         long total = 0, overdueCount = 0, missedCount = 0, orderViolationCount = 0;
-        for (Object[] row : last30d) {
+        for (Object[] row : allDeviations) {
             long c = ((Number) row[1]).longValue();
-            DeviationType type = (DeviationType) row[0];
+            String type = (String) row[0];
             total += c;
             switch (type) {
-                case OVERDUE -> overdueCount = c;
-                case MISSED -> missedCount = c;
-                case ORDER_VIOLATION -> orderViolationCount = c;
+                case "OVERDUE" -> overdueCount = c;
+                case "MISSED" -> missedCount = c;
+                case "ORDER_VIOLATION" -> orderViolationCount = c;
             }
         }
 
@@ -96,7 +98,7 @@ public class DeviationAnalyticsService {
                 .recentActivity(DeviationIntelligenceSummaryDto.RecentActivity.builder()
                         .last24Hours(sumCounts(last24h))
                         .last7Days(sumCounts(last7d))
-                        .last30Days(total)
+                        .last30Days(sumCounts(last30d))
                         .build())
                 .build();
     }

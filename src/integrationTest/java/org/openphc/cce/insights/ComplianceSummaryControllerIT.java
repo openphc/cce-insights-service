@@ -37,7 +37,7 @@ class ComplianceSummaryControllerIT extends AbstractIntegrationTest {
 
     @Test
     void getProtocolComplianceSummary_returnsAggregatedMetrics() throws Exception {
-        when(complianceSummaryService.getProtocolComplianceSummary(PROTOCOL_ID))
+        when(complianceSummaryService.getProtocolComplianceSummary(eq(PROTOCOL_ID), any()))
                 .thenReturn(ComplianceSummaryDto.builder()
                         .protocolDefinitionId(PROTOCOL_ID)
                         .totalEnrollments(3)
@@ -60,7 +60,7 @@ class ComplianceSummaryControllerIT extends AbstractIntegrationTest {
 
     @Test
     void getProtocolComplianceSummary_notFound() throws Exception {
-        when(complianceSummaryService.getProtocolComplianceSummary(UNKNOWN_ID))
+        when(complianceSummaryService.getProtocolComplianceSummary(eq(UNKNOWN_ID), any()))
                 .thenThrow(new EntityNotFoundException("Protocol definition not found: " + UNKNOWN_ID));
 
         mockMvc.perform(get("/v1/insights/protocols/00000000-0000-0000-0000-000000000000/compliance-summary"))

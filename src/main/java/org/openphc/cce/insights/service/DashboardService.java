@@ -53,7 +53,7 @@ public class DashboardService {
                 : 0.0;
 
         // Deviation summary
-        var intel = deviationAnalyticsService.getIntelligenceSummary();
+        var intel = deviationAnalyticsService.getIntelligenceSummary(startDate, endDate, facilityId);
         long activeDeviations = intel.getTotalDeviations();
         long newDeviations24h = intel.getRecentActivity() != null
                 ? intel.getRecentActivity().getLast24Hours() : 0;
@@ -114,7 +114,7 @@ public class DashboardService {
 
         // Practitioner compliance — get all practitioners (large limit)
         List<PractitionerRankingDto> allPractitioners = practitionerRankingService.getRankings(
-                "complianceRate", "desc", 1000);
+                "complianceRate", "desc", 1000, null, null, null);
         long totalPractitioners = allPractitioners.size();
         long practitionerAbove90 = allPractitioners.stream()
                 .filter(p -> p.getComplianceRate() > 90.0)
