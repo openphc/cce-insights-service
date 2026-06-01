@@ -125,4 +125,9 @@ public interface DeviationRepository extends ReadOnlyRepository<Deviation, UUID>
             "GROUP BY el.facility_id",
             nativeQuery = true)
     List<Object[]> countDeviationsByFacility();
+
+    @Query(value = "SELECT COUNT(DISTINCT pi.patient_id) FROM deviation d " +
+            "JOIN protocol_instance pi ON d.protocol_instance_id = pi.id",
+            nativeQuery = true)
+    long countDistinctPatientsWithDeviations();
 }

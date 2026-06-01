@@ -3,6 +3,7 @@ package org.openphc.cce.insights.web.controller;
 import lombok.RequiredArgsConstructor;
 import org.openphc.cce.insights.service.DashboardService;
 import org.openphc.cce.insights.web.dto.ApiResponse;
+import org.openphc.cce.insights.web.dto.DashboardComplianceSummaryDto;
 import org.openphc.cce.insights.web.dto.DashboardOverviewDto;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -23,5 +24,11 @@ public class DashboardController {
             @RequestParam(required = false) OffsetDateTime endDate) {
         DashboardOverviewDto overview = dashboardService.getOverview(facilityId, startDate, endDate);
         return ResponseEntity.ok(ApiResponse.ok(overview));
+    }
+
+    @GetMapping("/compliance-summary")
+    public ResponseEntity<ApiResponse<DashboardComplianceSummaryDto>> getComplianceSummary() {
+        DashboardComplianceSummaryDto summary = dashboardService.getComplianceSummary();
+        return ResponseEntity.ok(ApiResponse.ok(summary));
     }
 }

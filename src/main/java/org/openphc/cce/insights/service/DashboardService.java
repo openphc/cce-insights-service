@@ -1,9 +1,13 @@
 package org.openphc.cce.insights.service;
 
 import lombok.RequiredArgsConstructor;
+import org.openphc.cce.insights.domain.repository.DeviationRepository;
 import org.openphc.cce.insights.domain.repository.InboundEventRepository;
+import org.openphc.cce.insights.domain.repository.ProtocolInstanceRepository;
+import org.openphc.cce.insights.web.dto.DashboardComplianceSummaryDto;
 import org.openphc.cce.insights.web.dto.DashboardOverviewDto;
 import org.openphc.cce.insights.web.dto.FacilityRankingDto;
+import org.openphc.cce.insights.web.dto.PractitionerRankingDto;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,7 +23,10 @@ import java.util.Map;
 public class DashboardService {
 
     private final InboundEventRepository inboundEventRepository;
+    private final ProtocolInstanceRepository protocolInstanceRepository;
+    private final DeviationRepository deviationRepository;
     private final FacilityRankingService facilityRankingService;
+    private final PractitionerRankingService practitionerRankingService;
     private final DeviationAnalyticsService deviationAnalyticsService;
 
     @Cacheable(value = "metrics", key = "'dashboard-overview-' + #facilityId + '-' + #startDate + '-' + #endDate")
@@ -78,6 +85,62 @@ public class DashboardService {
                 .hieEventCount(hieEventCount)
                 .topFacilities(topFacilities)
                 .bottomFacilities(bottomFacilities)
+                .build();
+    }
+
+    @Cacheable(value = "metrics", key = "'dashboard-compliance-summary'")
+    public DashboardComplianceSummaryDto getComplianceSummary() {
+        // Patient compliance
+        long totalPatients = protocolInstanceRepository.findDistinctPatientIds().size();
+        long patientsWithDeviations = deviationRepository.countDistinctPatientsWithDeviations();
+        long compliantPatients = totalPatients - patientsWithDeviations;
+        double patientComplianceRate = totalPatients > 0
+                ? Math.round((double) compliantPatients / totalPatients * 1000.0) / 10.0
+                : 0.0;
+
+        // Facility compliance — get all facilities (large limit)
+        List<FacilityRankingDto> allFacilities = facilityRankingService.getRankings(
+                null, null, "complianceRate", "desc", 1000);
+        long totalFacilities = allFacilities.size();
+        long compliantFacilities = allFacilities.stream()
+                .filter(f -> f.getActiveDeviations() == 0)
+                .count();
+        long nonCompliantFacilities = totalFacilities - compliantFacilities;
+        double facilityComplianceRate = totalFacilities > 0
+                ? Math.round((double) compliantFacilities / totalFacilities * 1000.0) / 10.0
+                : 0.0;
+
+        // Practitioner compliance — get all practitioners (large limit)
+        List<PractitionerRankingDto> allPractitioners = practitionerRankingService.getRankings(
+                "complianceRate", "desc", 1000);
+        long totalPractitioners = allPractitioners.size();
+        long compliantPractitioners = allPractitioners.stream()
+                .filter(p -> p.getActiveDeviations() == 0)
+                .count();
+        long nonCompliantPractitioners = totalPractitioners - compliantPractitioners;
+        double practitionerComplianceRate = totalPractitioners > 0
+                ? Math.round((double) compliantPractitioners / totalPractitioners * 1000.0) / 10.0
+                : 0.0;
+
+        return DashboardComplianceSummaryDto.builder()
+                .patients(DashboardComplianceSummaryDto.PatientComplianceDto.builder()
+                        .trackedPatients(totalPatients)
+                        .compliantPatients(compliantPatients)
+                        .nonCompliantPatients(patientsWithDeviations)
+                        .complianceRate(patientComplianceRate)
+                        .build())
+                .facilities(DashboardComplianceSummaryDto.FacilityComplianceDto.builder()
+                        .trackedFacilities(totalFacilities)
+                        .compliantFacilities(compliantFacilities)
+                        .nonCompliantFacilities(nonCompliantFacilities)
+                        .complianceRate(facilityComplianceRate)
+                        .build())
+                .practitioners(DashboardComplianceSummaryDto.PractitionerComplianceDto.builder()
+                        .trackedPractitioners(totalPractitioners)
+                        .compliantPractitioners(compliantPractitioners)
+                        .nonCompliantPractitioners(nonCompliantPractitioners)
+                        .complianceRate(practitionerComplianceRate)
+                        .build())
                 .build();
     }
 
