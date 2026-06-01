@@ -32,6 +32,7 @@ public class PatientTimelineDto {
         private String status;       // COMPLETED, PENDING, NOT_STARTED, OVERDUE, MISSED, SKIPPED
         private int completionCount;
         private String effectiveDateTime;
+        private String dueDate;
         private String completionStatus;
         private String source;
         private String practitioner;
