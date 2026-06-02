@@ -15,6 +15,8 @@ Major feature release adding intelligence analytics, protocol action introspecti
 
 ### New Features
 
+- **Protocol Title & Related Artifacts** — `GET /patients/{id}/protocol-tracking` now returns `protocolTitle` (human-readable name) and `relatedArtifact` array (documentation URLs, thumbnail images) extracted from the protocol definition JSONB
+- **Step Analytics Facility Filter** — `GET /protocols/{id}/step-analytics` now correctly filters by `facilityId`, using protocol-instance-level facility association so steps without individual facility-tagged events are still included
 - **Dashboard Controller** — 2 new endpoints (`/dashboard/overview`, `/dashboard/compliance-summary`) providing aggregated KPI data
 - **Practitioner Ranking Controller** — New endpoint for ranking practitioners by compliance rate, deviation count, or event volume
 - **Protocol Action Order** — `GET /protocols/{id}/action-order` returns ordered list of protocol actions with `type` and `title` fields, enabling the UI to show only `fire-event` type intelligence actions
@@ -37,6 +39,7 @@ Major feature release adding intelligence analytics, protocol action introspecti
 
 ### Demo Data Corrections
 
+- **Protocol relatedArtifact** — RMNCH protocol definition now includes `relatedArtifact` array with WHO guideline documentation link and thumbnail image
 - **Practitioner roles** — Nurse/CHW assigned to non-consultation steps, Doctor only for consultation and referral-ack steps
 - **Source attribution** — `event_log.source` and `step_instance.completed_by_source` set to `openMRS` for consultation events
 - **Step renames** — "ANC Visit # Referral" → "ANC Visit # Referral Initiated", "ANC Visit # Referral Ack" → "ANC Visit # Referral Closure"
@@ -46,6 +49,7 @@ Major feature release adding intelligence analytics, protocol action introspecti
 
 ### Bug Fixes
 
+- **Fixed:** Step analytics (Service Workflow Compliance) showed inflated percentages (e.g., 1000%) when facility filter was active — step counts were unfiltered while denominator was facility-filtered
 - **Fixed:** `AT_RISK` compliance category removed — only `COMPLIANT`, `MODERATE`, `NON_COMPLIANT` remain
 - **Fixed:** Intelligence summary counted only last 30 days — now counts all deviations
 - **Fixed:** Facility filter ignored on protocol compliance summary endpoints

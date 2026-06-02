@@ -233,6 +233,21 @@ List all protocol instances for a patient.
     {
       "protocolInstanceId": "660e8400-e29b-41d4-a716-446655440001",
       "protocolCanonical": "http://openphc.org/fhir/PlanDefinition/anc-high-risk|2.1",
+      "protocolTitle": "ANC High-Risk Protocol",
+      "relatedArtifact": [
+        {
+          "type": "documentation",
+          "label": "Reference Guideline",
+          "display": "External clinical guideline",
+          "url": "https://example.org/guideline.pdf"
+        },
+        {
+          "type": "thumbnail",
+          "label": "Thumbnail Image",
+          "display": "Protocol Thumbnail Image",
+          "url": "https://example.org/thumbnail.png"
+        }
+      ],
       "enrolledAt": "2026-01-15T10:00:00Z",
       "status": "active",
       "complianceRate": 0.50,
