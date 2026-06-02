@@ -49,9 +49,17 @@ public class ProtocolAnalyticsService {
             JsonNode idNode = action.get("id");
             if (idNode != null && !idNode.isNull()) {
                 String actionId = idNode.asText();
+                String type = null;
+                JsonNode typeNode = action.path("type").path("coding");
+                if (typeNode.isArray() && typeNode.size() > 0) {
+                    type = typeNode.get(0).path("code").asText(null);
+                }
+                String title = action.has("title") ? action.get("title").asText(null) : null;
                 entries.add(ActionOrderEntryDto.builder()
                         .actionId(actionId)
                         .parentActionId(parentActionId)
+                        .type(type)
+                        .title(title)
                         .build());
                 JsonNode subActions = action.get("action");
                 if (subActions != null && subActions.isArray()) {

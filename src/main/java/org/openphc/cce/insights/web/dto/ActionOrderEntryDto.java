@@ -8,4 +8,6 @@ import lombok.Data;
 public class ActionOrderEntryDto {
     private String actionId;
     private String parentActionId;
+    private String type;
+    private String title;
 }
