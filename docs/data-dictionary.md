@@ -18,7 +18,7 @@ Protocol definition metadata. Queried for display names and protocol versioning.
 | `url` | `VARCHAR` | Yes | Protocol canonical URL |
 | `version` | `VARCHAR` | Yes | Protocol version |
 | `status` | `VARCHAR` | Yes | Filter active vs retired protocols |
-| `definition` | `JSONB` | Yes | Full FHIR R4 PlanDefinition — protocol name from `definition->'name'`, action order from `definition->'action'` array (type from `action.type.coding[0].code`, title from `action.title`) |
+| `definition` | `JSONB` | Yes | Full FHIR R4 PlanDefinition — protocol name from `definition->'name'`, title from `definition->'title'`, action order from `definition->'action'` array (type from `action.type.coding[0].code`, title from `action.title`), `relatedArtifact` array with documentation URLs and thumbnail image references |
 | `loaded_at` | `TIMESTAMPTZ` | Yes | When protocol was loaded |
 
 ### 1.2 `protocol_instance`
