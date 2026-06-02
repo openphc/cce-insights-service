@@ -653,3 +653,62 @@ flowchart TD
         M["metrics: event volume,<br/>ingestion pipeline,<br/>processing quality"]
     end
 ```
+
+## 18. Protocol Action Order Flow
+
+```mermaid
+sequenceDiagram
+    participant Controller as ProtocolAnalyticsController
+    participant Service as ProtocolAnalyticsService
+    participant Repo as ProtocolDefinitionRepository
+    participant DB as PostgreSQL
+
+    Controller->>Service: getActionOrder(protocolDefinitionId)
+    Service->>Repo: findById(protocolDefinitionId)
+    Repo->>DB: SELECT * FROM protocol_definition WHERE id = ?
+    DB-->>Repo: protocol definition row
+
+    Service->>Service: Parse definition JSONB<br/>Extract action[] array
+
+    Service->>Service: collectActionEntriesRecursive(actions)
+    Note right of Service: For each action:<br/>- Extract actionId (action.id)<br/>- Extract type (action.type.coding[0].code)<br/>- Extract title (action.title)<br/>- Extract requiredBehavior<br/>- Recurse into sub-actions
+
+    Service-->>Controller: List<ActionOrderEntryDto>
+    Controller-->>Controller: Wrap in ApiResponse
+```
+
+## 19. Intelligence Delivery Summary Flow
+
+```mermaid
+flowchart TD
+    A[GET /v1/insights/intelligence/summary] --> B[Parse params:<br/>startDate, endDate]
+    B --> C[Query intelligence_delivery table]
+    C --> D[COUNT total deliveries]
+    C --> E[COUNT by action_type]
+    C --> F[COUNT by status<br/>SUCCESS/FAILED/PENDING]
+
+    D --> G[Query deviation table<br/>for deviation counts]
+    E --> G
+    F --> G
+
+    G --> H[Build IntelligenceSummaryDto]
+    H --> I[Return response]
+```
+
+## 20. Dashboard Overview Flow
+
+```mermaid
+flowchart TD
+    A[GET /v1/insights/dashboard/overview] --> B[Parse params:<br/>facilityId, startDate, endDate]
+
+    B --> C[Query protocol_instance<br/>COUNT total patients]
+    B --> D[Query protocol_instance<br/>COUNT total enrollments]
+    B --> E[Query step_instance<br/>Calculate compliance rate]
+    B --> F[Query deviation<br/>COUNT active deviations]
+
+    C --> G[Build DashboardOverviewDto]
+    D --> G
+    E --> G
+    F --> G
+    G --> H[Return response]
+```

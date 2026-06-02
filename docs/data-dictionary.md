@@ -2,7 +2,7 @@
 
 Comprehensive reference for all database tables queried, DTOs, query parameters, aggregation formulas, and metrics used by the Insights Service.
 
-> The Insights Service does **not own** any database tables. All tables are owned by the Compliance Service. This data dictionary documents the read-only view used by the Insights Service.
+> The Insights Service does **not own** any database tables. All tables are owned by the Compliance Service, Intelligence Service, or Collector Service. This data dictionary documents the read-only view used by the Insights Service.
 
 ---
 
@@ -18,7 +18,7 @@ Protocol definition metadata. Queried for display names and protocol versioning.
 | `url` | `VARCHAR` | Yes | Protocol canonical URL |
 | `version` | `VARCHAR` | Yes | Protocol version |
 | `status` | `VARCHAR` | Yes | Filter active vs retired protocols |
-| `definition` | `JSONB` | Partial | Full FHIR R4 PlanDefinition — protocol name extracted from `definition->'name'` when needed for display |
+| `definition` | `JSONB` | Yes | Full FHIR R4 PlanDefinition — protocol name from `definition->'name'`, action order from `definition->'action'` array (type from `action.type.coding[0].code`, title from `action.title`) |
 | `loaded_at` | `TIMESTAMPTZ` | Yes | When protocol was loaded |
 
 ### 1.2 `protocol_instance`
@@ -115,6 +115,53 @@ Request audit log & rejection tracking. Owned by the **Collector Service** — e
 
 > **Deduplication constraint:** `UNIQUE(cloudevents_id, source)` — primary deduplication key.
 
+### 1.7 `intelligence_delivery`
+
+Intelligence action delivery records. Owned by the **Intelligence Service**. Used for tracking fire-event actions, escalation notifications, and delivery status.
+
+| Column | Type | Used By Insights | Purpose |
+|--------|------|------------------|---------|
+| `id` | `UUID` | Yes | PK |
+| `intelligence_event_id` | `VARCHAR` | Yes | Intelligence event identifier |
+| `action_definition_id` | `VARCHAR` | Yes | Protocol action definition reference |
+| `destination_adaptor_mapping_id` | `UUID` | Yes | FK → `destination_adaptor_mapping.id` |
+| `action_type` | `VARCHAR` | Yes | Intelligence action type (e.g., `fire-event`) |
+| `status` | `VARCHAR` | Yes | Delivery status |
+| `subject` | `VARCHAR` | Yes | Patient UPID |
+| `protocol_canonical` | `VARCHAR` | Yes | Protocol reference |
+| `action_id` | `VARCHAR` | Yes | Protocol action ID |
+| `severity` | `VARCHAR` | Yes | Alert severity |
+| `destination` | `VARCHAR` | Yes | Delivery destination |
+| `attempt_count` | `INTEGER` | Yes | Delivery attempt count |
+| `created_at` | `TIMESTAMPTZ` | Yes | Record creation timestamp |
+| `updated_at` | `TIMESTAMPTZ` | Yes | Last update timestamp |
+| `delivered_at` | `TIMESTAMPTZ` | Yes | Successful delivery timestamp |
+
+### 1.8 `receiver_adaptor`
+
+Adaptor registry for intelligence delivery receivers.
+
+| Column | Type | Used By Insights | Purpose |
+|--------|------|------------------|---------|
+| `id` | `UUID` | Yes | PK |
+| `name` | `VARCHAR` | Yes | Adaptor name |
+| `status` | `VARCHAR` | Yes | Adaptor status |
+| `created_at` | `TIMESTAMPTZ` | No | Record creation |
+| `updated_at` | `TIMESTAMPTZ` | No | Last update |
+
+### 1.9 `destination_adaptor_mapping`
+
+Destination routing configuration for intelligence delivery.
+
+| Column | Type | Used By Insights | Purpose |
+|--------|------|------------------|---------|
+| `id` | `UUID` | Yes | PK |
+| `destination` | `VARCHAR` | Yes | Destination identifier |
+| `receiver_adaptor_id` | `UUID` | Yes | FK → `receiver_adaptor.id` |
+| `status` | `VARCHAR` | Yes | Mapping status |
+| `created_at` | `TIMESTAMPTZ` | No | Record creation |
+| `updated_at` | `TIMESTAMPTZ` | No | Last update |
+
 ## 2. Enum Values
 
 ### 2.1 `ProtocolInstanceStatus`
@@ -130,6 +177,7 @@ Request audit log & rejection tracking. Owned by the **Collector Service** — e
 
 | Value | Description | Compliance Category |
 |-------|-------------|---------------------|
+| `NOT_STARTED` | Step not yet activated | — |
 | `PENDING` | Not yet due | on_track |
 | `DUE` | Currently due | on_track |
 | `OVERDUE` | Past tolerance window | at_risk |
@@ -156,9 +204,9 @@ Request audit log & rejection tracking. Owned by the **Collector Service** — e
 
 | Value | Definition |
 |-------|------------|
-| `on_track` | All steps completed on time/early, no active overdue/missed |
-| `at_risk` | One or more overdue steps (not yet missed) |
-| `non_compliant` | One or more missed steps |
+| `COMPLIANT` | All steps completed on time/early, no active overdue/missed |
+| `MODERATE` | One or more overdue steps (not yet missed) |
+| `NON_COMPLIANT` | One or more missed steps |
 
 ### 2.6 `InboundStatus`
 
