@@ -104,6 +104,19 @@ curl localhost:8084/v1/insights/lookups/facilities
 curl localhost:8084/v1/insights/lookups/practitioners
 curl localhost:8084/v1/insights/lookups/sources
 curl localhost:8084/v1/insights/lookups/patients
+
+# Test dashboard endpoints
+curl localhost:8084/v1/insights/dashboard/overview
+curl localhost:8084/v1/insights/dashboard/compliance-summary
+
+# Test practitioner ranking
+curl "localhost:8084/v1/insights/practitioners/ranking?rankBy=complianceRate&order=desc"
+
+# Test protocol action order (intelligence actions)
+curl localhost:8084/v1/insights/protocols/{protocolDefinitionId}/action-order
+
+# Test intelligence summary
+curl localhost:8084/v1/insights/deviations/intelligence-summary
 ```
 
 ## 3. Configuration Reference
@@ -193,12 +206,12 @@ cce-insights-service/
     │   ├── java/org/openphc/cce/insights/
     │   │   ├── InsightsServiceApplication.java
     │   │   ├── config/          # CacheConfig, JpaConfig, MetricsConfig, ObservabilityConfig
-    │   │   ├── domain/entity/   # 6 @Immutable entities (incl. InboundEvent)
+    │   │   ├── domain/entity/   # 9 @Immutable entities
     │   │   ├── domain/enums/    # 5 enums
-    │   │   ├── domain/repository/ # 7 repos (ReadOnlyRepository + 6)
+    │   │   ├── domain/repository/ # 9 repos (ReadOnlyRepository + 8)
     │   │   ├── health/          # DatabaseHealthIndicator
-    │   │   ├── service/         # 10 services + DateUtil utility
-    │   │   └── web/controller/ + web/dto/  # 11 controllers (incl. LookupController), ~30 DTOs
+    │   │   ├── service/         # 12 services + DateUtil utility
+    │   │   └── web/controller/ + web/dto/  # 14 controllers, ~35 DTOs
     │   └── resources/
     │       ├── application.yml
     │       ├── application-local.yml

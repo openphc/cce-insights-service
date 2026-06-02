@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-The **CCE Insights Service** is a stateless, read-only Spring Boot service that queries the shared `cce_collector` PostgreSQL database and exposes 38 REST endpoints consumed by the Analytics UI dashboard. It requires no Kafka, no Flyway, and no authentication — the CCE Gateway handles OAuth enforcement.
+The **CCE Insights Service** is a stateless, read-only Spring Boot service that queries the shared `cce_collector` PostgreSQL database and exposes 37 REST endpoints consumed by the Analytics UI dashboard. It requires no Kafka, no Flyway, and no authentication — the CCE Gateway handles OAuth enforcement.
 
 ---
 

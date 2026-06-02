@@ -1900,3 +1900,207 @@ Returns distinct patient IDs from protocol instances.
   ]
 }
 ```
+
+---
+
+## 15. Dashboard
+
+### 15.1 GET `/v1/insights/dashboard/overview`
+
+Aggregated dashboard KPIs — total patients, total enrollments, compliance rate, active deviations.
+
+**Required Scope:** `dashboard:read`
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `facilityId` | String | — | Filter by facility |
+| `startDate` | ISO 8601 | — | Start of date range |
+| `endDate` | ISO 8601 | — | End of date range |
+
+**Response: `200 OK`**
+
+```json
+{
+  "data": {
+    "totalPatients": 150,
+    "totalEnrollments": 248,
+    "complianceRate": 0.72,
+    "activeDeviations": 34
+  }
+}
+```
+
+### 15.2 GET `/v1/insights/dashboard/compliance-summary`
+
+Compliance summary across all protocols for dashboard display.
+
+**Required Scope:** `dashboard:read`
+
+**Response: `200 OK`**
+
+```json
+{
+  "data": {
+    "protocols": [
+      {
+        "protocolDefinitionId": "550e8400-...",
+        "protocolName": "ANC High Risk",
+        "totalEnrollments": 120,
+        "complianceRate": 0.75
+      }
+    ]
+  }
+}
+```
+
+---
+
+## 16. All Protocols Compliance Summary
+
+### 16.1 GET `/v1/insights/protocols/compliance-summary`
+
+Returns compliance summary aggregated across all protocols in a single call.
+
+**Required Scope:** `dashboard:read`
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `facilityId` | String | — | Filter by facility |
+
+**Response: `200 OK`**
+
+```json
+{
+  "data": {
+    "protocols": [
+      {
+        "protocolDefinitionId": "550e8400-...",
+        "protocolCanonical": "http://openphc.org/fhir/PlanDefinition/anc-high-risk|2.1",
+        "totalEnrollments": 248,
+        "complianceRate": 0.72,
+        "complianceCategory": "MODERATE"
+      }
+    ]
+  }
+}
+```
+
+---
+
+## 17. Practitioner Rankings
+
+### 17.1 GET `/v1/insights/practitioners/ranking`
+
+Rank practitioners by compliance rate, deviation count, or event volume.
+
+**Required Scope:** `dashboard:read`
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `rankBy` | String | `complianceRate` | Ranking criterion: `complianceRate`, `deviationCount`, `eventVolume` |
+| `order` | String | `desc` | Sort direction: `asc` or `desc` |
+| `limit` | Integer | `50` | Page size |
+| `startDate` | ISO 8601 | — | Start of date range |
+| `endDate` | ISO 8601 | — | End of date range |
+| `facilityId` | String | — | Filter by facility |
+
+**Response: `200 OK`**
+
+```json
+{
+  "data": [
+    {
+      "practitionerRef": "Practitioner/HLC-PRAC-2025-00005",
+      "practitionerName": "Dr. Kwizera Emmanuel",
+      "complianceRate": 0.89,
+      "deviationCount": 3,
+      "totalPatients": 42,
+      "complianceCategory": "COMPLIANT"
+    }
+  ]
+}
+```
+
+---
+
+## 18. Protocol Action Order
+
+### 18.1 GET `/v1/insights/protocols/{protocolDefinitionId}/action-order`
+
+Returns the ordered list of actions defined in the protocol PlanDefinition, with type and title extracted from the JSONB definition.
+
+**Required Scope:** `dashboard:read`
+
+**Path Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `protocolDefinitionId` | UUID | Protocol definition ID |
+
+**Response: `200 OK`**
+
+```json
+{
+  "data": [
+    {
+      "actionId": "registration",
+      "parentActionId": null,
+      "stepOrder": 1,
+      "requiredBehavior": "must",
+      "type": null,
+      "title": "Registration"
+    },
+    {
+      "actionId": "anc-visit-1-referral-escalation",
+      "parentActionId": "anc-visit-1-referral",
+      "stepOrder": 8,
+      "requiredBehavior": "could",
+      "type": "fire-event",
+      "title": "ANC Visit 1 Referral Escalation Notification"
+    }
+  ]
+}
+```
+
+> **Note:** The `type` field is extracted from `action.type.coding[0].code` in the protocol definition JSONB. Actions with `type = "fire-event"` are intelligence actions (notifications/escalations). The `title` field is from `action.title`.
+
+---
+
+## 19. Deviation Intelligence Summary
+
+### 19.1 GET `/v1/insights/deviations/intelligence-summary`
+
+Returns intelligence delivery summary including total deviations, active intelligence actions, and delivery statistics.
+
+**Required Scope:** `dashboard:read`
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `startDate` | ISO 8601 | — | Start of date range |
+| `endDate` | ISO 8601 | — | End of date range |
+| `facilityId` | String | — | Filter by facility |
+
+**Response: `200 OK`**
+
+```json
+{
+  "data": {
+    "totalDeviations": 145,
+    "activeDeviations": 34,
+    "resolvedDeviations": 111,
+    "intelligenceActions": {
+      "totalDeliveries": 89,
+      "successfulDeliveries": 82,
+      "failedDeliveries": 7
+    }
+  }
+}
+```

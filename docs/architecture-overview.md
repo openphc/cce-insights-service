@@ -17,14 +17,17 @@ graph TB
         API["REST API<br/>(Spring MVC)"]
         CACHE["Caffeine Cache<br/>(3-tier)"]
         SUMMARY["Compliance Summary<br/>Service"]
+        DASHBOARD["Dashboard<br/>Service"]
         TIMELINE["Patient Timeline<br/>Service"]
         DEVIATION["Deviation Analytics<br/>Service"]
         EVENTVOLUME["Event Volume<br/>Service"]
         PROTOCOL["Protocol Analytics<br/>Service"]
         FACILITY["Facility Ranking<br/>Service"]
+        PRACTITIONER["Practitioner Ranking<br/>Service"]
         QUALITY["Processing Quality<br/>Service"]
         RISK["Patient Risk<br/>Service"]
         INGESTION["Ingestion Analytics<br/>Service"]
+        INTELLIGENCE["Intelligence Analytics<br/>Service"]
         EXPORT["Export Service"]
         LOOKUP["Lookup Service"]
     end
@@ -36,25 +39,31 @@ graph TB
     UI --> GATEWAY
     GATEWAY -->|"dashboard:read"| API
     API --> SUMMARY
+    API --> DASHBOARD
     API --> TIMELINE
     API --> DEVIATION
     API --> EVENTVOLUME
     API --> PROTOCOL
     API --> FACILITY
+    API --> PRACTITIONER
     API --> QUALITY
     API --> RISK
     API --> INGESTION
+    API --> INTELLIGENCE
     API --> EXPORT
     API --> LOOKUP
     SUMMARY --> CACHE
+    DASHBOARD --> CACHE
     TIMELINE --> CACHE
     DEVIATION --> CACHE
     EVENTVOLUME --> CACHE
     PROTOCOL --> CACHE
     FACILITY --> CACHE
+    PRACTITIONER --> CACHE
     QUALITY --> CACHE
     RISK --> CACHE
     INGESTION --> CACHE
+    INTELLIGENCE --> CACHE
     LOOKUP --> CACHE
     CACHE --> DB
     EXPORT --> DB
@@ -63,7 +72,7 @@ graph TB
     classDef external fill:#7B8D8E,stroke:#566573,color:white
     classDef data fill:#27AE60,stroke:#1E8449,color:white
 
-    class API,SUMMARY,TIMELINE,DEVIATION,EVENTVOLUME,PROTOCOL,FACILITY,QUALITY,RISK,INGESTION,EXPORT,LOOKUP,CACHE service
+    class API,SUMMARY,DASHBOARD,TIMELINE,DEVIATION,EVENTVOLUME,PROTOCOL,FACILITY,PRACTITIONER,QUALITY,RISK,INGESTION,INTELLIGENCE,EXPORT,LOOKUP,CACHE service
     class UI,GATEWAY external
     class DB data
 ```
@@ -135,13 +144,16 @@ src/main/java/org/openphc/cce/insights/
 │   │   ├── StepInstance.java                  # Read-only entity
 │   │   ├── Deviation.java                     # Read-only entity
 │   │   ├── EventLog.java                      # Read-only entity
-│   │   └── InboundEvent.java                  # Read-only entity (Collector Service)
+│   │   ├── InboundEvent.java                  # Read-only entity (Collector Service)
+│   │   ├── IntelligenceDelivery.java          # Read-only entity (Intelligence Service)
+│   │   ├── ReceiverAdaptor.java               # Read-only entity (Intelligence Service)
+│   │   └── DestinationAdaptorMapping.java     # Read-only entity (Intelligence Service)
 │   ├── enums/
 │   │   ├── ProtocolInstanceStatus.java        # ACTIVE, COMPLETED, WITHDRAWN, EXPIRED
-│   │   ├── StepState.java                     # PENDING, DUE, OVERDUE, MISSED, COMPLETED, SKIPPED
+│   │   ├── StepState.java                     # PENDING, DUE, OVERDUE, MISSED, COMPLETED, SKIPPED, NOT_STARTED
 │   │   ├── CompletionStatus.java              # EARLY, ON_TIME, LATE
 │   │   ├── DeviationType.java                 # OVERDUE, MISSED
-│   │   └── ComplianceCategory.java            # ON_TRACK, AT_RISK, NON_COMPLIANT
+│   │   └── ComplianceCategory.java            # COMPLIANT, MODERATE, NON_COMPLIANT
 │   └── repository/
 │       ├── ReadOnlyRepository.java            # Base repo (no save/delete)
 │       ├── ProtocolDefinitionRepository.java
@@ -149,16 +161,20 @@ src/main/java/org/openphc/cce/insights/
 │       ├── StepInstanceRepository.java
 │       ├── DeviationRepository.java
 │       ├── EventLogRepository.java
-│       └── InboundEventRepository.java        # Ingestion pipeline queries
+│       ├── InboundEventRepository.java        # Ingestion pipeline queries
+│       ├── IntelligenceDeliveryRepository.java
+│       └── DestinationAdaptorMappingRepository.java
 ├── health/
 │   └── DatabaseHealthIndicator.java           # Custom DB health check
 ├── service/
 │   ├── ComplianceSummaryService.java          # Protocol & facility compliance aggregation
-│   ├── ProtocolAnalyticsService.java          # Step analytics, completion funnel, outcome distribution, enrollment trends
+│   ├── DashboardService.java                  # Dashboard overview and compliance summary KPIs
+│   ├── ProtocolAnalyticsService.java          # Step analytics, completion funnel, outcome distribution, enrollment trends, action order
 │   ├── PatientTimelineService.java            # Patient event timeline + tracking
 │   ├── PatientRiskService.java                # At-risk hotspots, repeat deviations
-│   ├── DeviationAnalyticsService.java         # Deviation trends, by-action, resolution rate, paginated list
+│   ├── DeviationAnalyticsService.java         # Deviation trends, by-action, resolution rate, intelligence summary
 │   ├── FacilityRankingService.java            # Facility leaderboard
+│   ├── PractitionerRankingService.java        # Practitioner leaderboard
 │   ├── EventVolumeService.java                # Event volume by resourceType, facility, practitioner, source + source comparison
 │   ├── ProcessingQualityService.java          # Event processing quality (MATCHED/ZERO_MATCH/DUPLICATE)
 │   ├── IngestionAnalyticsService.java         # Ingestion funnel, rejections, source quality, pipeline loss
@@ -168,14 +184,17 @@ src/main/java/org/openphc/cce/insights/
 │   ├── GlobalExceptionHandler.java            # @ControllerAdvice error handling (with logging)
 │   ├── controller/
 │   │   ├── ComplianceSummaryController.java
+│   │   ├── DashboardController.java           # Dashboard overview + compliance summary
 │   │   ├── ProtocolAnalyticsController.java
-│   │   ├── PatientController.java             # Timeline, tracking, events, deviations
+│   │   ├── PatientController.java             # Timeline, tracking, events
 │   │   ├── PatientRiskController.java
 │   │   ├── DeviationController.java
 │   │   ├── FacilityRankingController.java
+│   │   ├── PractitionerRankingController.java
 │   │   ├── EventVolumeController.java         # Volume + source comparison
 │   │   ├── ProcessingQualityController.java
 │   │   ├── IngestionAnalyticsController.java  # Ingestion pipeline analytics
+│   │   ├── IntelligenceAnalyticsController.java # Intelligence delivery summary
 │   │   ├── LookupController.java              # Dropdown filter data (protocols, facilities, practitioners, sources, patients)
 │   │   └── ExportController.java
 │   └── dto/
@@ -188,11 +207,16 @@ src/main/java/org/openphc/cce/insights/
 │       ├── CompletionFunnelDto.java
 │       ├── OutcomeDistributionDto.java
 │       ├── EnrollmentTrendDto.java
+│       ├── ActionOrderEntryDto.java
 │       ├── FacilityRankingDto.java
+│       ├── PractitionerRankingDto.java
+│       ├── DashboardOverviewDto.java
+│       ├── DashboardComplianceSummaryDto.java
 │       ├── DeviationDto.java
 │       ├── DeviationTrendDto.java
 │       ├── DeviationByActionDto.java
 │       ├── DeviationResolutionDto.java
+│       ├── DeviationIntelligenceSummaryDto.java
 │       ├── IntelligenceSummaryDto.java
 │       ├── EventVolumeSummaryDto.java
 │       ├── ResourceTypeCountDto.java
@@ -224,7 +248,7 @@ src/integrationTest/resources/
 └── seed-data.sql                                  # Sample data
 ```
 
-**Total:** ~77 source files across 12 packages.
+**Total:** ~85 source files across 12 packages.
 
 ---
 
@@ -238,12 +262,15 @@ All database access uses `@Transactional(readOnly = true)`. The Insights Service
 
 | Table | Owner | Queries Used For |
 |---|---|---|
-| `protocol_definition` | Compliance Service | Protocol metadata (name, version, canonical URL) |
+| `protocol_definition` | Compliance Service | Protocol metadata (name, version, canonical URL), action order extraction from JSONB |
 | `protocol_instance` | Compliance Service | Patient enrollments, compliance rates, filtering by status/facility |
 | `step_instance` | Compliance Service | Step states, timing, completion status, aggregation |
 | `deviation` | Compliance Service | Deviation records, trends, counts by type, facility deviation counts |
 | `event_log` | Compliance Service | Patient event history, timeline visualization, event volume analytics |
 | `inbound_event` | Collector Service | Ingestion funnel, rejection analytics, source quality, pipeline loss, source comparison, source event counts |
+| `intelligence_delivery` | Intelligence Service | Intelligence delivery tracking, action type statistics, delivery status |
+| `receiver_adaptor` | Intelligence Service | Adaptor registry lookups |
+| `destination_adaptor_mapping` | Intelligence Service | Destination routing configuration |
 
 ### 4.3 Key Query Patterns
 

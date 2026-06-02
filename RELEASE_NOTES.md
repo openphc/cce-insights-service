@@ -1,5 +1,58 @@
 # Release Notes
 
+## v1.1.0 — Demo Intelligence Release
+
+**Release Date:** June 2025  
+**Branch:** `demo-intelligence`  
+
+---
+
+### Overview
+
+Major feature release adding intelligence analytics, protocol action introspection, dashboard endpoints, and practitioner ranking. Also includes significant data corrections for demo environment and expanded filtering across all analytics endpoints.
+
+---
+
+### New Features
+
+- **Dashboard Controller** — 2 new endpoints (`/dashboard/overview`, `/dashboard/compliance-summary`) providing aggregated KPI data
+- **Practitioner Ranking Controller** — New endpoint for ranking practitioners by compliance rate, deviation count, or event volume
+- **Protocol Action Order** — `GET /protocols/{id}/action-order` returns ordered list of protocol actions with `type` and `title` fields, enabling the UI to show only `fire-event` type intelligence actions
+- **Intelligence Summary** — Respects date range and facility filters for dynamic analytics
+- **All Protocols Compliance Summary** — `GET /protocols/compliance-summary` returns compliance summary across all protocols in one call
+- **Due Date in Patient Timeline** — `PatientTimelineDto` now includes `dueDate` field for step tracking
+- **Compliance Categorization** — Facilities and practitioners are categorized by compliance rate bands
+
+---
+
+### Improvements
+
+- **Date range filters** — All analytics endpoints now accept `startDate` and `endDate` query parameters
+- **Facility filter** — Protocol compliance summary endpoints respect `facilityId` filter
+- **Intelligence delivery entities** — Added `IntelligenceDelivery`, `ReceiverAdaptor`, `DestinationAdaptorMapping` entities (9 total, up from 6)
+- **14 controllers** (up from 11) with **37 GET endpoints** (revised from 38 after deduplication)
+- **ActionOrderEntryDto** — Now includes `type` (from `action.type.coding[0].code`) and `title` (from `action.title`) fields extracted from the protocol definition JSONB
+
+---
+
+### Demo Data Corrections
+
+- **Practitioner roles** — Nurse/CHW assigned to non-consultation steps, Doctor only for consultation and referral-ack steps
+- **Source attribution** — `event_log.source` and `step_instance.completed_by_source` set to `openMRS` for consultation events
+- **Step renames** — "ANC Visit # Referral" → "ANC Visit # Referral Initiated", "ANC Visit # Referral Ack" → "ANC Visit # Referral Closure"
+- **Fix scripts** — `04-fix-demo-data.sql` provides migration script for applying corrections to live databases
+
+---
+
+### Bug Fixes
+
+- **Fixed:** `AT_RISK` compliance category removed — only `COMPLIANT`, `MODERATE`, `NON_COMPLIANT` remain
+- **Fixed:** Intelligence summary counted only last 30 days — now counts all deviations
+- **Fixed:** Facility filter ignored on protocol compliance summary endpoints
+- **Fixed:** Compliance rate formula now uses step-based calculation
+
+---
+
 ## v1.0.0 — Initial Release
 
 **Release Date:** 2025  
@@ -15,11 +68,11 @@ First production release of the **CCE Insights Service** — a read-only analyti
 
 ### Highlights
 
-- **38 REST endpoints** across 11 controllers
-- **6 database tables** queried (read-only) from the shared `cce_collector` PostgreSQL database
+- **37 REST endpoints** across 14 controllers
+- **9 database tables** queried (read-only) from the shared `cce_collector` PostgreSQL database
 - **Zero write operations** — fully read-only JPA entities with `@Immutable` annotations
 - **Caffeine caching** — 3-tier in-memory cache (lookups/analytics/metrics) with configurable TTLs
-- **Docker-ready** — multi-stage Dockerfile, docker-compose.yml, and Kubernetes manifests
+- **Docker-ready** — multi-stage Dockerfile, docker-compose.yml
 - **Comprehensive observability** — Prometheus metrics, structured JSON logging, custom health indicators
 - **Integration tested** — Testcontainers-based tests covering all endpoint groups
 
@@ -118,11 +171,11 @@ First production release of the **CCE Insights Service** — a read-only analyti
 | **Framework** | Spring Boot 3.4.4, Java 21 |
 | **Build** | Gradle 8.12 with JaCoCo |
 | **Database** | PostgreSQL 16 (shared `cce_collector`, read-only) |
-| **Entities** | 6: ProtocolDefinition, ProtocolInstance, StepInstance, Deviation, EventLog, InboundEvent |
-| **Repositories** | 7 (including ReadOnlyRepository base) |
-| **Services** | 10 + DateUtil utility |
-| **Controllers** | 11 (incl. LookupController) |
-| **DTOs** | ~30 |
+| **Entities** | 9: ProtocolDefinition, ProtocolInstance, StepInstance, Deviation, EventLog, InboundEvent, IntelligenceDelivery, ReceiverAdaptor, DestinationAdaptorMapping |
+| **Repositories** | 9 (including ReadOnlyRepository base) |
+| **Services** | 12 + DateUtil utility |
+| **Controllers** | 14 |
+| **DTOs** | ~35 |
 | **Configs** | 5 (CacheConfig, JpaConfig, MetricsConfig, ObservabilityConfig, DatabaseHealthIndicator) |
 | **Integration Tests** | 10 IT classes with Testcontainers |
 
@@ -138,6 +191,9 @@ First production release of the **CCE Insights Service** — a read-only analyti
 | `deviation` | Compliance Service | Deviation records |
 | `event_log` | Compliance Service | Event history & volume |
 | `inbound_event` | Collector Service | Ingestion pipeline analytics |
+| `intelligence_delivery` | Intelligence Service | Intelligence delivery tracking |
+| `receiver_adaptor` | Intelligence Service | Adaptor registry |
+| `destination_adaptor_mapping` | Intelligence Service | Destination routing |
 
 ---
 
