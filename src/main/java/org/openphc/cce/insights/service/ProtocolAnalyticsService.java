@@ -69,8 +69,8 @@ public class ProtocolAnalyticsService {
         }
     }
 
-    @Cacheable(value = "analytics", key = "'step-analytics-' + #protocolDefinitionId")
-    public StepAnalyticsDto getStepAnalytics(UUID protocolDefinitionId) {
+    @Cacheable(value = "analytics", key = "'step-analytics-' + #protocolDefinitionId + '-' + (#facilityId ?: 'all')")
+    public StepAnalyticsDto getStepAnalytics(UUID protocolDefinitionId, String facilityId) {
         ProtocolDefinition pd = protocolDefinitionRepository.findById(protocolDefinitionId)
                 .orElseThrow(() -> new EntityNotFoundException(
                         "Protocol definition not found: " + protocolDefinitionId));
@@ -78,7 +78,9 @@ public class ProtocolAnalyticsService {
         // Resolve requiredBehavior per actionId from PlanDefinition
         Map<String, String> requiredBehaviorMap = resolveRequiredBehaviorMap(pd);
 
-        List<Object[]> rows = stepInstanceRepository.findStepAnalytics(protocolDefinitionId);
+        List<Object[]> rows = (facilityId != null && !facilityId.isEmpty())
+                ? stepInstanceRepository.findStepAnalyticsByFacility(protocolDefinitionId, facilityId)
+                : stepInstanceRepository.findStepAnalytics(protocolDefinitionId);
 
         List<StepAnalyticsDto.StepMetric> steps = rows.stream().map(row -> {
             String actionId = (String) row[0];
