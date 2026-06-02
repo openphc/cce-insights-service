@@ -103,6 +103,6 @@ UPDATE protocol_definition
 SET definition = jsonb_set(
     definition,
     '{relatedArtifact}',
-    '[{"type": "documentation", "label": "Reference Guideline", "display": "External clinical guideline", "url": "https://iris.who.int/server/api/core/bitstreams/0affb504-e80a-42db-9b53-7c442d4c72f2/content"}, {"type": "thumbnail", "label": "Thumbnail Image", "display": "Protocol Thumbnail Image", "url": "https://drive.google.com/file/d/1hr9FQjvpdvRIUpK2-tFhITMSOBQD0fq-/view?usp=sharing"}]'::jsonb
+    '[{"type": "documentation", "label": "Reference Guideline", "display": "External clinical guideline", "url": "https://iris.who.int/server/api/core/bitstreams/0affb504-e80a-42db-9b53-7c442d4c72f2/content"}, {"type": "thumbnail", "label": "Thumbnail Image", "display": "Protocol Thumbnail Image", "url": "https://drive.google.com/uc?export=view&id=1hr9FQjvpdvRIUpK2-tFhITMSOBQD0fq-"}]'::jsonb
 )
 WHERE id = 'f8f9dfc2-8ef7-4434-aff8-e3621c1b99ad';
