@@ -59,6 +59,44 @@ public class PatientController {
             Map<String, Object> map = new LinkedHashMap<>();
             map.put("protocolInstanceId", pi.getId());
             map.put("protocolCanonical", pi.getProtocolCanonical());
+
+            // Extract title and relatedArtifact from protocol definition JSONB
+            String protocolTitle = pi.getProtocolCanonical();
+            List<Map<String, Object>> relatedArtifacts = null;
+            try {
+                ProtocolDefinition pd = protocolDefinitionRepository.findById(pi.getProtocolDefinitionId()).orElse(null);
+                if (pd != null && pd.getDefinition() != null) {
+                    JsonNode root = objectMapper.readTree(pd.getDefinition());
+                    JsonNode titleNode = root.get("title");
+                    if (titleNode != null && !titleNode.isNull()) {
+                        protocolTitle = titleNode.asText();
+                    } else {
+                        JsonNode nameNode = root.get("name");
+                        if (nameNode != null && !nameNode.isNull()) {
+                            protocolTitle = nameNode.asText();
+                        }
+                    }
+                    JsonNode artifactsNode = root.get("relatedArtifact");
+                    if (artifactsNode != null && artifactsNode.isArray()) {
+                        relatedArtifacts = new ArrayList<>();
+                        for (JsonNode artifact : artifactsNode) {
+                            Map<String, Object> artMap = new LinkedHashMap<>();
+                            if (artifact.has("type")) artMap.put("type", artifact.get("type").asText());
+                            if (artifact.has("label")) artMap.put("label", artifact.get("label").asText());
+                            if (artifact.has("display")) artMap.put("display", artifact.get("display").asText());
+                            if (artifact.has("url")) artMap.put("url", artifact.get("url").asText());
+                            relatedArtifacts.add(artMap);
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Failed to parse protocol definition for {}: {}", pi.getProtocolDefinitionId(), e.getMessage());
+            }
+            map.put("protocolTitle", protocolTitle);
+            if (relatedArtifacts != null) {
+                map.put("relatedArtifact", relatedArtifacts);
+            }
+
             map.put("enrolledAt", pi.getEnrolledAt());
             map.put("status", pi.getStatus());
             map.put("complianceRate", rate);
