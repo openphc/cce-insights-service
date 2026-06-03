@@ -179,8 +179,11 @@ public class PatientController {
             @RequestParam(required = false) OffsetDateTime startDate,
             @RequestParam(required = false) OffsetDateTime endDate,
             @RequestParam(defaultValue = "50") int limit) {
-        String subject = "Patient/" + patientId;
-        List<EventLog> events = eventLogRepository.findBySubjectOrderByEventTimeDesc(subject);
+        // Try both formats: plain patientId and Patient/patientId prefix
+        List<EventLog> events = eventLogRepository.findBySubjectOrderByEventTimeDesc(patientId);
+        if (events.isEmpty()) {
+            events = eventLogRepository.findBySubjectOrderByEventTimeDesc("Patient/" + patientId);
+        }
 
         List<Map<String, Object>> result = events.stream()
                 .filter(e -> resourceType == null || extractResourceType(e.getData()).equals(resourceType))
