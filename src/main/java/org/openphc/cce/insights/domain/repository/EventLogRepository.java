@@ -39,6 +39,13 @@ public interface EventLogRepository extends ReadOnlyRepository<EventLog, UUID> {
             "el.data->'requester'->>'reference', " +
             "el.data->'performer'->0->'actor'->>'reference'" +
             ") IS NOT NULL " +
+            "AND COALESCE(" +
+            "el.data->'participant'->0->'individual'->>'reference', " +
+            "el.data->'performer'->0->>'reference', " +
+            "el.data->'asserter'->>'reference', " +
+            "el.data->'requester'->>'reference', " +
+            "el.data->'performer'->0->'actor'->>'reference'" +
+            ") LIKE 'Practitioner/%' " +
             "ORDER BY practitioner_ref",
             nativeQuery = true)
     List<String> findDistinctPractitioners();
@@ -98,6 +105,13 @@ public interface EventLogRepository extends ReadOnlyRepository<EventLog, UUID> {
             "  el.data->'requester'->>'reference', " +
             "  el.data->'performer'->0->'actor'->>'reference'" +
             ") IS NOT NULL " +
+            "AND COALESCE(" +
+            "  el.data->'participant'->0->'individual'->>'reference', " +
+            "  el.data->'performer'->0->>'reference', " +
+            "  el.data->'asserter'->>'reference', " +
+            "  el.data->'requester'->>'reference', " +
+            "  el.data->'performer'->0->'actor'->>'reference'" +
+            ") LIKE 'Practitioner/%' " +
             "ORDER BY event_count DESC",
             nativeQuery = true)
     List<Object[]> countByPractitioner(@Param("facilityId") String facilityId,
@@ -215,6 +229,7 @@ public interface EventLogRepository extends ReadOnlyRepository<EventLog, UUID> {
             "  ) AS practitioner_display " +
             ") pr " +
             "WHERE pr.practitioner_ref IS NOT NULL " +
+            "AND pr.practitioner_ref LIKE 'Practitioner/%' " +
             "AND el.processing_status != 'DUPLICATE' " +
             "GROUP BY practitioner_ref, practitioner_display, el.facility_id " +
             "ORDER BY total_events DESC",
@@ -241,6 +256,7 @@ public interface EventLogRepository extends ReadOnlyRepository<EventLog, UUID> {
             "  ) AS practitioner_display " +
             ") pr " +
             "WHERE pr.practitioner_ref IS NOT NULL " +
+            "AND pr.practitioner_ref LIKE 'Practitioner/%' " +
             "AND el.processing_status != 'DUPLICATE' " +
             "AND (CAST(:startDate AS timestamptz) IS NULL OR el.received_at >= :startDate) " +
             "AND (CAST(:endDate AS timestamptz) IS NULL OR el.received_at <= :endDate) " +

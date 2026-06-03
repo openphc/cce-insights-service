@@ -113,6 +113,7 @@ public interface StepInstanceRepository extends ReadOnlyRepository<StepInstance,
             "  ) AS practitioner_ref " +
             ") pr " +
             "WHERE pr.practitioner_ref IS NOT NULL " +
+            "AND pr.practitioner_ref LIKE 'Practitioner/%' " +
             "GROUP BY practitioner_ref",
             nativeQuery = true)
     List<Object[]> findStepComplianceByPractitioner();
@@ -132,6 +133,7 @@ public interface StepInstanceRepository extends ReadOnlyRepository<StepInstance,
             "  ) AS practitioner_ref " +
             ") pr " +
             "WHERE pr.practitioner_ref IS NOT NULL " +
+            "AND pr.practitioner_ref LIKE 'Practitioner/%' " +
             "AND (CAST(:startDate AS timestamptz) IS NULL OR el.received_at >= :startDate) " +
             "AND (CAST(:endDate AS timestamptz) IS NULL OR el.received_at <= :endDate) " +
             "AND (CAST(:facilityId AS text) IS NULL OR el.facility_id = :facilityId) " +
