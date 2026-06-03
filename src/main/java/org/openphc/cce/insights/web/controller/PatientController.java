@@ -85,6 +85,16 @@ public class PatientController {
                             if (artifact.has("label")) artMap.put("label", artifact.get("label").asText());
                             if (artifact.has("display")) artMap.put("display", artifact.get("display").asText());
                             if (artifact.has("url")) artMap.put("url", artifact.get("url").asText());
+                            if (artifact.has("extension") && artifact.get("extension").isArray()) {
+                                List<Map<String, String>> extensions = new ArrayList<>();
+                                for (JsonNode ext : artifact.get("extension")) {
+                                    Map<String, String> extMap = new LinkedHashMap<>();
+                                    if (ext.has("url")) extMap.put("url", ext.get("url").asText());
+                                    if (ext.has("valueCode")) extMap.put("valueCode", ext.get("valueCode").asText());
+                                    extensions.add(extMap);
+                                }
+                                artMap.put("extension", extensions);
+                            }
                             relatedArtifacts.add(artMap);
                         }
                     }
