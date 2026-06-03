@@ -106,14 +106,13 @@ public interface StepInstanceRepository extends ReadOnlyRepository<StepInstance,
             "JOIN event_log el ON el.protocol_instance_id = pi.id " +
             "CROSS JOIN LATERAL ( " +
             "  SELECT COALESCE(" +
-            "    el.data->'participant'->0->'individual'->>'reference', " +
-            "    el.data->'performer'->0->>'reference', " +
-            "    el.data->'asserter'->>'reference', " +
-            "    el.data->'requester'->>'reference'" +
+            "    (SELECT p->'individual'->>'reference' FROM jsonb_array_elements(el.data->'participant') p WHERE p->'individual'->>'reference' LIKE 'Practitioner/%' LIMIT 1), " +
+            "    (SELECT p->>'reference' FROM jsonb_array_elements(el.data->'performer') p WHERE p->>'reference' LIKE 'Practitioner/%' LIMIT 1), " +
+            "    CASE WHEN el.data->'asserter'->>'reference' LIKE 'Practitioner/%' THEN el.data->'asserter'->>'reference' END, " +
+            "    CASE WHEN el.data->'requester'->>'reference' LIKE 'Practitioner/%' THEN el.data->'requester'->>'reference' END" +
             "  ) AS practitioner_ref " +
             ") pr " +
             "WHERE pr.practitioner_ref IS NOT NULL " +
-            "AND pr.practitioner_ref LIKE 'Practitioner/%' " +
             "GROUP BY practitioner_ref",
             nativeQuery = true)
     List<Object[]> findStepComplianceByPractitioner();
@@ -126,14 +125,13 @@ public interface StepInstanceRepository extends ReadOnlyRepository<StepInstance,
             "JOIN event_log el ON el.protocol_instance_id = pi.id " +
             "CROSS JOIN LATERAL ( " +
             "  SELECT COALESCE(" +
-            "    el.data->'participant'->0->'individual'->>'reference', " +
-            "    el.data->'performer'->0->>'reference', " +
-            "    el.data->'asserter'->>'reference', " +
-            "    el.data->'requester'->>'reference'" +
+            "    (SELECT p->'individual'->>'reference' FROM jsonb_array_elements(el.data->'participant') p WHERE p->'individual'->>'reference' LIKE 'Practitioner/%' LIMIT 1), " +
+            "    (SELECT p->>'reference' FROM jsonb_array_elements(el.data->'performer') p WHERE p->>'reference' LIKE 'Practitioner/%' LIMIT 1), " +
+            "    CASE WHEN el.data->'asserter'->>'reference' LIKE 'Practitioner/%' THEN el.data->'asserter'->>'reference' END, " +
+            "    CASE WHEN el.data->'requester'->>'reference' LIKE 'Practitioner/%' THEN el.data->'requester'->>'reference' END" +
             "  ) AS practitioner_ref " +
             ") pr " +
             "WHERE pr.practitioner_ref IS NOT NULL " +
-            "AND pr.practitioner_ref LIKE 'Practitioner/%' " +
             "AND (CAST(:startDate AS timestamptz) IS NULL OR el.received_at >= :startDate) " +
             "AND (CAST(:endDate AS timestamptz) IS NULL OR el.received_at <= :endDate) " +
             "AND (CAST(:facilityId AS text) IS NULL OR el.facility_id = :facilityId) " +

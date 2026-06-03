@@ -25,27 +25,14 @@ public interface EventLogRepository extends ReadOnlyRepository<EventLog, UUID> {
             nativeQuery = true)
     List<Object[]> findFacilityNames();
 
-    @Query(value = "SELECT DISTINCT COALESCE(" +
-            "el.data->'participant'->0->'individual'->>'reference', " +
-            "el.data->'performer'->0->>'reference', " +
-            "el.data->'asserter'->>'reference', " +
-            "el.data->'requester'->>'reference', " +
-            "el.data->'performer'->0->'actor'->>'reference'" +
-            ") AS practitioner_ref FROM event_log el " +
-            "WHERE COALESCE(" +
-            "el.data->'participant'->0->'individual'->>'reference', " +
-            "el.data->'performer'->0->>'reference', " +
-            "el.data->'asserter'->>'reference', " +
-            "el.data->'requester'->>'reference', " +
-            "el.data->'performer'->0->'actor'->>'reference'" +
-            ") IS NOT NULL " +
-            "AND COALESCE(" +
-            "el.data->'participant'->0->'individual'->>'reference', " +
-            "el.data->'performer'->0->>'reference', " +
-            "el.data->'asserter'->>'reference', " +
-            "el.data->'requester'->>'reference', " +
-            "el.data->'performer'->0->'actor'->>'reference'" +
-            ") LIKE 'Practitioner/%' " +
+    @Query(value = "SELECT DISTINCT practitioner_ref FROM (" +
+            "SELECT COALESCE(" +
+            "  (SELECT p->'individual'->>'reference' FROM jsonb_array_elements(el.data->'participant') p WHERE p->'individual'->>'reference' LIKE 'Practitioner/%' LIMIT 1), " +
+            "  (SELECT p->>'reference' FROM jsonb_array_elements(el.data->'performer') p WHERE p->>'reference' LIKE 'Practitioner/%' LIMIT 1), " +
+            "  CASE WHEN el.data->'asserter'->>'reference' LIKE 'Practitioner/%' THEN el.data->'asserter'->>'reference' END, " +
+            "  CASE WHEN el.data->'requester'->>'reference' LIKE 'Practitioner/%' THEN el.data->'requester'->>'reference' END" +
+            ") AS practitioner_ref FROM event_log el" +
+            ") sub WHERE practitioner_ref IS NOT NULL " +
             "ORDER BY practitioner_ref",
             nativeQuery = true)
     List<String> findDistinctPractitioners();
@@ -76,20 +63,19 @@ public interface EventLogRepository extends ReadOnlyRepository<EventLog, UUID> {
     List<Object[]> countByFacility(@Param("startDate") OffsetDateTime startDate,
                                    @Param("endDate") OffsetDateTime endDate);
 
-    @Query(value = "SELECT " +
+    @Query(value = "SELECT practitioner_ref, practitioner_display, resource_type, event_count FROM (" +
+            "SELECT " +
             "COALESCE(" +
-            "  el.data->'participant'->0->'individual'->>'reference', " +
-            "  el.data->'performer'->0->>'reference', " +
-            "  el.data->'asserter'->>'reference', " +
-            "  el.data->'requester'->>'reference', " +
-            "  el.data->'performer'->0->'actor'->>'reference'" +
+            "  (SELECT p->'individual'->>'reference' FROM jsonb_array_elements(el.data->'participant') p WHERE p->'individual'->>'reference' LIKE 'Practitioner/%' LIMIT 1), " +
+            "  (SELECT p->>'reference' FROM jsonb_array_elements(el.data->'performer') p WHERE p->>'reference' LIKE 'Practitioner/%' LIMIT 1), " +
+            "  CASE WHEN el.data->'asserter'->>'reference' LIKE 'Practitioner/%' THEN el.data->'asserter'->>'reference' END, " +
+            "  CASE WHEN el.data->'requester'->>'reference' LIKE 'Practitioner/%' THEN el.data->'requester'->>'reference' END" +
             ") AS practitioner_ref, " +
             "COALESCE(" +
-            "  el.data->'participant'->0->'individual'->>'display', " +
-            "  el.data->'performer'->0->>'display', " +
-            "  el.data->'asserter'->>'display', " +
-            "  el.data->'requester'->>'display', " +
-            "  el.data->'performer'->0->'actor'->>'display'" +
+            "  (SELECT p->'individual'->>'display' FROM jsonb_array_elements(el.data->'participant') p WHERE p->'individual'->>'reference' LIKE 'Practitioner/%' LIMIT 1), " +
+            "  (SELECT p->>'display' FROM jsonb_array_elements(el.data->'performer') p WHERE p->>'reference' LIKE 'Practitioner/%' LIMIT 1), " +
+            "  CASE WHEN el.data->'asserter'->>'reference' LIKE 'Practitioner/%' THEN el.data->'asserter'->>'display' END, " +
+            "  CASE WHEN el.data->'requester'->>'reference' LIKE 'Practitioner/%' THEN el.data->'requester'->>'display' END" +
             ") AS practitioner_display, " +
             "el.data->>'resourceType' AS resource_type, COUNT(*) AS event_count " +
             "FROM event_log el " +
@@ -97,21 +83,8 @@ public interface EventLogRepository extends ReadOnlyRepository<EventLog, UUID> {
             "AND (CAST(:facilityId AS text) IS NULL OR el.facility_id = :facilityId) " +
             "AND (CAST(:startDate AS timestamptz) IS NULL OR el.event_time >= :startDate) " +
             "AND (CAST(:endDate AS timestamptz) IS NULL OR el.event_time <= :endDate) " +
-            "GROUP BY practitioner_ref, practitioner_display, resource_type " +
-            "HAVING COALESCE(" +
-            "  el.data->'participant'->0->'individual'->>'reference', " +
-            "  el.data->'performer'->0->>'reference', " +
-            "  el.data->'asserter'->>'reference', " +
-            "  el.data->'requester'->>'reference', " +
-            "  el.data->'performer'->0->'actor'->>'reference'" +
-            ") IS NOT NULL " +
-            "AND COALESCE(" +
-            "  el.data->'participant'->0->'individual'->>'reference', " +
-            "  el.data->'performer'->0->>'reference', " +
-            "  el.data->'asserter'->>'reference', " +
-            "  el.data->'requester'->>'reference', " +
-            "  el.data->'performer'->0->'actor'->>'reference'" +
-            ") LIKE 'Practitioner/%' " +
+            "GROUP BY practitioner_ref, practitioner_display, resource_type" +
+            ") sub WHERE practitioner_ref IS NOT NULL " +
             "ORDER BY event_count DESC",
             nativeQuery = true)
     List<Object[]> countByPractitioner(@Param("facilityId") String facilityId,
@@ -216,20 +189,19 @@ public interface EventLogRepository extends ReadOnlyRepository<EventLog, UUID> {
             "JOIN protocol_instance pi ON el.protocol_instance_id = pi.id " +
             "CROSS JOIN LATERAL ( " +
             "  SELECT COALESCE(" +
-            "    el.data->'participant'->0->'individual'->>'reference', " +
-            "    el.data->'performer'->0->>'reference', " +
-            "    el.data->'asserter'->>'reference', " +
-            "    el.data->'requester'->>'reference'" +
+            "    (SELECT p->'individual'->>'reference' FROM jsonb_array_elements(el.data->'participant') p WHERE p->'individual'->>'reference' LIKE 'Practitioner/%' LIMIT 1), " +
+            "    (SELECT p->>'reference' FROM jsonb_array_elements(el.data->'performer') p WHERE p->>'reference' LIKE 'Practitioner/%' LIMIT 1), " +
+            "    CASE WHEN el.data->'asserter'->>'reference' LIKE 'Practitioner/%' THEN el.data->'asserter'->>'reference' END, " +
+            "    CASE WHEN el.data->'requester'->>'reference' LIKE 'Practitioner/%' THEN el.data->'requester'->>'reference' END" +
             "  ) AS practitioner_ref, " +
             "  COALESCE(" +
-            "    el.data->'participant'->0->'individual'->>'display', " +
-            "    el.data->'performer'->0->>'display', " +
-            "    el.data->'asserter'->>'display', " +
-            "    el.data->'requester'->>'display'" +
+            "    (SELECT p->'individual'->>'display' FROM jsonb_array_elements(el.data->'participant') p WHERE p->'individual'->>'reference' LIKE 'Practitioner/%' LIMIT 1), " +
+            "    (SELECT p->>'display' FROM jsonb_array_elements(el.data->'performer') p WHERE p->>'reference' LIKE 'Practitioner/%' LIMIT 1), " +
+            "    CASE WHEN el.data->'asserter'->>'reference' LIKE 'Practitioner/%' THEN el.data->'asserter'->>'display' END, " +
+            "    CASE WHEN el.data->'requester'->>'reference' LIKE 'Practitioner/%' THEN el.data->'requester'->>'display' END" +
             "  ) AS practitioner_display " +
             ") pr " +
             "WHERE pr.practitioner_ref IS NOT NULL " +
-            "AND pr.practitioner_ref LIKE 'Practitioner/%' " +
             "AND el.processing_status != 'DUPLICATE' " +
             "GROUP BY practitioner_ref, practitioner_display, el.facility_id " +
             "ORDER BY total_events DESC",
@@ -243,20 +215,19 @@ public interface EventLogRepository extends ReadOnlyRepository<EventLog, UUID> {
             "JOIN protocol_instance pi ON el.protocol_instance_id = pi.id " +
             "CROSS JOIN LATERAL ( " +
             "  SELECT COALESCE(" +
-            "    el.data->'participant'->0->'individual'->>'reference', " +
-            "    el.data->'performer'->0->>'reference', " +
-            "    el.data->'asserter'->>'reference', " +
-            "    el.data->'requester'->>'reference'" +
+            "    (SELECT p->'individual'->>'reference' FROM jsonb_array_elements(el.data->'participant') p WHERE p->'individual'->>'reference' LIKE 'Practitioner/%' LIMIT 1), " +
+            "    (SELECT p->>'reference' FROM jsonb_array_elements(el.data->'performer') p WHERE p->>'reference' LIKE 'Practitioner/%' LIMIT 1), " +
+            "    CASE WHEN el.data->'asserter'->>'reference' LIKE 'Practitioner/%' THEN el.data->'asserter'->>'reference' END, " +
+            "    CASE WHEN el.data->'requester'->>'reference' LIKE 'Practitioner/%' THEN el.data->'requester'->>'reference' END" +
             "  ) AS practitioner_ref, " +
             "  COALESCE(" +
-            "    el.data->'participant'->0->'individual'->>'display', " +
-            "    el.data->'performer'->0->>'display', " +
-            "    el.data->'asserter'->>'display', " +
-            "    el.data->'requester'->>'display'" +
+            "    (SELECT p->'individual'->>'display' FROM jsonb_array_elements(el.data->'participant') p WHERE p->'individual'->>'reference' LIKE 'Practitioner/%' LIMIT 1), " +
+            "    (SELECT p->>'display' FROM jsonb_array_elements(el.data->'performer') p WHERE p->>'reference' LIKE 'Practitioner/%' LIMIT 1), " +
+            "    CASE WHEN el.data->'asserter'->>'reference' LIKE 'Practitioner/%' THEN el.data->'asserter'->>'display' END, " +
+            "    CASE WHEN el.data->'requester'->>'reference' LIKE 'Practitioner/%' THEN el.data->'requester'->>'display' END" +
             "  ) AS practitioner_display " +
             ") pr " +
             "WHERE pr.practitioner_ref IS NOT NULL " +
-            "AND pr.practitioner_ref LIKE 'Practitioner/%' " +
             "AND el.processing_status != 'DUPLICATE' " +
             "AND (CAST(:startDate AS timestamptz) IS NULL OR el.received_at >= :startDate) " +
             "AND (CAST(:endDate AS timestamptz) IS NULL OR el.received_at <= :endDate) " +
