@@ -89,8 +89,7 @@ public interface StepInstanceRepository extends ReadOnlyRepository<StepInstance,
             "COUNT(DISTINCT CASE WHEN si.action_id LIKE '%-referral' THEN si.id END) AS outbound_events, " +
             "COUNT(DISTINCT CASE WHEN si.action_id LIKE '%-referral-ack' THEN si.id END) AS inbound_events " +
             "FROM step_instance si " +
-            "JOIN protocol_instance pi ON si.protocol_instance_id = pi.id " +
-            "JOIN event_log el ON el.protocol_instance_id = pi.id " +
+            "JOIN event_log el ON el.matched_step_instance_id = si.id " +
             "WHERE el.facility_id IS NOT NULL " +
             "AND (si.action_id LIKE '%-referral' OR si.action_id LIKE '%-referral-ack') " +
             "AND si.state = 'COMPLETED' " +
