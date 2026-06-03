@@ -41,7 +41,7 @@ public class DeviationAnalyticsService {
     public DeviationTrendDto getDeviationTrends(String interval, OffsetDateTime startDate,
                                                  OffsetDateTime endDate, String facilityId) {
         String dbInterval = DateUtil.mapInterval(interval);
-        List<Object[]> rows = deviationRepository.findDeviationTrends(dbInterval, startDate, endDate, facilityId);
+        List<Object[]> rows = deviationRepository.findDeviationTrends(dbInterval, startDate, endDate, facilityId, null);
 
         Map<String, DeviationTrendDto.TrendPoint.TrendPointBuilder> pointMap = new LinkedHashMap<>();
         for (Object[] row : rows) {

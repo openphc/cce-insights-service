@@ -62,6 +62,16 @@ public class FacilityRankingService {
             completedStepsMap.put(facilityId, ((Number) row[2]).longValue());
         }
 
+        // Referral event counts per facility (outbound = initiated, inbound = closure)
+        List<Object[]> referralRows = stepInstanceRepository.findReferralEventCountsByFacility();
+        Map<String, Long> outboundEventsMap = new LinkedHashMap<>();
+        Map<String, Long> inboundEventsMap = new LinkedHashMap<>();
+        for (Object[] row : referralRows) {
+            String facilityId = (String) row[0];
+            outboundEventsMap.put(facilityId, ((Number) row[1]).longValue());
+            inboundEventsMap.put(facilityId, ((Number) row[2]).longValue());
+        }
+
         // Collect all known facility IDs from all sources
         Set<String> allFacilities = new LinkedHashSet<>();
         allFacilities.addAll(eventCountMap.keySet());
@@ -73,6 +83,8 @@ public class FacilityRankingService {
             long deviations = deviationCountMap.getOrDefault(facilityId, 0L);
             long totalSteps = totalStepsMap.getOrDefault(facilityId, 0L);
             long completedSteps = completedStepsMap.getOrDefault(facilityId, 0L);
+            long outbound = outboundEventsMap.getOrDefault(facilityId, 0L);
+            long inbound = inboundEventsMap.getOrDefault(facilityId, 0L);
             double complianceRate = totalSteps > 0
                     ? Math.round((double) completedSteps / totalSteps * 1000.0) / 10.0
                     : 100.0;
@@ -81,6 +93,8 @@ public class FacilityRankingService {
                     .facilityId(facilityId)
                     .facilityName(facilityNameMap.getOrDefault(facilityId, facilityId))
                     .totalEvents(events)
+                    .outboundEvents(outbound)
+                    .inboundEvents(inbound)
                     .totalEnrollments(patients)
                     .activeDeviations(deviations)
                     .complianceRate(complianceRate)
@@ -109,6 +123,8 @@ public class FacilityRankingService {
                     .facilityId(dto.getFacilityId())
                     .facilityName(dto.getFacilityName())
                     .totalEvents(dto.getTotalEvents())
+                    .outboundEvents(dto.getOutboundEvents())
+                    .inboundEvents(dto.getInboundEvents())
                     .totalEnrollments(dto.getTotalEnrollments())
                     .activeDeviations(dto.getActiveDeviations())
                     .complianceRate(dto.getComplianceRate())
