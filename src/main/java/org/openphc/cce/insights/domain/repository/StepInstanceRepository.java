@@ -86,13 +86,14 @@ public interface StepInstanceRepository extends ReadOnlyRepository<StepInstance,
     List<Object[]> findStepComplianceByFacility();
 
     @Query(value = "SELECT el.facility_id, " +
-            "COUNT(DISTINCT CASE WHEN LOWER(si.action_id) LIKE '%referral%' AND LOWER(si.action_id) LIKE '%initiated%' THEN si.id END) AS outbound_events, " +
-            "COUNT(DISTINCT CASE WHEN LOWER(si.action_id) LIKE '%referral%' AND LOWER(si.action_id) LIKE '%closure%' THEN si.id END) AS inbound_events " +
+            "COUNT(DISTINCT CASE WHEN si.action_id LIKE '%-referral' THEN si.id END) AS outbound_events, " +
+            "COUNT(DISTINCT CASE WHEN si.action_id LIKE '%-referral-ack' THEN si.id END) AS inbound_events " +
             "FROM step_instance si " +
             "JOIN protocol_instance pi ON si.protocol_instance_id = pi.id " +
             "JOIN event_log el ON el.protocol_instance_id = pi.id " +
             "WHERE el.facility_id IS NOT NULL " +
-            "AND (LOWER(si.action_id) LIKE '%referral%') " +
+            "AND (si.action_id LIKE '%-referral' OR si.action_id LIKE '%-referral-ack') " +
+            "AND si.state = 'COMPLETED' " +
             "GROUP BY el.facility_id",
             nativeQuery = true)
     List<Object[]> findReferralEventCountsByFacility();
