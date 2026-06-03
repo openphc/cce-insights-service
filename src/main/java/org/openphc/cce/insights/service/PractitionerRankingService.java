@@ -30,6 +30,12 @@ public class PractitionerRankingService {
         // Practitioner summary: ref, display, facilityId, totalEvents, totalPatients
         List<Object[]> summaryRows = eventLogRepository.findPractitionerSummaryFiltered(startDate, endDate, facilityId);
 
+        // Build facility name lookup
+        Map<String, String> facilityNameMap = new LinkedHashMap<>();
+        for (Object[] row : eventLogRepository.findFacilityNames()) {
+            facilityNameMap.put((String) row[0], (String) row[1]);
+        }
+
         // Aggregate by practitioner_ref (may appear in multiple facilities)
         Map<String, String> displayMap = new LinkedHashMap<>();
         Map<String, String> facilityMap = new LinkedHashMap<>();
@@ -76,6 +82,7 @@ public class PractitionerRankingService {
                     .practitionerRef(ref)
                     .practitionerName(displayMap.get(ref))
                     .facilityId(facilityMap.get(ref))
+                    .facilityName(facilityNameMap.getOrDefault(facilityMap.get(ref), facilityMap.get(ref)))
                     .totalEvents(eventCountMap.getOrDefault(ref, 0L))
                     .totalPatients(patientCountMap.getOrDefault(ref, 0L))
                     .totalSteps(totalSteps)
@@ -109,6 +116,7 @@ public class PractitionerRankingService {
                     .practitionerRef(dto.getPractitionerRef())
                     .practitionerName(dto.getPractitionerName())
                     .facilityId(dto.getFacilityId())
+                    .facilityName(dto.getFacilityName())
                     .totalPatients(dto.getTotalPatients())
                     .complianceRate(dto.getComplianceRate())
                     .totalSteps(dto.getTotalSteps())

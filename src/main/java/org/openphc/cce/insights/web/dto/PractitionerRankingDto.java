@@ -10,6 +10,7 @@ public class PractitionerRankingDto {
     private String practitionerRef;
     private String practitionerName;
     private String facilityId;
+    private String facilityName;
     private long totalPatients;
     private double complianceRate;
     private long totalSteps;
