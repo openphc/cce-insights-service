@@ -76,7 +76,8 @@ public interface StepInstanceRepository extends ReadOnlyRepository<StepInstance,
 
     @Query(value = "SELECT el.facility_id, " +
             "COUNT(DISTINCT si.id) AS total_steps, " +
-            "COUNT(DISTINCT CASE WHEN si.state IN ('COMPLETED','SKIPPED') THEN si.id END) AS completed_steps " +
+            "COUNT(DISTINCT CASE WHEN si.state IN ('COMPLETED','SKIPPED') " +
+            "AND si.id NOT IN (SELECT step_instance_id FROM deviation) THEN si.id END) AS completed_steps " +
             "FROM step_instance si " +
             "JOIN protocol_instance pi ON si.protocol_instance_id = pi.id " +
             "JOIN event_log el ON el.protocol_instance_id = pi.id " +
@@ -100,7 +101,8 @@ public interface StepInstanceRepository extends ReadOnlyRepository<StepInstance,
 
     @Query(value = "SELECT practitioner_ref, " +
             "COUNT(DISTINCT si.id) AS total_steps, " +
-            "COUNT(DISTINCT CASE WHEN si.state IN ('COMPLETED','SKIPPED') THEN si.id END) AS completed_steps " +
+            "COUNT(DISTINCT CASE WHEN si.state IN ('COMPLETED','SKIPPED') " +
+            "AND si.id NOT IN (SELECT step_instance_id FROM deviation) THEN si.id END) AS completed_steps " +
             "FROM step_instance si " +
             "JOIN protocol_instance pi ON si.protocol_instance_id = pi.id " +
             "JOIN event_log el ON el.protocol_instance_id = pi.id " +
@@ -119,7 +121,8 @@ public interface StepInstanceRepository extends ReadOnlyRepository<StepInstance,
 
     @Query(value = "SELECT practitioner_ref, " +
             "COUNT(DISTINCT si.id) AS total_steps, " +
-            "COUNT(DISTINCT CASE WHEN si.state IN ('COMPLETED','SKIPPED') THEN si.id END) AS completed_steps " +
+            "COUNT(DISTINCT CASE WHEN si.state IN ('COMPLETED','SKIPPED') " +
+            "AND si.id NOT IN (SELECT step_instance_id FROM deviation) THEN si.id END) AS completed_steps " +
             "FROM step_instance si " +
             "JOIN protocol_instance pi ON si.protocol_instance_id = pi.id " +
             "JOIN event_log el ON el.protocol_instance_id = pi.id " +
