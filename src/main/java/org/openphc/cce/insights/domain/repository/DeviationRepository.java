@@ -40,17 +40,20 @@ public interface DeviationRepository extends ReadOnlyRepository<Deviation, UUID>
     @Query(value = "SELECT DATE_TRUNC(:interval, d.detected_at) AS period, " +
             "d.deviation_type, COUNT(*) AS count " +
             "FROM deviation d " +
+            "JOIN step_instance si ON d.step_instance_id = si.id " +
             "WHERE (CAST(:startDate AS timestamptz) IS NULL OR d.detected_at >= :startDate) " +
             "AND (CAST(:endDate AS timestamptz) IS NULL OR d.detected_at <= :endDate) " +
             "AND (CAST(:facilityId AS text) IS NULL OR EXISTS (" +
             "  SELECT 1 FROM event_log el WHERE el.protocol_instance_id = d.protocol_instance_id " +
             "  AND el.facility_id = :facilityId)) " +
+            "AND (CAST(:actionId AS text) IS NULL OR si.action_id = :actionId) " +
             "GROUP BY period, d.deviation_type ORDER BY period",
             nativeQuery = true)
     List<Object[]> findDeviationTrends(@Param("interval") String interval,
                                        @Param("startDate") OffsetDateTime startDate,
                                        @Param("endDate") OffsetDateTime endDate,
-                                       @Param("facilityId") String facilityId);
+                                       @Param("facilityId") String facilityId,
+                                       @Param("actionId") String actionId);
 
     @Query(value = "SELECT si.action_id, pi.protocol_definition_id, pi.protocol_canonical, " +
             "COUNT(*) AS total_deviations, " +
