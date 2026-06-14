@@ -1,11 +1,10 @@
 package org.openphc.cce.insights.service;
 
 import lombok.RequiredArgsConstructor;
-import org.openphc.cce.insights.domain.repository.EventLogRepository;
+import org.openphc.cce.insights.domain.repository.ComplianceEventLogRepository;
 import org.openphc.cce.insights.web.dto.ProcessingQualityDto;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.*;
@@ -13,15 +12,14 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
-@Transactional(readOnly = true)
 public class ProcessingQualityService {
 
-    private final EventLogRepository eventLogRepository;
+    private final ComplianceEventLogRepository complianceEventLogRepository;
 
     @Cacheable(value = "analytics", key = "'processing-quality'")
     public ProcessingQualityDto getProcessingQuality(OffsetDateTime startDate, OffsetDateTime endDate) {
-        List<Object[]> statusRows = eventLogRepository.countByProcessingStatus(null, startDate, endDate);
-        List<Object[]> sourceRows = eventLogRepository.findProcessingQualityBySource(null, null, startDate, endDate);
+        List<Object[]> statusRows = complianceEventLogRepository.countByProcessingStatus(null, startDate, endDate);
+        List<Object[]> sourceRows = complianceEventLogRepository.findProcessingQualityBySource(null, null, startDate, endDate);
 
         long total = 0;
         Map<String, Long> statusCounts = new LinkedHashMap<>();

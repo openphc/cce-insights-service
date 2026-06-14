@@ -10,6 +10,6 @@ cce:
 
 spring:
   datasource:
-    url: jdbc:postgresql://${DB_HOST:cce-db}:${DB_PORT:5432}/${DB_NAME:cce_collector}
-    username: ${DB_USERNAME:cce_user}
-    password: ${DB_PASSWORD:cce_pass}
+    url: jdbc:clickhouse://${DB_HOST:cce-clickhouse}:${DB_PORT:8123}/${DB_NAME:cce_analytics}
+    username: ${DB_USERNAME:cce_pipeline}
+    password: ${DB_PASSWORD:cce_analytics_dev}

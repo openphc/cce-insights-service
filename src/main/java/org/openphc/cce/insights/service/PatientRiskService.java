@@ -5,14 +5,13 @@ import org.openphc.cce.insights.domain.entity.ProtocolInstance;
 import org.openphc.cce.insights.domain.entity.StepInstance;
 import org.openphc.cce.insights.domain.enums.StepState;
 import org.openphc.cce.insights.domain.repository.DeviationRepository;
-import org.openphc.cce.insights.domain.repository.EventLogRepository;
+import org.openphc.cce.insights.domain.repository.ComplianceEventLogRepository;
 import org.openphc.cce.insights.domain.repository.ProtocolInstanceRepository;
 import org.openphc.cce.insights.domain.repository.StepInstanceRepository;
 import org.openphc.cce.insights.web.dto.AtRiskHotspotDto;
 import org.openphc.cce.insights.web.dto.RepeatDeviationPatientDto;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.*;
@@ -20,18 +19,17 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
-@Transactional(readOnly = true)
 public class PatientRiskService {
 
     private final DeviationRepository deviationRepository;
     private final ProtocolInstanceRepository protocolInstanceRepository;
     private final StepInstanceRepository stepInstanceRepository;
-    private final EventLogRepository eventLogRepository;
+    private final ComplianceEventLogRepository complianceEventLogRepository;
 
     @Cacheable(value = "analytics", key = "'risk-hotspots'")
     public List<AtRiskHotspotDto> getAtRiskHotspots(OffsetDateTime startDate, OffsetDateTime endDate) {
         // Build facility -> set of patient IDs mapping
-        List<Object[]> facilityPatientRows = eventLogRepository.findFacilityPatientMapping();
+        List<Object[]> facilityPatientRows = complianceEventLogRepository.findFacilityPatientMapping();
         Map<String, Set<String>> facilityPatients = new LinkedHashMap<>();
         for (Object[] row : facilityPatientRows) {
             String facilityId = (String) row[0];
@@ -41,7 +39,7 @@ public class PatientRiskService {
 
         // Build facility name lookup
         Map<String, String> facilityNameMap = new LinkedHashMap<>();
-        for (Object[] row : eventLogRepository.findFacilityNames()) {
+        for (Object[] row : complianceEventLogRepository.findFacilityNames()) {
             facilityNameMap.put((String) row[0], (String) row[1]);
         }
 

@@ -5,12 +5,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.openphc.cce.insights.domain.entity.Deviation;
-import org.openphc.cce.insights.domain.entity.EventLog;
+import org.openphc.cce.insights.domain.entity.ComplianceEventLog;
 import org.openphc.cce.insights.domain.entity.ProtocolDefinition;
 import org.openphc.cce.insights.domain.entity.ProtocolInstance;
 import org.openphc.cce.insights.domain.entity.StepInstance;
 import org.openphc.cce.insights.domain.repository.DeviationRepository;
-import org.openphc.cce.insights.domain.repository.EventLogRepository;
+import org.openphc.cce.insights.domain.repository.ComplianceEventLogRepository;
 import org.openphc.cce.insights.domain.repository.ProtocolDefinitionRepository;
 import org.openphc.cce.insights.domain.repository.ProtocolInstanceRepository;
 import org.openphc.cce.insights.domain.repository.StepInstanceRepository;
@@ -34,7 +34,7 @@ public class PatientController {
     private final ProtocolInstanceRepository protocolInstanceRepository;
     private final StepInstanceRepository stepInstanceRepository;
     private final DeviationRepository deviationRepository;
-    private final EventLogRepository eventLogRepository;
+    private final ComplianceEventLogRepository complianceEventLogRepository;
     private final ProtocolDefinitionRepository protocolDefinitionRepository;
     private final ObjectMapper objectMapper;
 
@@ -54,7 +54,7 @@ public class PatientController {
         List<Map<String, Object>> result = instances.stream().map(pi -> {
             List<StepInstance> steps = stepInstanceRepository.findByProtocolInstanceId(pi.getId());
             long completed = steps.stream().filter(s -> s.getCompletedAt() != null).count();
-            double rate = steps.isEmpty() ? 0 : Math.round((double) completed / steps.size() * 100.0) / 100.0;
+            double rate = steps.isEmpty() ? 0 : Math.round((double) completed / steps.size() * 1000.0) / 10.0;
 
             Map<String, Object> map = new LinkedHashMap<>();
             map.put("protocolInstanceId", pi.getId());
@@ -133,7 +133,7 @@ public class PatientController {
         List<Deviation> deviations = deviationRepository.findByProtocolInstanceId(protocolInstanceId);
 
         long completed = steps.stream().filter(s -> s.getCompletedAt() != null).count();
-        double rate = steps.isEmpty() ? 0 : Math.round((double) completed / steps.size() * 100.0) / 100.0;
+        double rate = steps.isEmpty() ? 0 : Math.round((double) completed / steps.size() * 1000.0) / 10.0;
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("protocolInstanceId", pi.getId());
@@ -180,9 +180,9 @@ public class PatientController {
             @RequestParam(required = false) OffsetDateTime endDate,
             @RequestParam(defaultValue = "50") int limit) {
         // Try both formats: plain patientId and Patient/patientId prefix
-        List<EventLog> events = eventLogRepository.findBySubjectOrderByEventTimeDesc(patientId);
+        List<ComplianceEventLog> events = complianceEventLogRepository.findBySubjectOrderByEventTimeDesc(patientId);
         if (events.isEmpty()) {
-            events = eventLogRepository.findBySubjectOrderByEventTimeDesc("Patient/" + patientId);
+            events = complianceEventLogRepository.findBySubjectOrderByEventTimeDesc("Patient/" + patientId);
         }
 
         List<Map<String, Object>> result = events.stream()

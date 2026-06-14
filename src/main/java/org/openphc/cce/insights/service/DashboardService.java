@@ -10,7 +10,6 @@ import org.openphc.cce.insights.web.dto.FacilityRankingDto;
 import org.openphc.cce.insights.web.dto.PractitionerRankingDto;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
@@ -19,7 +18,6 @@ import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
-@Transactional(readOnly = true)
 public class DashboardService {
 
     private final InboundEventRepository inboundEventRepository;

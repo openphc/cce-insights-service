@@ -21,17 +21,17 @@ public class DatabaseHealthIndicator implements HealthIndicator {
         try (Connection conn = dataSource.getConnection()) {
             if (conn.isValid(3)) {
                 return Health.up()
-                        .withDetail("database", "PostgreSQL")
+                        .withDetail("database", "ClickHouse")
                         .withDetail("connection", "valid")
                         .build();
             }
             return Health.down()
-                    .withDetail("database", "PostgreSQL")
+                    .withDetail("database", "ClickHouse")
                     .withDetail("connection", "invalid")
                     .build();
         } catch (Exception e) {
             return Health.down()
-                    .withDetail("database", "PostgreSQL")
+                    .withDetail("database", "ClickHouse")
                     .withException(e)
                     .build();
         }
