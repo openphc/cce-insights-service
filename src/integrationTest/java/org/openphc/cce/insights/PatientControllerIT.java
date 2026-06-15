@@ -8,14 +8,14 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.web.servlet.MockMvc;
 import org.openphc.cce.insights.domain.entity.Deviation;
-import org.openphc.cce.insights.domain.entity.EventLog;
+import org.openphc.cce.insights.domain.entity.ComplianceEventLog;
 import org.openphc.cce.insights.domain.entity.ProtocolInstance;
 import org.openphc.cce.insights.domain.entity.StepInstance;
 import org.openphc.cce.insights.domain.enums.DeviationType;
 import org.openphc.cce.insights.domain.enums.ProtocolInstanceStatus;
 import org.openphc.cce.insights.domain.enums.StepState;
 import org.openphc.cce.insights.domain.repository.DeviationRepository;
-import org.openphc.cce.insights.domain.repository.EventLogRepository;
+import org.openphc.cce.insights.domain.repository.ComplianceEventLogRepository;
 import org.openphc.cce.insights.domain.repository.ProtocolDefinitionRepository;
 import org.openphc.cce.insights.domain.repository.ProtocolInstanceRepository;
 import org.openphc.cce.insights.domain.repository.StepInstanceRepository;
@@ -50,7 +50,7 @@ class PatientControllerIT extends AbstractIntegrationTest {
     @MockitoBean
     private DeviationRepository deviationRepository;
     @MockitoBean
-    private EventLogRepository eventLogRepository;
+    private ComplianceEventLogRepository complianceEventLogRepository;
     @MockitoBean
     private ProtocolDefinitionRepository protocolDefinitionRepository;
 
@@ -110,9 +110,9 @@ class PatientControllerIT extends AbstractIntegrationTest {
         when(deviationRepository.findByProtocolInstanceId(PI_ID_3)).thenReturn(List.of(dev3));
 
         // Patient events
-        EventLog event1 = mockEventLog(UUID.randomUUID(), "Patient/" + PATIENT_1, "org.openphc.cce.encounter",
+        ComplianceEventLog event1 = mockComplianceEventLog(UUID.randomUUID(), "Patient/" + PATIENT_1, "org.openphc.cce.encounter",
                 now.minusDays(10), "ebuzima-direct", "{\"resourceType\":\"Encounter\"}", "MATCHED", "fac-1");
-        when(eventLogRepository.findBySubjectOrderByEventTimeDesc("Patient/" + PATIENT_1))
+        when(complianceEventLogRepository.findBySubjectOrderByEventTimeDesc("Patient/" + PATIENT_1))
                 .thenReturn(List.of(event1));
     }
 
@@ -226,10 +226,10 @@ class PatientControllerIT extends AbstractIntegrationTest {
         return dev;
     }
 
-    private EventLog mockEventLog(UUID id, String subject, String type,
+    private ComplianceEventLog mockComplianceEventLog(UUID id, String subject, String type,
                                    OffsetDateTime eventTime, String source, String data,
                                    String processingStatus, String facilityId) {
-        EventLog el = mock(EventLog.class);
+        ComplianceEventLog el = mock(ComplianceEventLog.class);
         when(el.getId()).thenReturn(id);
         when(el.getCloudeventsId()).thenReturn("ce-" + id);
         when(el.getSubject()).thenReturn(subject);

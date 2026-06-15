@@ -2,12 +2,11 @@ package org.openphc.cce.insights.service;
 
 import lombok.RequiredArgsConstructor;
 import org.openphc.cce.insights.domain.repository.DeviationRepository;
-import org.openphc.cce.insights.domain.repository.EventLogRepository;
+import org.openphc.cce.insights.domain.repository.ComplianceEventLogRepository;
 import org.openphc.cce.insights.domain.repository.StepInstanceRepository;
 import org.openphc.cce.insights.web.dto.PractitionerRankingDto;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.*;
@@ -15,10 +14,9 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
-@Transactional(readOnly = true)
 public class PractitionerRankingService {
 
-    private final EventLogRepository eventLogRepository;
+    private final ComplianceEventLogRepository complianceEventLogRepository;
     private final StepInstanceRepository stepInstanceRepository;
     private final DeviationRepository deviationRepository;
 
@@ -28,11 +26,11 @@ public class PractitionerRankingService {
                                                      String facilityId) {
 
         // Practitioner summary: ref, display, facilityId, totalEvents, totalPatients
-        List<Object[]> summaryRows = eventLogRepository.findPractitionerSummaryFiltered(startDate, endDate, facilityId);
+        List<Object[]> summaryRows = complianceEventLogRepository.findPractitionerSummaryFiltered(startDate, endDate, facilityId);
 
         // Build facility name lookup
         Map<String, String> facilityNameMap = new LinkedHashMap<>();
-        for (Object[] row : eventLogRepository.findFacilityNames()) {
+        for (Object[] row : complianceEventLogRepository.findFacilityNames()) {
             facilityNameMap.put((String) row[0], (String) row[1]);
         }
 

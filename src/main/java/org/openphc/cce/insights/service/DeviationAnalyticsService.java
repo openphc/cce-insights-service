@@ -5,7 +5,6 @@ import org.openphc.cce.insights.domain.repository.DeviationRepository;
 import org.openphc.cce.insights.web.dto.*;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -14,7 +13,6 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
-@Transactional(readOnly = true)
 public class DeviationAnalyticsService {
 
     private final DeviationRepository deviationRepository;
@@ -25,11 +23,11 @@ public class DeviationAnalyticsService {
         List<Object[]> rows = deviationRepository.findFilteredDeviations(
                 deviationType, facilityId, startDate, endDate, limit);
         return rows.stream().map(row -> DeviationDto.builder()
-                .deviationId((UUID) row[0])
+                .deviationId(uuidOf(row[0]))
                 .patientId((String) row[1])
-                .protocolInstanceId((UUID) row[2])
+                .protocolInstanceId(uuidOf(row[2]))
                 .protocolCanonical((String) row[3])
-                .stepInstanceId((UUID) row[4])
+                .stepInstanceId(uuidOf(row[4]))
                 .actionId((String) row[5])
                 .deviationType((String) row[6])
                 .detectedAt(DateUtil.toOffsetDateTime(row[7]))
@@ -110,7 +108,7 @@ public class DeviationAnalyticsService {
         List<Object[]> rows = deviationRepository.findDeviationsByAction(protocolDefId, startDate, endDate);
         return rows.stream().map(row -> DeviationByActionDto.builder()
                 .actionId((String) row[0])
-                .protocolDefinitionId((UUID) row[1])
+                .protocolDefinitionId(uuidOf(row[1]))
                 .protocolCanonical((String) row[2])
                 .totalDeviations(((Number) row[3]).longValue())
                 .overdueCount(((Number) row[4]).longValue())
@@ -155,5 +153,12 @@ public class DeviationAnalyticsService {
 
     private long sumCounts(List<Object[]> rows) {
         return rows.stream().mapToLong(r -> ((Number) r[1]).longValue()).sum();
+    }
+
+    private static UUID uuidOf(Object value) {
+        if (value == null) return null;
+        if (value instanceof UUID u) return u;
+        String s = value.toString().trim();
+        return s.isEmpty() ? null : UUID.fromString(s);
     }
 }

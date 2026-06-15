@@ -6,7 +6,6 @@ import org.openphc.cce.insights.domain.entity.StepInstance;
 import org.openphc.cce.insights.domain.repository.ProtocolInstanceRepository;
 import org.openphc.cce.insights.domain.repository.StepInstanceRepository;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
@@ -17,7 +16,6 @@ import java.util.*;
 
 @Service
 @RequiredArgsConstructor
-@Transactional(readOnly = true)
 public class ExportService {
 
     private final ProtocolInstanceRepository protocolInstanceRepository;

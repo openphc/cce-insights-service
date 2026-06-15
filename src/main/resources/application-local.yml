@@ -1,5 +1,5 @@
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5433/cce_collector
-    username: cce_user
-    password: cce_pass
+    url: jdbc:clickhouse://localhost:8123/cce_analytics
+    username: cce_pipeline
+    password: cce_analytics_dev

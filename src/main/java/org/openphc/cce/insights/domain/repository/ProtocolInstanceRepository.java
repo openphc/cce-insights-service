@@ -4,8 +4,6 @@ import org.openphc.cce.insights.domain.entity.ProtocolInstance;
 import org.openphc.cce.insights.domain.enums.ProtocolInstanceStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -13,9 +11,6 @@ import java.util.UUID;
 
 public interface ProtocolInstanceRepository extends ReadOnlyRepository<ProtocolInstance, UUID> {
 
-    @Query(value = "SELECT DISTINCT pi.patient_id FROM protocol_instance pi " +
-            "ORDER BY pi.patient_id",
-            nativeQuery = true)
     List<String> findDistinctPatientIds();
 
     List<ProtocolInstance> findByPatientId(String patientId);
@@ -24,36 +19,16 @@ public interface ProtocolInstanceRepository extends ReadOnlyRepository<ProtocolI
 
     Page<ProtocolInstance> findByProtocolDefinitionId(UUID protocolDefinitionId, Pageable pageable);
 
-    @Query("SELECT pi.status, COUNT(pi) FROM ProtocolInstance pi " +
-            "WHERE pi.protocolDefinitionId = :protocolDefId " +
-            "GROUP BY pi.status")
-    List<Object[]> countByProtocolDefinitionIdGroupByStatus(@Param("protocolDefId") UUID protocolDefId);
+    List<Object[]> countByProtocolDefinitionIdGroupByStatus(UUID protocolDefId);
 
-    @Query(value = "SELECT DATE_TRUNC(:interval, pi.enrolled_at) AS period, COUNT(*) AS enrollments " +
-            "FROM protocol_instance pi " +
-            "WHERE pi.protocol_definition_id = :protocolDefId " +
-            "AND (CAST(:startDate AS timestamptz) IS NULL OR pi.enrolled_at >= :startDate) " +
-            "AND (CAST(:endDate AS timestamptz) IS NULL OR pi.enrolled_at <= :endDate) " +
-            "GROUP BY period ORDER BY period",
-            nativeQuery = true)
-    List<Object[]> findEnrollmentTrends(@Param("protocolDefId") UUID protocolDefId,
-                                        @Param("interval") String interval,
-                                        @Param("startDate") OffsetDateTime startDate,
-                                        @Param("endDate") OffsetDateTime endDate);
+    List<Object[]> findEnrollmentTrends(UUID protocolDefId, String interval,
+                                        OffsetDateTime startDate, OffsetDateTime endDate);
 
-    @Query("SELECT pi FROM ProtocolInstance pi " +
-            "WHERE pi.protocolDefinitionId = :protocolDefId " +
-            "AND pi.status = :status")
-    Page<ProtocolInstance> findByProtocolDefinitionIdAndStatus(
-            @Param("protocolDefId") UUID protocolDefId,
-            @Param("status") ProtocolInstanceStatus status,
-            Pageable pageable);
+    Page<ProtocolInstance> findByProtocolDefinitionIdAndStatus(UUID protocolDefId,
+                                                               ProtocolInstanceStatus status,
+                                                               Pageable pageable);
 
-    @Query("SELECT pi FROM ProtocolInstance pi " +
-            "WHERE pi.protocolDefinitionId = :protocolDefId " +
-            "AND LOWER(pi.patientId) LIKE LOWER(CONCAT('%', :patientId, '%'))")
-    Page<ProtocolInstance> findByProtocolDefinitionIdAndPatientIdContaining(
-            @Param("protocolDefId") UUID protocolDefId,
-            @Param("patientId") String patientId,
-            Pageable pageable);
+    Page<ProtocolInstance> findByProtocolDefinitionIdAndPatientIdContaining(UUID protocolDefId,
+                                                                             String patientId,
+                                                                             Pageable pageable);
 }

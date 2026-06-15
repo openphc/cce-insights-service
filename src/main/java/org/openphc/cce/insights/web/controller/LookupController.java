@@ -2,7 +2,7 @@ package org.openphc.cce.insights.web.controller;
 
 import lombok.RequiredArgsConstructor;
 import org.openphc.cce.insights.domain.entity.ProtocolDefinition;
-import org.openphc.cce.insights.domain.repository.EventLogRepository;
+import org.openphc.cce.insights.domain.repository.ComplianceEventLogRepository;
 import org.openphc.cce.insights.domain.repository.InboundEventRepository;
 import org.openphc.cce.insights.domain.repository.ProtocolDefinitionRepository;
 import org.openphc.cce.insights.domain.repository.ProtocolInstanceRepository;
@@ -28,7 +28,7 @@ public class LookupController {
 
     private final ProtocolDefinitionRepository protocolDefinitionRepository;
     private final ProtocolInstanceRepository protocolInstanceRepository;
-    private final EventLogRepository eventLogRepository;
+    private final ComplianceEventLogRepository complianceEventLogRepository;
     private final InboundEventRepository inboundEventRepository;
     private final ObjectMapper objectMapper;
 
@@ -66,9 +66,9 @@ public class LookupController {
     @GetMapping("/facilities")
     @Cacheable(value = "lookups", key = "'facilities'")
     public ResponseEntity<ApiResponse<List<Map<String, String>>>> getFacilities() {
-        List<String> facilityIds = eventLogRepository.findDistinctFacilityIds();
+        List<String> facilityIds = complianceEventLogRepository.findDistinctFacilityIds();
         Map<String, String> nameMap = new LinkedHashMap<>();
-        for (Object[] row : eventLogRepository.findFacilityNames()) {
+        for (Object[] row : complianceEventLogRepository.findFacilityNames()) {
             nameMap.put((String) row[0], (String) row[1]);
         }
         List<Map<String, String>> result = facilityIds.stream().map(id -> {
@@ -83,7 +83,7 @@ public class LookupController {
     @GetMapping("/practitioners")
     @Cacheable(value = "lookups", key = "'practitioners'")
     public ResponseEntity<ApiResponse<List<String>>> getPractitioners() {
-        List<String> practitioners = eventLogRepository.findDistinctPractitioners();
+        List<String> practitioners = complianceEventLogRepository.findDistinctPractitioners();
         return ResponseEntity.ok(ApiResponse.ok(practitioners));
     }
 

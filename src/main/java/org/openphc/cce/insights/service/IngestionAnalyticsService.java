@@ -5,7 +5,6 @@ import org.openphc.cce.insights.domain.repository.InboundEventRepository;
 import org.openphc.cce.insights.web.dto.*;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.*;
@@ -13,7 +12,6 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
-@Transactional(readOnly = true)
 public class IngestionAnalyticsService {
 
     private final InboundEventRepository inboundEventRepository;

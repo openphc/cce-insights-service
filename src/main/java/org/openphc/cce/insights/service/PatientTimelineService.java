@@ -9,7 +9,6 @@ import org.openphc.cce.insights.domain.enums.StepState;
 import org.openphc.cce.insights.domain.repository.*;
 import org.openphc.cce.insights.web.dto.PatientTimelineDto;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
@@ -19,14 +18,13 @@ import java.util.stream.Collectors;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-@Transactional(readOnly = true)
 public class PatientTimelineService {
 
     private final ProtocolInstanceRepository protocolInstanceRepository;
     private final StepInstanceRepository stepInstanceRepository;
     private final ProtocolDefinitionRepository protocolDefinitionRepository;
     private final DeviationRepository deviationRepository;
-    private final EventLogRepository eventLogRepository;
+    private final ComplianceEventLogRepository complianceEventLogRepository;
     private final ObjectMapper objectMapper;
 
     public PatientTimelineDto getTimeline(String patientId) {
@@ -101,7 +99,7 @@ public class PatientTimelineService {
                     .protocolInstanceId(pi.getId().toString())
                     .protocolCanonical(pi.getProtocolCanonical())
                     .status(pi.getStatus().name().toLowerCase())
-                    .complianceRate(Math.round(rate * 100.0) / 100.0)
+                    .complianceRate(Math.round(rate * 1000.0) / 10.0)
                     .journey(journey)
                     .timeline(events)
                     .build());
@@ -235,26 +233,26 @@ public class PatientTimelineService {
     }
 
     /**
-     * Resolve event context (effectiveDateTime, practitioner, facilityId) for all steps with a matched_event_id.
+     * Resolve event context (effectiveDateTime, practitioner, facilityId) for completed steps.
+     * Uses step_instance.completed_by_event_id → compliance_event_logs → inbound_event_logs.
      * Returns a map of stepInstance.id → EventContext.
      */
     private Map<UUID, EventContext> resolveEventContext(List<StepInstance> steps) {
         Map<UUID, EventContext> result = new HashMap<>();
-        // Collect all matched event IDs
         Map<UUID, UUID> stepToEvent = new LinkedHashMap<>();
         for (StepInstance si : steps) {
-            if (si.getMatchedEventId() != null) {
-                stepToEvent.put(si.getId(), si.getMatchedEventId());
+            if (si.getCompletedByEventId() != null) {
+                stepToEvent.put(si.getId(), si.getCompletedByEventId());
             }
         }
         if (stepToEvent.isEmpty()) return result;
 
-        // Batch load event_log entries
-        List<EventLog> eventLogs = eventLogRepository.findAllById(stepToEvent.values().stream().distinct().collect(Collectors.toList()));
-        Map<UUID, EventLog> eventMap = eventLogs.stream().collect(Collectors.toMap(EventLog::getId, e -> e));
+        List<ComplianceEventLog> eventLogs = complianceEventLogRepository.findByComplianceEventIds(
+                stepToEvent.values().stream().distinct().collect(Collectors.toList()));
+        Map<UUID, ComplianceEventLog> eventMap = eventLogs.stream().collect(Collectors.toMap(ComplianceEventLog::getId, e -> e));
 
         for (Map.Entry<UUID, UUID> entry : stepToEvent.entrySet()) {
-            EventLog el = eventMap.get(entry.getValue());
+            ComplianceEventLog el = eventMap.get(entry.getValue());
             if (el != null) {
                 String effectiveDt = el.getData() != null ? extractEffectiveDateTime(el.getData()) : null;
                 String practitioner = el.getData() != null ? extractPractitioner(el.getData()) : null;

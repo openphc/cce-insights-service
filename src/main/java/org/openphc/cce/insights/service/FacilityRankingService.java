@@ -2,12 +2,11 @@ package org.openphc.cce.insights.service;
 
 import lombok.RequiredArgsConstructor;
 import org.openphc.cce.insights.domain.repository.DeviationRepository;
-import org.openphc.cce.insights.domain.repository.EventLogRepository;
+import org.openphc.cce.insights.domain.repository.ComplianceEventLogRepository;
 import org.openphc.cce.insights.domain.repository.StepInstanceRepository;
 import org.openphc.cce.insights.web.dto.FacilityRankingDto;
 import org.springframework.stereotype.Service;
 import org.springframework.cache.annotation.Cacheable;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.*;
@@ -15,21 +14,20 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
-@Transactional(readOnly = true)
 public class FacilityRankingService {
 
-    private final EventLogRepository eventLogRepository;
+    private final ComplianceEventLogRepository complianceEventLogRepository;
     private final DeviationRepository deviationRepository;
     private final StepInstanceRepository stepInstanceRepository;
 
     @Cacheable(value = "analytics", key = "'rankings-' + #sortBy + '-' + #order + '-' + #limit + '-' + #startDate + '-' + #endDate")
     public List<FacilityRankingDto> getRankings(OffsetDateTime startDate, OffsetDateTime endDate,
                                                  String sortBy, String order, int limit) {
-        List<Object[]> facilityEvents = eventLogRepository.findFacilityEventCounts(null);
+        List<Object[]> facilityEvents = complianceEventLogRepository.findFacilityEventCounts(null);
 
         // Build facility name lookup
         Map<String, String> facilityNameMap = new LinkedHashMap<>();
-        for (Object[] row : eventLogRepository.findFacilityNames()) {
+        for (Object[] row : complianceEventLogRepository.findFacilityNames()) {
             facilityNameMap.put((String) row[0], (String) row[1]);
         }
 
@@ -41,7 +39,7 @@ public class FacilityRankingService {
             eventCountMap.put(facilityId, ((Number) row[2]).longValue());
         }
 
-        List<Object[]> activePatients = eventLogRepository.findActivePatientsByFacility(null);
+        List<Object[]> activePatients = complianceEventLogRepository.findActivePatientsByFacility(null);
         for (Object[] row : activePatients) {
             activePatientMap.put((String) row[0], ((Number) row[1]).longValue());
         }

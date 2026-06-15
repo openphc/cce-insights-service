@@ -14,7 +14,6 @@ import org.openphc.cce.insights.web.dto.FacilitySummaryDto;
 import org.openphc.cce.insights.web.dto.PatientComplianceDto;
 import org.springframework.stereotype.Service;
 import org.springframework.cache.annotation.Cacheable;
-import org.springframework.transaction.annotation.Transactional;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -26,14 +25,13 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
-@Transactional(readOnly = true)
 public class ComplianceSummaryService {
 
     private final ProtocolDefinitionRepository protocolDefinitionRepository;
     private final ProtocolInstanceRepository protocolInstanceRepository;
     private final StepInstanceRepository stepInstanceRepository;
     private final DeviationRepository deviationRepository;
-    private final EventLogRepository eventLogRepository;
+    private final ComplianceEventLogRepository complianceEventLogRepository;
 
     @Cacheable(value = "analytics", key = "'compliance-all-' + (#facilityId ?: 'all')")
     public ComplianceSummaryDto getAllProtocolsComplianceSummary(String facilityId) {
@@ -223,7 +221,7 @@ public class ComplianceSummaryService {
                     .protocolCanonical(pi.getProtocolCanonical())
                     .enrolledAt(pi.getEnrolledAt())
                     .status(pi.getStatus().name().toLowerCase())
-                    .complianceRate(Math.round(rate * 100.0) / 100.0)
+                    .complianceRate(Math.round(rate * 1000.0) / 10.0)
                     .complianceCategory(category)
                     .stepsCompleted(completedCount)
                     .totalSteps(steps.size())
@@ -236,7 +234,7 @@ public class ComplianceSummaryService {
     @Cacheable(value = "analytics", key = "'facility-' + #facilityId")
     public FacilitySummaryDto getFacilityComplianceSummary(String facilityId) {
         // Get protocol instances belonging to this facility via event_log
-        List<Object[]> rows = eventLogRepository.findPatientsByFacility(facilityId);
+        List<Object[]> rows = complianceEventLogRepository.findPatientsByFacility(facilityId);
         Set<UUID> facilityInstanceIds = new HashSet<>();
         Set<String> patients = new LinkedHashSet<>();
         for (Object[] row : rows) {
@@ -314,7 +312,7 @@ public class ComplianceSummaryService {
     }
 
     private Set<UUID> getFacilityInstanceIds(String facilityId) {
-        List<Object[]> rows = eventLogRepository.findPatientsByFacility(facilityId);
+        List<Object[]> rows = complianceEventLogRepository.findPatientsByFacility(facilityId);
         Set<UUID> ids = new HashSet<>();
         for (Object[] row : rows) {
             ids.add((UUID) row[2]);

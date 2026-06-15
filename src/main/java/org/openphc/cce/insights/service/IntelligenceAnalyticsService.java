@@ -9,7 +9,6 @@ import org.openphc.cce.insights.domain.repository.ReceiverAdaptorRepository;
 import org.openphc.cce.insights.web.dto.IntelligenceSummaryDto;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.*;
@@ -17,7 +16,6 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
-@Transactional(readOnly = true)
 public class IntelligenceAnalyticsService {
 
     private final IntelligenceDeliveryRepository deliveryRepository;

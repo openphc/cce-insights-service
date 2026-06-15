@@ -1,8 +1,6 @@
 package org.openphc.cce.insights.domain.repository;
 
 import org.openphc.cce.insights.domain.entity.StepInstance;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -14,133 +12,21 @@ public interface StepInstanceRepository extends ReadOnlyRepository<StepInstance,
 
     List<StepInstance> findByProtocolInstanceIdOrderByDueDateAsc(UUID protocolInstanceId);
 
-    @Query("SELECT si.state, COUNT(si) FROM StepInstance si " +
-            "WHERE si.protocolInstanceId = :piId " +
-            "GROUP BY si.state")
-    List<Object[]> countByProtocolInstanceIdGroupByState(@Param("piId") UUID protocolInstanceId);
+    List<Object[]> countByProtocolInstanceIdGroupByState(UUID protocolInstanceId);
 
-    @Query(value = "SELECT si.action_id, " +
-            "COUNT(DISTINCT pi.patient_id) AS total_instances, " +
-            "COUNT(DISTINCT CASE WHEN si.state = 'COMPLETED' THEN pi.patient_id END) AS completed_count, " +
-            "COUNT(DISTINCT CASE WHEN si.completion_status = 'EARLY' THEN pi.patient_id END) AS early_count, " +
-            "COUNT(DISTINCT CASE WHEN si.completion_status = 'ON_TIME' THEN pi.patient_id END) AS on_time_count, " +
-            "COUNT(DISTINCT CASE WHEN si.completion_status = 'LATE' THEN pi.patient_id END) AS late_count, " +
-            "COUNT(DISTINCT CASE WHEN si.state = 'OVERDUE' THEN pi.patient_id END) AS overdue_count, " +
-            "COUNT(DISTINCT CASE WHEN si.state = 'MISSED' THEN pi.patient_id END) AS missed_count, " +
-            "COUNT(DISTINCT CASE WHEN si.state = 'SKIPPED' THEN pi.patient_id END) AS skipped_count, " +
-            "COUNT(DISTINCT CASE WHEN si.state = 'PENDING' OR si.state = 'DUE' THEN pi.patient_id END) AS pending_count, " +
-            "AVG(EXTRACT(EPOCH FROM (si.completed_at - si.due_date)) / 86400.0) " +
-            "  FILTER (WHERE si.state = 'COMPLETED' AND si.due_date IS NOT NULL) AS avg_days_to_complete, " +
-            "PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (si.completed_at - si.due_date)) / 86400.0) " +
-            "  FILTER (WHERE si.state = 'COMPLETED' AND si.due_date IS NOT NULL) AS median_days_to_complete " +
-            "FROM step_instance si " +
-            "JOIN protocol_instance pi ON si.protocol_instance_id = pi.id " +
-            "WHERE pi.protocol_definition_id = :protocolDefId " +
-            "GROUP BY si.action_id",
-            nativeQuery = true)
-    List<Object[]> findStepAnalytics(@Param("protocolDefId") UUID protocolDefId);
+    List<Object[]> findStepAnalytics(UUID protocolDefId);
 
-    @Query(value = "SELECT si.action_id, " +
-            "COUNT(DISTINCT pi.patient_id) AS total_instances, " +
-            "COUNT(DISTINCT CASE WHEN si.state = 'COMPLETED' THEN pi.patient_id END) AS completed_count, " +
-            "COUNT(DISTINCT CASE WHEN si.completion_status = 'EARLY' THEN pi.patient_id END) AS early_count, " +
-            "COUNT(DISTINCT CASE WHEN si.completion_status = 'ON_TIME' THEN pi.patient_id END) AS on_time_count, " +
-            "COUNT(DISTINCT CASE WHEN si.completion_status = 'LATE' THEN pi.patient_id END) AS late_count, " +
-            "COUNT(DISTINCT CASE WHEN si.state = 'OVERDUE' THEN pi.patient_id END) AS overdue_count, " +
-            "COUNT(DISTINCT CASE WHEN si.state = 'MISSED' THEN pi.patient_id END) AS missed_count, " +
-            "COUNT(DISTINCT CASE WHEN si.state = 'SKIPPED' THEN pi.patient_id END) AS skipped_count, " +
-            "COUNT(DISTINCT CASE WHEN si.state = 'PENDING' OR si.state = 'DUE' THEN pi.patient_id END) AS pending_count, " +
-            "AVG(EXTRACT(EPOCH FROM (si.completed_at - si.due_date)) / 86400.0) " +
-            "  FILTER (WHERE si.state = 'COMPLETED' AND si.due_date IS NOT NULL) AS avg_days_to_complete, " +
-            "PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (si.completed_at - si.due_date)) / 86400.0) " +
-            "  FILTER (WHERE si.state = 'COMPLETED' AND si.due_date IS NOT NULL) AS median_days_to_complete " +
-            "FROM step_instance si " +
-            "JOIN protocol_instance pi ON si.protocol_instance_id = pi.id " +
-            "WHERE pi.protocol_definition_id = :protocolDefId " +
-            "AND pi.id IN (SELECT DISTINCT el.protocol_instance_id FROM event_log el " +
-            "              WHERE el.facility_id = :facilityId AND el.protocol_instance_id IS NOT NULL) " +
-            "GROUP BY si.action_id",
-            nativeQuery = true)
-    List<Object[]> findStepAnalyticsByFacility(@Param("protocolDefId") UUID protocolDefId,
-                                               @Param("facilityId") String facilityId);
+    List<Object[]> findStepAnalyticsByFacility(UUID protocolDefId, String facilityId);
 
-    @Query(value = "SELECT si.action_id, " +
-            "COUNT(DISTINCT pi.patient_id) AS reached_count, " +
-            "COUNT(DISTINCT CASE WHEN si.state = 'COMPLETED' THEN pi.patient_id END) AS completed_count " +
-            "FROM step_instance si " +
-            "JOIN protocol_instance pi ON si.protocol_instance_id = pi.id " +
-            "WHERE pi.protocol_definition_id = :protocolDefId " +
-            "GROUP BY si.action_id",
-            nativeQuery = true)
-    List<Object[]> findCompletionFunnel(@Param("protocolDefId") UUID protocolDefId);
+    List<Object[]> findCompletionFunnel(UUID protocolDefId);
 
-    @Query(value = "SELECT el.facility_id, " +
-            "COUNT(DISTINCT si.id) AS total_steps, " +
-            "COUNT(DISTINCT CASE WHEN si.state IN ('COMPLETED','SKIPPED') " +
-            "AND si.id NOT IN (SELECT step_instance_id FROM deviation) THEN si.id END) AS completed_steps " +
-            "FROM step_instance si " +
-            "JOIN protocol_instance pi ON si.protocol_instance_id = pi.id " +
-            "JOIN event_log el ON el.protocol_instance_id = pi.id " +
-            "WHERE el.facility_id IS NOT NULL " +
-            "GROUP BY el.facility_id",
-            nativeQuery = true)
     List<Object[]> findStepComplianceByFacility();
 
-    @Query(value = "SELECT el.facility_id, " +
-            "COUNT(DISTINCT CASE WHEN si.action_id LIKE '%-referral' THEN si.id END) AS outbound_events, " +
-            "COUNT(DISTINCT CASE WHEN si.action_id LIKE '%-referral-ack' THEN si.id END) AS inbound_events " +
-            "FROM step_instance si " +
-            "JOIN protocol_instance pi ON si.protocol_instance_id = pi.id " +
-            "JOIN event_log el ON el.protocol_instance_id = pi.id " +
-            "WHERE el.facility_id IS NOT NULL " +
-            "AND (si.action_id LIKE '%-referral' OR si.action_id LIKE '%-referral-ack') " +
-            "AND si.state = 'COMPLETED' " +
-            "GROUP BY el.facility_id",
-            nativeQuery = true)
     List<Object[]> findReferralEventCountsByFacility();
 
-    @Query(value = "SELECT practitioner_ref, " +
-            "COUNT(DISTINCT si.id) AS total_steps, " +
-            "COUNT(DISTINCT CASE WHEN si.state IN ('COMPLETED','SKIPPED') " +
-            "AND si.id NOT IN (SELECT step_instance_id FROM deviation) THEN si.id END) AS completed_steps " +
-            "FROM step_instance si " +
-            "JOIN protocol_instance pi ON si.protocol_instance_id = pi.id " +
-            "JOIN event_log el ON el.protocol_instance_id = pi.id " +
-            "CROSS JOIN LATERAL ( " +
-            "  SELECT COALESCE(" +
-            "    (SELECT p->'individual'->>'reference' FROM jsonb_array_elements(el.data->'participant') p WHERE p->'individual'->>'reference' LIKE 'Practitioner/%' LIMIT 1), " +
-            "    (SELECT p->>'reference' FROM jsonb_array_elements(el.data->'performer') p WHERE p->>'reference' LIKE 'Practitioner/%' LIMIT 1), " +
-            "    CASE WHEN el.data->'asserter'->>'reference' LIKE 'Practitioner/%' THEN el.data->'asserter'->>'reference' END, " +
-            "    CASE WHEN el.data->'requester'->>'reference' LIKE 'Practitioner/%' THEN el.data->'requester'->>'reference' END" +
-            "  ) AS practitioner_ref " +
-            ") pr " +
-            "WHERE pr.practitioner_ref IS NOT NULL " +
-            "GROUP BY practitioner_ref",
-            nativeQuery = true)
     List<Object[]> findStepComplianceByPractitioner();
 
-    @Query(value = "SELECT practitioner_ref, " +
-            "COUNT(DISTINCT si.id) AS total_steps, " +
-            "COUNT(DISTINCT CASE WHEN si.state IN ('COMPLETED','SKIPPED') " +
-            "AND si.id NOT IN (SELECT step_instance_id FROM deviation) THEN si.id END) AS completed_steps " +
-            "FROM step_instance si " +
-            "JOIN protocol_instance pi ON si.protocol_instance_id = pi.id " +
-            "JOIN event_log el ON el.protocol_instance_id = pi.id " +
-            "CROSS JOIN LATERAL ( " +
-            "  SELECT COALESCE(" +
-            "    (SELECT p->'individual'->>'reference' FROM jsonb_array_elements(el.data->'participant') p WHERE p->'individual'->>'reference' LIKE 'Practitioner/%' LIMIT 1), " +
-            "    (SELECT p->>'reference' FROM jsonb_array_elements(el.data->'performer') p WHERE p->>'reference' LIKE 'Practitioner/%' LIMIT 1), " +
-            "    CASE WHEN el.data->'asserter'->>'reference' LIKE 'Practitioner/%' THEN el.data->'asserter'->>'reference' END, " +
-            "    CASE WHEN el.data->'requester'->>'reference' LIKE 'Practitioner/%' THEN el.data->'requester'->>'reference' END" +
-            "  ) AS practitioner_ref " +
-            ") pr " +
-            "WHERE pr.practitioner_ref IS NOT NULL " +
-            "AND (CAST(:startDate AS timestamptz) IS NULL OR el.received_at >= :startDate) " +
-            "AND (CAST(:endDate AS timestamptz) IS NULL OR el.received_at <= :endDate) " +
-            "AND (CAST(:facilityId AS text) IS NULL OR el.facility_id = :facilityId) " +
-            "GROUP BY practitioner_ref",
-            nativeQuery = true)
-    List<Object[]> findStepComplianceByPractitionerFiltered(@Param("startDate") OffsetDateTime startDate,
-                                                            @Param("endDate") OffsetDateTime endDate,
-                                                            @Param("facilityId") String facilityId);
+    List<Object[]> findStepComplianceByPractitionerFiltered(OffsetDateTime startDate,
+                                                            OffsetDateTime endDate,
+                                                            String facilityId);
 }
