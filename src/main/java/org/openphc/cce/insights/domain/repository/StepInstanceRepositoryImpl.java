@@ -1,233 +1,465 @@
 package org.openphc.cce.insights.domain.repository;
 
+import org.jooq.DSLContext;
+import org.jooq.Field;
+import org.jooq.Record;
+import org.jooq.Table;
+import org.jooq.impl.DSL;
 import org.openphc.cce.insights.domain.entity.StepInstance;
 import org.openphc.cce.insights.domain.enums.CompletionStatus;
 import org.openphc.cce.insights.domain.enums.StepState;
-import org.springframework.jdbc.core.RowMapper;
-import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
-import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import java.time.OffsetDateTime;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
+
+import static org.openphc.cce.insights.jooq.Tables.DEVIATIONS;
+import static org.openphc.cce.insights.jooq.Tables.INBOUND_EVENT_LOGS;
+import static org.openphc.cce.insights.jooq.Tables.MV_PATIENT_FACILITY_LATEST;
+import static org.openphc.cce.insights.jooq.Tables.PROTOCOL_INSTANCES;
+import static org.openphc.cce.insights.jooq.Tables.STEP_INSTANCES;
 
 @Repository
 public class StepInstanceRepositoryImpl
         extends AbstractClickHouseRepository<StepInstance, UUID>
         implements StepInstanceRepository {
 
-    public StepInstanceRepositoryImpl(NamedParameterJdbcTemplate jdbc) {
-        super(jdbc);
+    public StepInstanceRepositoryImpl(DSLContext dsl) {
+        super(dsl);
     }
 
     @Override
     protected String getTableName() {
-        return "step_instances";
+        return STEP_INSTANCES.getName();
     }
 
     @Override
-    protected RowMapper<StepInstance> rowMapper() {
-        return (rs, n) -> {
-            StepState state = null;
-            try { state = StepState.valueOf(rs.getString("state")); } catch (Exception ignored) {}
-            CompletionStatus cs = null;
-            try {
-                String csStr = rs.getString("completion_status");
-                if (csStr != null && !csStr.isEmpty()) cs = CompletionStatus.valueOf(csStr);
-            } catch (Exception ignored) {}
-            return StepInstance.builder()
-                    .id(UUID.fromString(rs.getString("id")))
-                    .protocolInstanceId(parseUUID(rs.getString("protocol_instance_id")))
-                    .actionId(rs.getString("action_id"))
-                    .repeatIndex(rs.getInt("repeat_index"))
-                    .state(state)
-                    .dueDate(toOffsetDateTime(rs, "due_date"))
-                    .overdueDate(toOffsetDateTime(rs, "overdue_date"))
-                    .missedDate(toOffsetDateTime(rs, "missed_date"))
-                    .completedAt(toOffsetDateTime(rs, "completed_at"))
-                    .completionStatus(cs)
-                    .completedBySource(rs.getString("completed_by_source"))
-                    .completedByEventId(parseUUID(rs.getString("completed_by_event_id")))
-                    .requiredBehavior(rs.getString("required_behavior"))
-                    .build();
+    protected StepInstance fromRecord(Record r) {
+        return toStepInstance(r);
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // ClickHouse aggregate function helpers
+    // ══════════════════════════════════════════════════════════════════════════════
+
+    private static Field<Long> uniq(String columnExpr) {
+        return DSL.field("uniq(" + columnExpr + ")", Long.class);
+    }
+
+    private static Field<Long> uniqIf(String columnExpr, String condition) {
+        return DSL.field("uniqIf(" + columnExpr + ", " + condition + ")", Long.class);
+    }
+
+    private static Field<Double> avgIf(String expression, String condition) {
+        return DSL.field("avgIf(" + expression + ", " + condition + ")", Double.class);
+    }
+
+    private static Field<Double> medianIf(String expression, String condition) {
+        return DSL.field("medianIf(" + expression + ", " + condition + ")", Double.class);
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // Reusable sub-query builders
+    // ══════════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Derives the "completed_steps" aggregate field — steps in COMPLETED or SKIPPED state
+     * that have no deviation record. Uses a LEFT JOIN on deviations (alias "d") rather than
+     * a subquery inside the aggregate, because ClickHouse does not support subqueries inside
+     * aggregate function conditions (Code 62 syntax error).
+     * The caller must add: LEFT JOIN finalAs(DEVIATIONS, "d") ON d.step_instance_id = si.id
+     */
+    private Field<Long> completedStepsAggregate(String stepAlias) {
+        // ClickHouse LEFT JOIN on non-Nullable UUID columns returns the zero UUID (not NULL)
+        // for unmatched rows, so isNull(d.id) is always false. Compare against zero UUID instead.
+        return DSL.field(
+                "uniqIf(" + stepAlias + ".id, " + stepAlias + "." + STEP_INSTANCES.STATE.getName() +
+                " IN ('COMPLETED','SKIPPED') AND d.id = toUUID('00000000-0000-0000-0000-000000000000'))",
+                Long.class
+        ).as("completed_steps");
+    }
+
+    /**
+     * Subquery that returns distinct (subject, practitioner_ref) pairs from
+     * inbound_event_logs — joined onto protocol instances to resolve practitioner info.
+     */
+    private Table<?> practitionerPairsSubquery() {
+        var inboundEventLogs = finalAs(INBOUND_EVENT_LOGS, "iel");
+        return dsl.select(
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.SUBJECT.getName()),
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.PRACTITIONER_REF.getName()))
+                .from(inboundEventLogs)
+                .where(DSL.field("iel." + INBOUND_EVENT_LOGS.PRACTITIONER_REF.getName()).ne(""))
+                .groupBy(
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.SUBJECT.getName()),
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.PRACTITIONER_REF.getName()))
+                .asTable("iel");
+    }
+
+    /**
+     * Same as practitionerPairsSubquery() but with date-range and facility filters applied.
+     * All filter values are passed as bind parameters — jOOQ handles parameterisation safely.
+     */
+    private Table<?> practitionerPairsSubqueryFiltered(OffsetDateTime startDate,
+                                                        OffsetDateTime endDate,
+                                                        String facilityId) {
+        String fid = str(facilityId);
+        var inboundEventLogs = finalAs(INBOUND_EVENT_LOGS, "iel");
+        return dsl.select(
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.SUBJECT.getName()),
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.PRACTITIONER_REF.getName()))
+                .from(inboundEventLogs)
+                .where(DSL.field("iel." + INBOUND_EVENT_LOGS.PRACTITIONER_REF.getName()).ne(""))
+                .and(DSL.condition(
+                        "iel." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
+                        dtStart(startDate)))
+                .and(DSL.condition(
+                        "iel." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
+                        dtEnd(endDate)))
+                .and(DSL.condition(
+                        "? = '' OR iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?",
+                        fid, fid))
+                .groupBy(
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.SUBJECT.getName()),
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.PRACTITIONER_REF.getName()))
+                .asTable("iel");
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // Result mappers
+    // ══════════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Maps a jOOQ Record to StepInstance.
+     * Column names come directly from generated field metadata — no intermediate constants.
+     * If a column is renamed in ClickHouse and generateJooq is re-run, the .getName()
+     * call here breaks at compile time, surfacing the mismatch immediately.
+     */
+    private StepInstance toStepInstance(Record r) {
+        StepState state = null;
+        try { state = StepState.valueOf(r.get(STEP_INSTANCES.STATE.getName(), String.class)); }
+        catch (Exception ignored) {}
+
+        CompletionStatus cs = null;
+        try {
+            String csStr = r.get(STEP_INSTANCES.COMPLETION_STATUS.getName(), String.class);
+            if (csStr != null && !csStr.isEmpty()) cs = CompletionStatus.valueOf(csStr);
+        } catch (Exception ignored) {}
+
+        Integer repeatIdx = r.get(STEP_INSTANCES.REPEAT_INDEX.getName(), Integer.class);
+        return StepInstance.builder()
+                .id(r.get(STEP_INSTANCES.ID.getName(), UUID.class))
+                .protocolInstanceId(r.get(STEP_INSTANCES.PROTOCOL_INSTANCE_ID.getName(), UUID.class))
+                .actionId(r.get(STEP_INSTANCES.ACTION_ID.getName(), String.class))
+                .repeatIndex(repeatIdx != null ? repeatIdx : 0)
+                .state(state)
+                .dueDate(recordDateTime(r, STEP_INSTANCES.DUE_DATE.getName()))
+                .overdueDate(recordDateTime(r, STEP_INSTANCES.OVERDUE_DATE.getName()))
+                .missedDate(recordDateTime(r, STEP_INSTANCES.MISSED_DATE.getName()))
+                .completedAt(recordDateTime(r, STEP_INSTANCES.COMPLETED_AT.getName()))
+                .completionStatus(cs)
+                .completedBySource(r.get(STEP_INSTANCES.COMPLETED_BY_SOURCE.getName(), String.class))
+                .completedByEventId(parseUUID(r.get(STEP_INSTANCES.COMPLETED_BY_EVENT_ID.getName(), String.class)))
+                .requiredBehavior(r.get(STEP_INSTANCES.REQUIRED_BEHAVIOR.getName(), String.class))
+                .build();
+    }
+
+    /** Maps a step-analytics Record (12 columns) to Object[]. */
+    private static Object[] toStepAnalyticsRow(Record r) {
+        return new Object[]{
+                r.get(STEP_INSTANCES.ACTION_ID.getName(), String.class),
+                r.get("total_instances",         Long.class),
+                r.get("completed_count",         Long.class),
+                r.get("early_count",             Long.class),
+                r.get("on_time_count",           Long.class),
+                r.get("late_count",              Long.class),
+                r.get("overdue_count",           Long.class),
+                r.get("missed_count",            Long.class),
+                r.get("skipped_count",           Long.class),
+                r.get("pending_count",           Long.class),
+                r.get("avg_days_to_complete",    Double.class),
+                r.get("median_days_to_complete", Double.class)
         };
     }
 
+    /** Maps a compliance Record (groupBy column, total_steps, completed_steps) to Object[]. */
+    private static Object[] toComplianceRow(Record r, String groupByCol) {
+        return new Object[]{
+                r.get(groupByCol,        String.class),
+                r.get("total_steps",     Long.class),
+                r.get("completed_steps", Long.class)
+        };
+    }
+
+    /** Maps a completion-funnel Record (action_id, reached, completed) to Object[]. */
+    private static Object[] toFunnelRow(Record r) {
+        return new Object[]{
+                r.get(STEP_INSTANCES.ACTION_ID.getName(), String.class),
+                r.get("reached_count",   Long.class),
+                r.get("completed_count", Long.class)
+        };
+    }
+
+    /** Maps a referral-event Record (facility_id, outbound, inbound) to Object[]. */
+    private static Object[] toReferralRow(Record r) {
+        return new Object[]{
+                r.get("facility_id",     String.class),
+                r.get("outbound_events", Long.class),
+                r.get("inbound_events",  Long.class)
+        };
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // Repository methods — full jOOQ DSL
+    // ══════════════════════════════════════════════════════════════════════════════
+
     @Override
     public List<StepInstance> findByProtocolInstanceId(UUID protocolInstanceId) {
-        return jdbc.query(
-                "SELECT * FROM step_instances" + finalClause() + " WHERE protocol_instance_id = toUUID(:id)",
-                Map.of("id", protocolInstanceId.toString()), rowMapper());
+        var stepInstances = finalAs(STEP_INSTANCES, "si");
+        return dsl.select(DSL.asterisk())
+                  .from(stepInstances)
+                  .where(DSL.condition(
+                          "si." + STEP_INSTANCES.PROTOCOL_INSTANCE_ID.getName() + " = toUUID(?)",
+                          protocolInstanceId.toString()))
+                  .fetch()
+                  .map(this::toStepInstance);
     }
 
     @Override
     public List<StepInstance> findByProtocolInstanceIdOrderByDueDateAsc(UUID protocolInstanceId) {
-        return jdbc.query(
-                "SELECT * FROM step_instances" + finalClause() + " WHERE protocol_instance_id = toUUID(:id) " +
-                "ORDER BY due_date ASC",
-                Map.of("id", protocolInstanceId.toString()), rowMapper());
+        var stepInstances = finalAs(STEP_INSTANCES, "si");
+        return dsl.select(DSL.asterisk())
+                  .from(stepInstances)
+                  .where(DSL.condition(
+                          "si." + STEP_INSTANCES.PROTOCOL_INSTANCE_ID.getName() + " = toUUID(?)",
+                          protocolInstanceId.toString()))
+                  .orderBy(DSL.field("si." + STEP_INSTANCES.DUE_DATE.getName()).asc())
+                  .fetch()
+                  .map(this::toStepInstance);
     }
 
     @Override
     public List<Object[]> countByProtocolInstanceIdGroupByState(UUID protocolInstanceId) {
-        return jdbc.query(
-                "SELECT state, count() FROM step_instances" + finalClause() +
-                " WHERE protocol_instance_id = toUUID(:id) GROUP BY state",
-                Map.of("id", protocolInstanceId.toString()),
-                (rs, n) -> new Object[]{rs.getString(1), rs.getLong(2)});
+        var stepInstances = finalAs(STEP_INSTANCES, "si");
+        return dsl.select(DSL.field("si." + STEP_INSTANCES.STATE.getName()), DSL.count())
+                  .from(stepInstances)
+                  .where(DSL.condition(
+                          "si." + STEP_INSTANCES.PROTOCOL_INSTANCE_ID.getName() + " = toUUID(?)",
+                          protocolInstanceId.toString()))
+                  .groupBy(DSL.field("si." + STEP_INSTANCES.STATE.getName()))
+                  .fetch()
+                  .map(r -> new Object[]{r.value1(), r.value2()});
     }
 
     @Override
     public List<Object[]> findStepAnalytics(UUID protocolDefId) {
-        return jdbc.query(
-                "SELECT si.action_id, " +
-                "uniq(pi.patient_id) AS total_instances, " +
-                "uniqIf(pi.patient_id, si.state = 'COMPLETED') AS completed_count, " +
-                "uniqIf(pi.patient_id, si.completion_status = 'EARLY') AS early_count, " +
-                "uniqIf(pi.patient_id, si.completion_status = 'ON_TIME') AS on_time_count, " +
-                "uniqIf(pi.patient_id, si.completion_status = 'LATE') AS late_count, " +
-                "uniqIf(pi.patient_id, si.state = 'OVERDUE') AS overdue_count, " +
-                "uniqIf(pi.patient_id, si.state = 'MISSED') AS missed_count, " +
-                "uniqIf(pi.patient_id, si.state = 'SKIPPED') AS skipped_count, " +
-                "uniqIf(pi.patient_id, si.state IN ('PENDING','DUE')) AS pending_count, " +
-                "avgIf(dateDiff('second', si.due_date, si.completed_at) / 86400.0, " +
-                "      si.state = 'COMPLETED' AND isNotNull(si.due_date)) AS avg_days_to_complete, " +
-                "medianIf(dateDiff('second', si.due_date, si.completed_at) / 86400.0, " +
-                "         si.state = 'COMPLETED' AND isNotNull(si.due_date)) AS median_days_to_complete " +
-                "FROM step_instances si" + finalClause() + " " +
-                "JOIN protocol_instances pi" + finalClause() + " ON si.protocol_instance_id = pi.id " +
-                "WHERE pi.protocol_definition_id = toUUID(:id) " +
-                "GROUP BY si.action_id",
-                Map.of("id", protocolDefId.toString()),
-                (rs, n) -> new Object[]{
-                        rs.getString(1), rs.getLong(2), rs.getLong(3), rs.getLong(4),
-                        rs.getLong(5), rs.getLong(6), rs.getLong(7), rs.getLong(8),
-                        rs.getLong(9), rs.getLong(10), rs.getDouble(11), rs.getDouble(12)});
+        var stepInstances = finalAs(STEP_INSTANCES, "si");
+        var protocolInstances = finalAs(PROTOCOL_INSTANCES, "pi");
+        String daysToComplete = "dateDiff('second', si.due_date, si.completed_at) / 86400.0";
+        String wasCompleted   = "si." + STEP_INSTANCES.STATE.getName() + " = 'COMPLETED' AND isNotNull(si.due_date)";
+
+        return dsl.select(
+                    DSL.field("si." + STEP_INSTANCES.ACTION_ID.getName())
+                       .as(STEP_INSTANCES.ACTION_ID.getName()),
+                    uniq("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()).as("total_instances"),
+                    uniqIf("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName(),
+                            "si." + STEP_INSTANCES.STATE.getName() + " = 'COMPLETED'").as("completed_count"),
+                    uniqIf("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName(),
+                            "si." + STEP_INSTANCES.COMPLETION_STATUS.getName() + " = 'EARLY'").as("early_count"),
+                    uniqIf("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName(),
+                            "si." + STEP_INSTANCES.COMPLETION_STATUS.getName() + " = 'ON_TIME'").as("on_time_count"),
+                    uniqIf("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName(),
+                            "si." + STEP_INSTANCES.COMPLETION_STATUS.getName() + " = 'LATE'").as("late_count"),
+                    uniqIf("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName(),
+                            "si." + STEP_INSTANCES.STATE.getName() + " = 'OVERDUE'").as("overdue_count"),
+                    uniqIf("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName(),
+                            "si." + STEP_INSTANCES.STATE.getName() + " = 'MISSED'").as("missed_count"),
+                    uniqIf("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName(),
+                            "si." + STEP_INSTANCES.STATE.getName() + " = 'SKIPPED'").as("skipped_count"),
+                    uniqIf("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName(),
+                            "si." + STEP_INSTANCES.STATE.getName() + " IN ('PENDING','DUE')").as("pending_count"),
+                    avgIf(daysToComplete, wasCompleted).as("avg_days_to_complete"),
+                    medianIf(daysToComplete, wasCompleted).as("median_days_to_complete")
+                )
+                .from(stepInstances)
+                .join(protocolInstances).on(DSL.condition(
+                        "si." + STEP_INSTANCES.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                .where(DSL.condition(
+                        "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
+                        protocolDefId.toString()))
+                .groupBy(DSL.field("si." + STEP_INSTANCES.ACTION_ID.getName()))
+                .fetch()
+                .map(StepInstanceRepositoryImpl::toStepAnalyticsRow);
     }
 
     @Override
     public List<Object[]> findStepAnalyticsByFacility(UUID protocolDefId, String facilityId) {
-        MapSqlParameterSource p = new MapSqlParameterSource()
-                .addValue("id", protocolDefId.toString())
-                .addValue("fid", facilityId);
-        return jdbc.query(
-                "SELECT si.action_id, " +
-                "uniq(pi.patient_id) AS total_instances, " +
-                "uniqIf(pi.patient_id, si.state = 'COMPLETED') AS completed_count, " +
-                "uniqIf(pi.patient_id, si.completion_status = 'EARLY') AS early_count, " +
-                "uniqIf(pi.patient_id, si.completion_status = 'ON_TIME') AS on_time_count, " +
-                "uniqIf(pi.patient_id, si.completion_status = 'LATE') AS late_count, " +
-                "uniqIf(pi.patient_id, si.state = 'OVERDUE') AS overdue_count, " +
-                "uniqIf(pi.patient_id, si.state = 'MISSED') AS missed_count, " +
-                "uniqIf(pi.patient_id, si.state = 'SKIPPED') AS skipped_count, " +
-                "uniqIf(pi.patient_id, si.state IN ('PENDING','DUE')) AS pending_count, " +
-                "avgIf(dateDiff('second', si.due_date, si.completed_at) / 86400.0, " +
-                "      si.state = 'COMPLETED' AND isNotNull(si.due_date)) AS avg_days_to_complete, " +
-                "medianIf(dateDiff('second', si.due_date, si.completed_at) / 86400.0, " +
-                "         si.state = 'COMPLETED' AND isNotNull(si.due_date)) AS median_days_to_complete " +
-                "FROM step_instances si" + finalClause() + " " +
-                "JOIN protocol_instances pi" + finalClause() + " ON si.protocol_instance_id = pi.id " +
-                "JOIN mv_patient_facility_latest pf ON pf.patient_id = pi.patient_id " +
-                "WHERE pi.protocol_definition_id = toUUID(:id) AND pf.facility_id = :fid " +
-                "GROUP BY si.action_id",
-                p,
-                (rs, n) -> new Object[]{
-                        rs.getString(1), rs.getLong(2), rs.getLong(3), rs.getLong(4),
-                        rs.getLong(5), rs.getLong(6), rs.getLong(7), rs.getLong(8),
-                        rs.getLong(9), rs.getLong(10), rs.getDouble(11), rs.getDouble(12)});
+        var stepInstances = finalAs(STEP_INSTANCES, "si");
+        var protocolInstances = finalAs(PROTOCOL_INSTANCES, "pi");
+        var patientFacility = MV_PATIENT_FACILITY_LATEST.as("pf");
+        String daysToComplete = "dateDiff('second', si.due_date, si.completed_at) / 86400.0";
+        String wasCompleted   = "si." + STEP_INSTANCES.STATE.getName() + " = 'COMPLETED' AND isNotNull(si.due_date)";
+
+        return dsl.select(
+                    DSL.field("si." + STEP_INSTANCES.ACTION_ID.getName())
+                       .as(STEP_INSTANCES.ACTION_ID.getName()),
+                    uniq("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()).as("total_instances"),
+                    uniqIf("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName(),
+                            "si." + STEP_INSTANCES.STATE.getName() + " = 'COMPLETED'").as("completed_count"),
+                    uniqIf("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName(),
+                            "si." + STEP_INSTANCES.COMPLETION_STATUS.getName() + " = 'EARLY'").as("early_count"),
+                    uniqIf("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName(),
+                            "si." + STEP_INSTANCES.COMPLETION_STATUS.getName() + " = 'ON_TIME'").as("on_time_count"),
+                    uniqIf("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName(),
+                            "si." + STEP_INSTANCES.COMPLETION_STATUS.getName() + " = 'LATE'").as("late_count"),
+                    uniqIf("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName(),
+                            "si." + STEP_INSTANCES.STATE.getName() + " = 'OVERDUE'").as("overdue_count"),
+                    uniqIf("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName(),
+                            "si." + STEP_INSTANCES.STATE.getName() + " = 'MISSED'").as("missed_count"),
+                    uniqIf("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName(),
+                            "si." + STEP_INSTANCES.STATE.getName() + " = 'SKIPPED'").as("skipped_count"),
+                    uniqIf("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName(),
+                            "si." + STEP_INSTANCES.STATE.getName() + " IN ('PENDING','DUE')").as("pending_count"),
+                    avgIf(daysToComplete, wasCompleted).as("avg_days_to_complete"),
+                    medianIf(daysToComplete, wasCompleted).as("median_days_to_complete")
+                )
+                .from(stepInstances)
+                .join(protocolInstances).on(DSL.condition(
+                        "si." + STEP_INSTANCES.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                .join(patientFacility).on(DSL.condition(
+                        "pf.patient_id = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
+                .where(DSL.condition(
+                        "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
+                        protocolDefId.toString()))
+                .and(DSL.field("pf.facility_id").eq(facilityId))
+                .groupBy(DSL.field("si." + STEP_INSTANCES.ACTION_ID.getName()))
+                .fetch()
+                .map(StepInstanceRepositoryImpl::toStepAnalyticsRow);
     }
 
     @Override
     public List<Object[]> findCompletionFunnel(UUID protocolDefId) {
-        return jdbc.query(
-                "SELECT si.action_id, " +
-                "uniq(pi.patient_id) AS reached_count, " +
-                "uniqIf(pi.patient_id, si.state = 'COMPLETED') AS completed_count " +
-                "FROM step_instances si" + finalClause() + " " +
-                "JOIN protocol_instances pi" + finalClause() + " ON si.protocol_instance_id = pi.id " +
-                "WHERE pi.protocol_definition_id = toUUID(:id) " +
-                "GROUP BY si.action_id",
-                Map.of("id", protocolDefId.toString()),
-                (rs, n) -> new Object[]{rs.getString(1), rs.getLong(2), rs.getLong(3)});
+        var stepInstances = finalAs(STEP_INSTANCES, "si");
+        var protocolInstances = finalAs(PROTOCOL_INSTANCES, "pi");
+
+        return dsl.select(
+                    DSL.field("si." + STEP_INSTANCES.ACTION_ID.getName())
+                       .as(STEP_INSTANCES.ACTION_ID.getName()),
+                    uniq("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()).as("reached_count"),
+                    uniqIf("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName(),
+                            "si." + STEP_INSTANCES.STATE.getName() + " = 'COMPLETED'").as("completed_count")
+                )
+                .from(stepInstances)
+                .join(protocolInstances).on(DSL.condition(
+                        "si." + STEP_INSTANCES.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                .where(DSL.condition(
+                        "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
+                        protocolDefId.toString()))
+                .groupBy(DSL.field("si." + STEP_INSTANCES.ACTION_ID.getName()))
+                .fetch()
+                .map(StepInstanceRepositoryImpl::toFunnelRow);
     }
 
     @Override
     public List<Object[]> findStepComplianceByFacility() {
-        return jdbc.query(
-                "SELECT pf.facility_id, " +
-                "uniq(si.id) AS total_steps, " +
-                "uniqIf(si.id, si.state IN ('COMPLETED','SKIPPED') " +
-                "  AND si.id NOT IN (SELECT step_instance_id FROM deviations" + finalClause() + ")) AS completed_steps " +
-                "FROM step_instances si" + finalClause() + " " +
-                "JOIN protocol_instances pi" + finalClause() + " ON si.protocol_instance_id = pi.id " +
-                "JOIN mv_patient_facility_latest pf ON pf.patient_id = pi.patient_id " +
-                "WHERE pf.facility_id != '' " +
-                "GROUP BY pf.facility_id",
-                new MapSqlParameterSource(),
-                (rs, n) -> new Object[]{rs.getString(1), rs.getLong(2), rs.getLong(3)});
+        var stepInstances = finalAs(STEP_INSTANCES, "si");
+        var protocolInstances = finalAs(PROTOCOL_INSTANCES, "pi");
+        var patientFacility = MV_PATIENT_FACILITY_LATEST.as("pf");
+        var deviations = finalAs(DEVIATIONS, "d");
+
+        return dsl.select(
+                    DSL.field("pf.facility_id").as("facility_id"),
+                    uniq("si.id").as("total_steps"),
+                    completedStepsAggregate("si")
+                )
+                .from(stepInstances)
+                .join(protocolInstances).on(DSL.condition(
+                        "si." + STEP_INSTANCES.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                .join(patientFacility).on(DSL.condition(
+                        "pf.patient_id = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
+                .leftJoin(deviations).on(DSL.condition("d.step_instance_id = si.id"))
+                .where(DSL.field("pf.facility_id").ne(""))
+                .groupBy(DSL.field("pf.facility_id"))
+                .fetch()
+                .map(r -> toComplianceRow(r, "facility_id"));
     }
 
     @Override
     public List<Object[]> findReferralEventCountsByFacility() {
-        return jdbc.query(
-                "SELECT pf.facility_id, " +
-                "uniqIf(si.id, endsWith(si.action_id, '-referral')) AS outbound_events, " +
-                "uniqIf(si.id, endsWith(si.action_id, '-referral-ack')) AS inbound_events " +
-                "FROM step_instances si" + finalClause() + " " +
-                "JOIN protocol_instances pi" + finalClause() + " ON si.protocol_instance_id = pi.id " +
-                "JOIN mv_patient_facility_latest pf ON pf.patient_id = pi.patient_id " +
-                "WHERE pf.facility_id != '' " +
-                "AND (endsWith(si.action_id, '-referral') OR endsWith(si.action_id, '-referral-ack')) " +
-                "AND si.state = 'COMPLETED' " +
-                "GROUP BY pf.facility_id",
-                new MapSqlParameterSource(),
-                (rs, n) -> new Object[]{rs.getString(1), rs.getLong(2), rs.getLong(3)});
+        var stepInstances = finalAs(STEP_INSTANCES, "si");
+        var protocolInstances = finalAs(PROTOCOL_INSTANCES, "pi");
+        var patientFacility = MV_PATIENT_FACILITY_LATEST.as("pf");
+        String actionId = "si." + STEP_INSTANCES.ACTION_ID.getName();
+
+        return dsl.select(
+                    DSL.field("pf.facility_id").as("facility_id"),
+                    DSL.field("uniqIf(si.id, endsWith(" + actionId + ", '-referral'))",
+                            Long.class).as("outbound_events"),
+                    DSL.field("uniqIf(si.id, endsWith(" + actionId + ", '-referral-ack'))",
+                            Long.class).as("inbound_events")
+                )
+                .from(stepInstances)
+                .join(protocolInstances).on(DSL.condition(
+                        "si." + STEP_INSTANCES.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                .join(patientFacility).on(DSL.condition(
+                        "pf.patient_id = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
+                .where(DSL.field("pf.facility_id").ne(""))
+                .and(DSL.condition(
+                        "(endsWith(" + actionId + ", '-referral') OR endsWith(" + actionId + ", '-referral-ack'))"))
+                .and(DSL.field("si." + STEP_INSTANCES.STATE.getName()).eq("COMPLETED"))
+                .groupBy(DSL.field("pf.facility_id"))
+                .fetch()
+                .map(StepInstanceRepositoryImpl::toReferralRow);
     }
 
     @Override
     public List<Object[]> findStepComplianceByPractitioner() {
-        return jdbc.query(
-                "SELECT iel.practitioner_ref, " +
-                "uniq(si.id) AS total_steps, " +
-                "uniqIf(si.id, si.state IN ('COMPLETED','SKIPPED') " +
-                "  AND si.id NOT IN (SELECT step_instance_id FROM deviations" + finalClause() + ")) AS completed_steps " +
-                "FROM step_instances si" + finalClause() + " " +
-                "JOIN protocol_instances pi" + finalClause() + " ON si.protocol_instance_id = pi.id " +
-                "JOIN (SELECT subject, practitioner_ref " +
-                "      FROM inbound_event_logs" + finalClause() + " WHERE practitioner_ref != '' " +
-                "      GROUP BY subject, practitioner_ref) iel ON iel.subject = pi.patient_id " +
-                "WHERE iel.practitioner_ref != '' " +
-                "GROUP BY iel.practitioner_ref",
-                new MapSqlParameterSource(),
-                (rs, n) -> new Object[]{rs.getString(1), rs.getLong(2), rs.getLong(3)});
+        var stepInstances = finalAs(STEP_INSTANCES, "si");
+        var protocolInstances = finalAs(PROTOCOL_INSTANCES, "pi");
+        var practitionerPairs = practitionerPairsSubquery();
+        var deviations = finalAs(DEVIATIONS, "d");
+
+        return dsl.select(
+                    DSL.field("iel.practitioner_ref").as("practitioner_ref"),
+                    uniq("si.id").as("total_steps"),
+                    completedStepsAggregate("si")
+                )
+                .from(stepInstances)
+                .join(protocolInstances).on(DSL.condition(
+                        "si." + STEP_INSTANCES.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                .join(practitionerPairs).on(DSL.condition(
+                        "iel.subject = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
+                .leftJoin(deviations).on(DSL.condition("d.step_instance_id = si.id"))
+                .where(DSL.field("iel.practitioner_ref").ne(""))
+                .groupBy(DSL.field("iel.practitioner_ref"))
+                .fetch()
+                .map(r -> toComplianceRow(r, "practitioner_ref"));
     }
 
     @Override
     public List<Object[]> findStepComplianceByPractitionerFiltered(OffsetDateTime startDate,
                                                                     OffsetDateTime endDate,
                                                                     String facilityId) {
-        MapSqlParameterSource p = new MapSqlParameterSource()
-                .addValue("s", dtStart(startDate))
-                .addValue("e", dtEnd(endDate))
-                .addValue("fid", str(facilityId));
-        return jdbc.query(
-                "SELECT iel.practitioner_ref, " +
-                "uniq(si.id) AS total_steps, " +
-                "uniqIf(si.id, si.state IN ('COMPLETED','SKIPPED') " +
-                "  AND si.id NOT IN (SELECT step_instance_id FROM deviations" + finalClause() + ")) AS completed_steps " +
-                "FROM step_instances si" + finalClause() + " " +
-                "JOIN protocol_instances pi" + finalClause() + " ON si.protocol_instance_id = pi.id " +
-                "JOIN (SELECT subject, practitioner_ref " +
-                "      FROM inbound_event_logs" + finalClause() + " WHERE practitioner_ref != '' " +
-                "      AND received_at >= parseDateTime64BestEffort(:s) " +
-                "      AND received_at <= parseDateTime64BestEffort(:e) " +
-                "      AND (:fid = '' OR facility_id = :fid) " +
-                "      GROUP BY subject, practitioner_ref) iel ON iel.subject = pi.patient_id " +
-                "WHERE iel.practitioner_ref != '' " +
-                "GROUP BY iel.practitioner_ref",
-                p,
-                (rs, n) -> new Object[]{rs.getString(1), rs.getLong(2), rs.getLong(3)});
+        var stepInstances = finalAs(STEP_INSTANCES, "si");
+        var protocolInstances = finalAs(PROTOCOL_INSTANCES, "pi");
+        var practitionerPairs = practitionerPairsSubqueryFiltered(startDate, endDate, facilityId);
+        var deviations = finalAs(DEVIATIONS, "d");
+
+        return dsl.select(
+                    DSL.field("iel.practitioner_ref").as("practitioner_ref"),
+                    uniq("si.id").as("total_steps"),
+                    completedStepsAggregate("si")
+                )
+                .from(stepInstances)
+                .join(protocolInstances).on(DSL.condition(
+                        "si." + STEP_INSTANCES.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                .join(practitionerPairs).on(DSL.condition(
+                        "iel.subject = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
+                .leftJoin(deviations).on(DSL.condition("d.step_instance_id = si.id"))
+                .where(DSL.field("iel.practitioner_ref").ne(""))
+                .groupBy(DSL.field("iel.practitioner_ref"))
+                .fetch()
+                .map(r -> toComplianceRow(r, "practitioner_ref"));
     }
 }

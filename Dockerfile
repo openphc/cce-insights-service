@@ -8,9 +8,12 @@ COPY gradle/ gradle/
 COPY gradlew build.gradle settings.gradle ./
 RUN chmod +x gradlew && ./gradlew dependencies --no-daemon
 
-# Copy source and build
+# Copy source (includes pre-generated jOOQ sources in src/generated/jooq/) and build.
+# generateJooq requires a live ClickHouse at localhost:8123 which is unavailable
+# during image build, so it is skipped here. Re-run ./gradlew generateJooq locally
+# whenever the ClickHouse schema changes, then rebuild the image.
 COPY src/ src/
-RUN ./gradlew build -x test -x integrationTest --no-daemon
+RUN ./gradlew bootJar -x generateJooq --no-daemon
 
 # ---- Runtime Stage ----
 FROM eclipse-temurin:21-jre-alpine

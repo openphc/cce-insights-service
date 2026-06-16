@@ -1,381 +1,562 @@
 package org.openphc.cce.insights.domain.repository;
 
+import org.jooq.DSLContext;
+import org.jooq.Record;
+import org.jooq.Table;
+import org.jooq.impl.DSL;
 import org.openphc.cce.insights.domain.entity.ComplianceEventLog;
-import org.springframework.jdbc.core.RowMapper;
-import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
-import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import java.time.OffsetDateTime;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
+
+import static org.openphc.cce.insights.jooq.Tables.COMPLIANCE_EVENT_LOGS;
+import static org.openphc.cce.insights.jooq.Tables.INBOUND_EVENT_LOGS;
+import static org.openphc.cce.insights.jooq.Tables.PROTOCOL_INSTANCES;
 
 @Repository
 public class ComplianceEventLogRepositoryImpl
         extends AbstractClickHouseRepository<ComplianceEventLog, UUID>
         implements ComplianceEventLogRepository {
 
-    public ComplianceEventLogRepositoryImpl(NamedParameterJdbcTemplate jdbc) {
-        super(jdbc);
+    public ComplianceEventLogRepositoryImpl(DSLContext dsl) {
+        super(dsl);
     }
 
     @Override
     protected String getTableName() {
-        return "compliance_event_logs";
+        return COMPLIANCE_EVENT_LOGS.getName();
     }
 
+    // ══════════════════════════════════════════════════════════════════════════════
+    // Result mappers
+    // ══════════════════════════════════════════════════════════════════════════════
+
+    /** Maps a base compliance_event_logs Record (no joined iel columns). */
     @Override
-    protected RowMapper<ComplianceEventLog> rowMapper() {
-        return (rs, n) -> ComplianceEventLog.builder()
-                .id(UUID.fromString(rs.getString("id")))
-                .cloudeventsId(rs.getString("cloudevents_id"))
-                .source(rs.getString("source"))
-                .data(rs.getString("data"))
-                .processingStatus(rs.getString("processing_status"))
-                .receivedAt(toOffsetDateTime(rs, "received_at"))
+    protected ComplianceEventLog fromRecord(Record r) {
+        return ComplianceEventLog.builder()
+                .id(r.get(COMPLIANCE_EVENT_LOGS.ID.getName(), UUID.class))
+                .cloudeventsId(r.get(COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName(), String.class))
+                .source(r.get(COMPLIANCE_EVENT_LOGS.SOURCE.getName(), String.class))
+                .data(r.get(COMPLIANCE_EVENT_LOGS.DATA.getName(), String.class))
+                .processingStatus(r.get(COMPLIANCE_EVENT_LOGS.PROCESSING_STATUS.getName(), String.class))
+                .receivedAt(recordDateTime(r, COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName()))
                 .subject(null)
                 .type(null)
                 .eventTime(null)
                 .facilityId(null)
-                .protocolInstanceId(parseUUID(tryGetString(rs, "protocol_instance_id")))
-                .protocolDefinitionId(parseUUID(tryGetString(rs, "protocol_definition_id")))
-                .actionId(tryGetString(rs, "action_id"))
-                .matchedStepInstanceId(parseUUID(tryGetString(rs, "matched_step_instance_id")))
                 .build();
     }
 
-    /** Full row mapper used by join queries that include inbound_event_logs fields. */
-    private RowMapper<ComplianceEventLog> rowMapperJoined() {
-        return (rs, n) -> ComplianceEventLog.builder()
-                .id(UUID.fromString(rs.getString("id")))
-                .cloudeventsId(rs.getString("cloudevents_id"))
-                .subject(rs.getString("subject"))
-                .type(rs.getString("event_type"))
-                .eventTime(toOffsetDateTime(rs, "event_time"))
-                .receivedAt(toOffsetDateTime(rs, "received_at"))
-                .source(rs.getString("source"))
-                .data(rs.getString("data"))
-                .processingStatus(rs.getString("processing_status"))
-                .facilityId(rs.getString("facility_id"))
-                .protocolInstanceId(parseUUID(tryGetString(rs, "protocol_instance_id")))
-                .protocolDefinitionId(parseUUID(tryGetString(rs, "protocol_definition_id")))
-                .actionId(tryGetString(rs, "action_id"))
-                .matchedStepInstanceId(parseUUID(tryGetString(rs, "matched_step_instance_id")))
+    /** Maps a Record from queries that JOIN inbound_event_logs (full column set). */
+    private ComplianceEventLog toComplianceEventLogJoined(Record r) {
+        return ComplianceEventLog.builder()
+                .id(r.get("id", UUID.class))
+                .cloudeventsId(r.get("cloudevents_id", String.class))
+                .subject(r.get("subject", String.class))
+                .type(r.get("event_type", String.class))
+                .eventTime(recordDateTime(r, "event_time"))
+                .receivedAt(recordDateTime(r, "received_at"))
+                .source(r.get("source", String.class))
+                .data(r.get("data", String.class))
+                .processingStatus(r.get("processing_status", String.class))
+                .facilityId(r.get("facility_id", String.class))
+                .protocolInstanceId(parseUUID(r.get("protocol_instance_id", String.class)))
+                .protocolDefinitionId(parseUUID(r.get("protocol_definition_id", String.class)))
+                .actionId(r.get("action_id", String.class))
+                .matchedStepInstanceId(parseUUID(r.get("matched_step_instance_id", String.class)))
                 .build();
     }
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // Repository methods — full jOOQ DSL
+    // ══════════════════════════════════════════════════════════════════════════════
 
     @Override
     public List<ComplianceEventLog> findBySubjectOrderByEventTimeDesc(String subject) {
-        return jdbc.query(
-                "SELECT iel.id AS id, iel.cloudevents_id AS cloudevents_id, " +
-                "iel.subject AS subject, iel.event_type AS event_type, " +
-                "iel.event_time AS event_time, iel.received_at AS received_at, " +
-                "iel.source AS source, " +
-                "JSONExtractRaw(iel.raw_payload, 'data') AS data, " +
-                "COALESCE(cel.processing_status, iel.status) AS processing_status, " +
-                "iel.facility_id AS facility_id, " +
-                "'' AS protocol_instance_id, '' AS protocol_definition_id, " +
-                "'' AS action_id, '' AS matched_step_instance_id " +
-                "FROM inbound_event_logs iel" + finalClause() + " " +
-                "LEFT JOIN compliance_event_logs cel" + finalClause() + " ON cel.cloudevents_id = iel.cloudevents_id " +
-                "WHERE iel.subject = :sub ORDER BY iel.event_time DESC",
-                Map.of("sub", subject), rowMapperJoined());
+        var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
+        var cel = finalAs(COMPLIANCE_EVENT_LOGS, "cel");
+        return dsl.select(
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.ID.getName()).as("id"),
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName()).as("cloudevents_id"),
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.SUBJECT.getName()).as("subject"),
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.EVENT_TYPE.getName()).as("event_type"),
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.EVENT_TIME.getName()).as("event_time"),
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName()).as("received_at"),
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.SOURCE.getName()).as("source"),
+                    DSL.field("JSONExtractRaw(iel." + INBOUND_EVENT_LOGS.RAW_PAYLOAD.getName() + ", 'data')").as("data"),
+                    DSL.field("COALESCE(cel." + COMPLIANCE_EVENT_LOGS.PROCESSING_STATUS.getName() +
+                              ", iel." + INBOUND_EVENT_LOGS.STATUS.getName() + ")").as("processing_status"),
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()).as("facility_id"),
+                    DSL.val("").as("protocol_instance_id"),
+                    DSL.val("").as("protocol_definition_id"),
+                    DSL.val("").as("action_id"),
+                    DSL.val("").as("matched_step_instance_id"))
+                  .from(iel)
+                  .leftJoin(cel).on(DSL.condition(
+                          "cel." + COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName() +
+                          " = iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
+                  .where(DSL.field("iel." + INBOUND_EVENT_LOGS.SUBJECT.getName()).eq(subject))
+                  .orderBy(DSL.field("iel." + INBOUND_EVENT_LOGS.EVENT_TIME.getName()).desc())
+                  .fetch()
+                  .map(this::toComplianceEventLogJoined);
     }
 
     @Override
     public List<ComplianceEventLog> findByComplianceEventIds(List<UUID> complianceEventIds) {
         if (complianceEventIds == null || complianceEventIds.isEmpty()) return List.of();
         List<String> ids = complianceEventIds.stream().map(UUID::toString).toList();
-        return jdbc.query(
-                "SELECT id, cloudevents_id, " +
-                "'' AS subject, '' AS event_type, " +
-                "received_at AS event_time, received_at AS received_at, " +
-                "source, " +
-                "data, " +
-                "processing_status, '' AS facility_id, " +
-                "'' AS protocol_instance_id, '' AS protocol_definition_id, " +
-                "'' AS action_id, '' AS matched_step_instance_id " +
-                "FROM compliance_event_logs" + finalClause() + " " +
-                "WHERE id IN (:ids)",
-                Map.of("ids", ids), rowMapperJoined());
+        var cel = finalAs(COMPLIANCE_EVENT_LOGS, "cel");
+        return dsl.select(
+                    DSL.field("cel." + COMPLIANCE_EVENT_LOGS.ID.getName()).as("id"),
+                    DSL.field("cel." + COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName()).as("cloudevents_id"),
+                    DSL.val("").as("subject"),
+                    DSL.val("").as("event_type"),
+                    DSL.field("cel." + COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName()).as("event_time"),
+                    DSL.field("cel." + COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName()).as("received_at"),
+                    DSL.field("cel." + COMPLIANCE_EVENT_LOGS.SOURCE.getName()).as("source"),
+                    DSL.field("cel." + COMPLIANCE_EVENT_LOGS.DATA.getName()).as("data"),
+                    DSL.field("cel." + COMPLIANCE_EVENT_LOGS.PROCESSING_STATUS.getName()).as("processing_status"),
+                    DSL.val("").as("facility_id"),
+                    DSL.val("").as("protocol_instance_id"),
+                    DSL.val("").as("protocol_definition_id"),
+                    DSL.val("").as("action_id"),
+                    DSL.val("").as("matched_step_instance_id"))
+                  .from(cel)
+                  .where(DSL.field("cel." + COMPLIANCE_EVENT_LOGS.ID.getName()).in(ids))
+                  .fetch()
+                  .map(this::toComplianceEventLogJoined);
     }
 
     @Override
     public List<String> findDistinctFacilityIds() {
-        return jdbc.queryForList(
-                "SELECT DISTINCT facility_id FROM inbound_event_logs" + finalClause() +
-                " WHERE facility_id != '' ORDER BY facility_id",
-                Map.of(), String.class);
+        var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
+        return dsl.selectDistinct(DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()))
+                  .from(iel)
+                  .where(DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()).ne(""))
+                  .orderBy(DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()))
+                  .fetch(0, String.class);
     }
 
     @Override
     public List<Object[]> findFacilityNames() {
-        return jdbc.query(
-                "SELECT facility_id, " +
-                "COALESCE(NULLIF(anyIf(facility_name, facility_name != ''), ''), facility_id) AS facility_name " +
-                "FROM ( " +
-                "  SELECT facility_id, " +
-                "  JSONExtractString(JSONExtractRaw(arrayElement(JSONExtractArrayRaw(JSONExtractRaw(raw_payload, 'data'), 'location'), 1), 'location'), 'display') AS facility_name " +
-                "  FROM inbound_event_logs" + finalClause() + " WHERE resource_type = 'Encounter' AND facility_id != '' " +
-                "  UNION ALL " +
-                "  SELECT facility_id, " +
-                "  JSONExtractString(arrayElement(JSONExtractArrayRaw(JSONExtractRaw(raw_payload, 'data'), 'locationReference'), 1), 'display') AS facility_name " +
-                "  FROM inbound_event_logs" + finalClause() + " WHERE resource_type = 'ServiceRequest' AND facility_id != '' " +
-                ") GROUP BY facility_id ORDER BY facility_id",
-                new MapSqlParameterSource(),
-                (rs, n) -> new Object[]{rs.getString(1), rs.getString(2)});
+        // UNION ALL subquery — combines facility_name extraction from Encounter and ServiceRequest events.
+        var ielEncounter   = finalAs(INBOUND_EVENT_LOGS, "iel_enc");
+        var ielServiceReq  = finalAs(INBOUND_EVENT_LOGS, "iel_sr");
+        var encounterSub = dsl.select(
+                    DSL.field("iel_enc." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()).as("facility_id"),
+                    DSL.field("JSONExtractString(JSONExtractRaw(arrayElement(JSONExtractArrayRaw(JSONExtractRaw(iel_enc." +
+                              INBOUND_EVENT_LOGS.RAW_PAYLOAD.getName() + ", 'data'), 'location'), 1), 'location'), 'display')").as("facility_name"))
+                .from(ielEncounter)
+                .where(DSL.field("iel_enc." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName()).eq("Encounter"))
+                .and(DSL.field("iel_enc." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()).ne(""));
+        var serviceReqSub = dsl.select(
+                    DSL.field("iel_sr." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()).as("facility_id"),
+                    DSL.field("JSONExtractString(arrayElement(JSONExtractArrayRaw(JSONExtractRaw(iel_sr." +
+                              INBOUND_EVENT_LOGS.RAW_PAYLOAD.getName() + ", 'data'), 'locationReference'), 1), 'display')").as("facility_name"))
+                .from(ielServiceReq)
+                .where(DSL.field("iel_sr." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName()).eq("ServiceRequest"))
+                .and(DSL.field("iel_sr." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()).ne(""));
+        var sub = encounterSub.unionAll(serviceReqSub).asTable("sub");
+        return dsl.select(
+                    DSL.field("sub.facility_id"),
+                    DSL.field("COALESCE(NULLIF(anyIf(sub.facility_name, sub.facility_name != ''), ''), sub.facility_id)").as("facility_name"))
+                  .from(sub)
+                  .groupBy(DSL.field("sub.facility_id"))
+                  .orderBy(DSL.field("sub.facility_id"))
+                  .fetch()
+                  .map(r -> new Object[]{r.get(0, String.class), r.get(1, String.class)});
     }
 
     @Override
     public List<String> findDistinctPractitioners() {
-        return jdbc.queryForList(
-                "SELECT DISTINCT practitioner_ref FROM inbound_event_logs" + finalClause() +
-                " WHERE practitioner_ref != '' ORDER BY practitioner_ref",
-                Map.of(), String.class);
+        var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
+        return dsl.selectDistinct(DSL.field("iel." + INBOUND_EVENT_LOGS.PRACTITIONER_REF.getName()))
+                  .from(iel)
+                  .where(DSL.field("iel." + INBOUND_EVENT_LOGS.PRACTITIONER_REF.getName()).ne(""))
+                  .orderBy(DSL.field("iel." + INBOUND_EVENT_LOGS.PRACTITIONER_REF.getName()))
+                  .fetch(0, String.class);
     }
 
     @Override
     public List<Object[]> countByResourceType(String facilityId, String source,
                                                OffsetDateTime startDate, OffsetDateTime endDate) {
-        MapSqlParameterSource p = new MapSqlParameterSource()
-                .addValue("fid", str(facilityId))
-                .addValue("src", str(source))
-                .addValue("s", dtStart(startDate))
-                .addValue("e", dtEnd(endDate));
-        return jdbc.query(
-                "SELECT iel.resource_type, count() AS cnt " +
-                "FROM compliance_event_logs cel" + finalClause() + " " +
-                "JOIN inbound_event_logs iel" + finalClause() + " ON iel.cloudevents_id = cel.cloudevents_id " +
-                "WHERE cel.processing_status != 'DUPLICATE' " +
-                "AND iel.resource_type != '' " +
-                "AND (:fid = '' OR iel.facility_id = :fid) " +
-                "AND (:src = '' OR iel.source = :src) " +
-                "AND cel.received_at >= parseDateTime64BestEffort(:s) " +
-                "AND cel.received_at <= parseDateTime64BestEffort(:e) " +
-                "GROUP BY iel.resource_type ORDER BY cnt DESC",
-                p, (rs, n) -> new Object[]{rs.getString(1), rs.getLong(2)});
+        String fid = str(facilityId);
+        String src = str(source);
+        var cel = finalAs(COMPLIANCE_EVENT_LOGS, "cel");
+        var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
+        return dsl.select(
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName()),
+                    DSL.field("count()", Long.class).as("cnt"))
+                  .from(cel)
+                  .join(iel).on(DSL.condition(
+                          "iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName() +
+                          " = cel." + COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
+                  .where(DSL.field("cel." + COMPLIANCE_EVENT_LOGS.PROCESSING_STATUS.getName()).ne("DUPLICATE"))
+                  .and(DSL.field("iel." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName()).ne(""))
+                  .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?", fid, fid))
+                  .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.SOURCE.getName() + " = ?", src, src))
+                  .and(DSL.condition(
+                          "cel." + COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
+                          dtStart(startDate)))
+                  .and(DSL.condition(
+                          "cel." + COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
+                          dtEnd(endDate)))
+                  .groupBy(DSL.field("iel." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName()))
+                  .orderBy(DSL.field("cnt").desc())
+                  .fetch()
+                  .map(r -> new Object[]{r.get(0, String.class), r.get(1, Long.class)});
     }
 
     @Override
     public List<Object[]> countByFacility(OffsetDateTime startDate, OffsetDateTime endDate) {
-        MapSqlParameterSource p = new MapSqlParameterSource()
-                .addValue("s", dtStart(startDate))
-                .addValue("e", dtEnd(endDate));
-        return jdbc.query(
-                "SELECT iel.facility_id, iel.resource_type, count() AS cnt " +
-                "FROM compliance_event_logs cel" + finalClause() + " " +
-                "JOIN inbound_event_logs iel" + finalClause() + " ON iel.cloudevents_id = cel.cloudevents_id " +
-                "WHERE cel.processing_status != 'DUPLICATE' " +
-                "AND iel.facility_id != '' " +
-                "AND cel.received_at >= parseDateTime64BestEffort(:s) " +
-                "AND cel.received_at <= parseDateTime64BestEffort(:e) " +
-                "GROUP BY iel.facility_id, iel.resource_type " +
-                "ORDER BY iel.facility_id, cnt DESC",
-                p, (rs, n) -> new Object[]{rs.getString(1), rs.getString(2), rs.getLong(3)});
+        var cel = finalAs(COMPLIANCE_EVENT_LOGS, "cel");
+        var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
+        return dsl.select(
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()),
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName()),
+                    DSL.field("count()", Long.class).as("cnt"))
+                  .from(cel)
+                  .join(iel).on(DSL.condition(
+                          "iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName() +
+                          " = cel." + COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
+                  .where(DSL.field("cel." + COMPLIANCE_EVENT_LOGS.PROCESSING_STATUS.getName()).ne("DUPLICATE"))
+                  .and(DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()).ne(""))
+                  .and(DSL.condition(
+                          "cel." + COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
+                          dtStart(startDate)))
+                  .and(DSL.condition(
+                          "cel." + COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
+                          dtEnd(endDate)))
+                  .groupBy(
+                          DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()),
+                          DSL.field("iel." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName()))
+                  .orderBy(
+                          DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()),
+                          DSL.field("cnt").desc())
+                  .fetch()
+                  .map(r -> new Object[]{r.get(0, String.class), r.get(1, String.class), r.get(2, Long.class)});
     }
 
     @Override
     public List<Object[]> countByPractitioner(String facilityId,
                                                OffsetDateTime startDate, OffsetDateTime endDate) {
-        MapSqlParameterSource p = new MapSqlParameterSource()
-                .addValue("fid", str(facilityId))
-                .addValue("s", dtStart(startDate))
-                .addValue("e", dtEnd(endDate));
-        return jdbc.query(
-                "SELECT iel.practitioner_ref, iel.practitioner_display, iel.resource_type, count() AS cnt " +
-                "FROM compliance_event_logs cel" + finalClause() + " " +
-                "JOIN inbound_event_logs iel" + finalClause() + " ON iel.cloudevents_id = cel.cloudevents_id " +
-                "WHERE cel.processing_status != 'DUPLICATE' " +
-                "AND iel.practitioner_ref != '' " +
-                "AND (:fid = '' OR iel.facility_id = :fid) " +
-                "AND cel.received_at >= parseDateTime64BestEffort(:s) " +
-                "AND cel.received_at <= parseDateTime64BestEffort(:e) " +
-                "GROUP BY iel.practitioner_ref, iel.practitioner_display, iel.resource_type ORDER BY cnt DESC",
-                p, (rs, n) -> new Object[]{rs.getString(1), rs.getString(2), rs.getString(3), rs.getLong(4)});
+        String fid = str(facilityId);
+        var cel = finalAs(COMPLIANCE_EVENT_LOGS, "cel");
+        var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
+        return dsl.select(
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.PRACTITIONER_REF.getName()),
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.PRACTITIONER_DISPLAY.getName()),
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName()),
+                    DSL.field("count()", Long.class).as("cnt"))
+                  .from(cel)
+                  .join(iel).on(DSL.condition(
+                          "iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName() +
+                          " = cel." + COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
+                  .where(DSL.field("cel." + COMPLIANCE_EVENT_LOGS.PROCESSING_STATUS.getName()).ne("DUPLICATE"))
+                  .and(DSL.field("iel." + INBOUND_EVENT_LOGS.PRACTITIONER_REF.getName()).ne(""))
+                  .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?", fid, fid))
+                  .and(DSL.condition(
+                          "cel." + COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
+                          dtStart(startDate)))
+                  .and(DSL.condition(
+                          "cel." + COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
+                          dtEnd(endDate)))
+                  .groupBy(
+                          DSL.field("iel." + INBOUND_EVENT_LOGS.PRACTITIONER_REF.getName()),
+                          DSL.field("iel." + INBOUND_EVENT_LOGS.PRACTITIONER_DISPLAY.getName()),
+                          DSL.field("iel." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName()))
+                  .orderBy(DSL.field("cnt").desc())
+                  .fetch()
+                  .map(r -> new Object[]{
+                          r.get(0, String.class), r.get(1, String.class),
+                          r.get(2, String.class), r.get(3, Long.class)});
     }
 
     @Override
     public List<Object[]> countBySource(String facilityId,
                                          OffsetDateTime startDate, OffsetDateTime endDate) {
-        MapSqlParameterSource p = new MapSqlParameterSource()
-                .addValue("fid", str(facilityId))
-                .addValue("s", dtStart(startDate))
-                .addValue("e", dtEnd(endDate));
-        return jdbc.query(
-                "SELECT iel.source, iel.resource_type, count() AS cnt " +
-                "FROM compliance_event_logs cel" + finalClause() + " " +
-                "JOIN inbound_event_logs iel" + finalClause() + " ON iel.cloudevents_id = cel.cloudevents_id " +
-                "WHERE cel.processing_status != 'DUPLICATE' " +
-                "AND iel.source != '' " +
-                "AND (:fid = '' OR iel.facility_id = :fid) " +
-                "AND cel.received_at >= parseDateTime64BestEffort(:s) " +
-                "AND cel.received_at <= parseDateTime64BestEffort(:e) " +
-                "GROUP BY iel.source, iel.resource_type ORDER BY cnt DESC",
-                p, (rs, n) -> new Object[]{rs.getString(1), rs.getString(2), rs.getLong(3)});
+        String fid = str(facilityId);
+        var cel = finalAs(COMPLIANCE_EVENT_LOGS, "cel");
+        var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
+        return dsl.select(
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.SOURCE.getName()),
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName()),
+                    DSL.field("count()", Long.class).as("cnt"))
+                  .from(cel)
+                  .join(iel).on(DSL.condition(
+                          "iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName() +
+                          " = cel." + COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
+                  .where(DSL.field("cel." + COMPLIANCE_EVENT_LOGS.PROCESSING_STATUS.getName()).ne("DUPLICATE"))
+                  .and(DSL.field("iel." + INBOUND_EVENT_LOGS.SOURCE.getName()).ne(""))
+                  .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?", fid, fid))
+                  .and(DSL.condition(
+                          "cel." + COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
+                          dtStart(startDate)))
+                  .and(DSL.condition(
+                          "cel." + COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
+                          dtEnd(endDate)))
+                  .groupBy(
+                          DSL.field("iel." + INBOUND_EVENT_LOGS.SOURCE.getName()),
+                          DSL.field("iel." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName()))
+                  .orderBy(DSL.field("cnt").desc())
+                  .fetch()
+                  .map(r -> new Object[]{r.get(0, String.class), r.get(1, String.class), r.get(2, Long.class)});
     }
 
     @Override
     public List<Object[]> findEventTrends(String interval, String facilityId, String source,
                                            String resourceType,
                                            OffsetDateTime startDate, OffsetDateTime endDate) {
-        String periodExpr = dateTruncExpr(interval, "cel.received_at");
-        MapSqlParameterSource p = new MapSqlParameterSource()
-                .addValue("fid", str(facilityId))
-                .addValue("src", str(source))
-                .addValue("rt", str(resourceType))
-                .addValue("s", dtStart(startDate))
-                .addValue("e", dtEnd(endDate));
-        return jdbc.query(
-                "SELECT " + periodExpr + " AS period, iel.resource_type, count() AS event_count " +
-                "FROM compliance_event_logs cel" + finalClause() + " " +
-                "JOIN inbound_event_logs iel" + finalClause() + " ON iel.cloudevents_id = cel.cloudevents_id " +
-                "WHERE cel.processing_status != 'DUPLICATE' " +
-                "AND (:fid = '' OR iel.facility_id = :fid) " +
-                "AND (:src = '' OR iel.source = :src) " +
-                "AND (:rt = '' OR iel.resource_type = :rt) " +
-                "AND cel.received_at >= parseDateTime64BestEffort(:s) " +
-                "AND cel.received_at <= parseDateTime64BestEffort(:e) " +
-                "GROUP BY period, iel.resource_type ORDER BY period",
-                p, (rs, n) -> new Object[]{rs.getObject(1), rs.getString(2), rs.getLong(3)});
+        String fid = str(facilityId);
+        String src = str(source);
+        String rt  = str(resourceType);
+        String periodExpr = dateTruncExpr(interval, "cel." + COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName());
+        var cel = finalAs(COMPLIANCE_EVENT_LOGS, "cel");
+        var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
+        return dsl.select(
+                    DSL.field(DSL.sql(periodExpr)).as("period"),
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName()),
+                    DSL.field("count()", Long.class).as("event_count"))
+                  .from(cel)
+                  .join(iel).on(DSL.condition(
+                          "iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName() +
+                          " = cel." + COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
+                  .where(DSL.field("cel." + COMPLIANCE_EVENT_LOGS.PROCESSING_STATUS.getName()).ne("DUPLICATE"))
+                  .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?", fid, fid))
+                  .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.SOURCE.getName() + " = ?", src, src))
+                  .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName() + " = ?", rt, rt))
+                  .and(DSL.condition(
+                          "cel." + COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
+                          dtStart(startDate)))
+                  .and(DSL.condition(
+                          "cel." + COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
+                          dtEnd(endDate)))
+                  .groupBy(
+                          DSL.field(DSL.sql("period")),
+                          DSL.field("iel." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName()))
+                  .orderBy(DSL.field(DSL.sql("period")))
+                  .fetch()
+                  .map(r -> new Object[]{r.value1(), r.get(1, String.class), r.value3()});
     }
 
     @Override
     public List<Object[]> countByProcessingStatus(String facilityId,
                                                     OffsetDateTime startDate, OffsetDateTime endDate) {
-        MapSqlParameterSource p = new MapSqlParameterSource()
-                .addValue("fid", str(facilityId))
-                .addValue("s", dtStart(startDate))
-                .addValue("e", dtEnd(endDate));
-        return jdbc.query(
-                "SELECT cel.processing_status, count() " +
-                "FROM compliance_event_logs cel" + finalClause() + " " +
-                "LEFT JOIN inbound_event_logs iel" + finalClause() + " ON iel.cloudevents_id = cel.cloudevents_id " +
-                "WHERE (:fid = '' OR iel.facility_id = :fid) " +
-                "AND cel.received_at >= parseDateTime64BestEffort(:s) " +
-                "AND cel.received_at <= parseDateTime64BestEffort(:e) " +
-                "GROUP BY cel.processing_status",
-                p, (rs, n) -> new Object[]{rs.getString(1), rs.getLong(2)});
+        String fid = str(facilityId);
+        var cel = finalAs(COMPLIANCE_EVENT_LOGS, "cel");
+        var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
+        return dsl.select(
+                    DSL.field("cel." + COMPLIANCE_EVENT_LOGS.PROCESSING_STATUS.getName()),
+                    DSL.field("count()", Long.class))
+                  .from(cel)
+                  .leftJoin(iel).on(DSL.condition(
+                          "iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName() +
+                          " = cel." + COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
+                  .where(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?", fid, fid))
+                  .and(DSL.condition(
+                          "cel." + COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
+                          dtStart(startDate)))
+                  .and(DSL.condition(
+                          "cel." + COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
+                          dtEnd(endDate)))
+                  .groupBy(DSL.field("cel." + COMPLIANCE_EVENT_LOGS.PROCESSING_STATUS.getName()))
+                  .fetch()
+                  .map(r -> new Object[]{r.get(0, String.class), r.get(1, Long.class)});
     }
 
     @Override
     public List<Object[]> findProcessingQualityBySource(String source, String facilityId,
                                                           OffsetDateTime startDate,
                                                           OffsetDateTime endDate) {
-        MapSqlParameterSource p = new MapSqlParameterSource()
-                .addValue("src", str(source))
-                .addValue("fid", str(facilityId))
-                .addValue("s", dtStart(startDate))
-                .addValue("e", dtEnd(endDate));
-        return jdbc.query(
-                "SELECT iel.source, cel.processing_status, count() AS cnt " +
-                "FROM compliance_event_logs cel" + finalClause() + " " +
-                "JOIN inbound_event_logs iel" + finalClause() + " ON iel.cloudevents_id = cel.cloudevents_id " +
-                "WHERE iel.source != '' " +
-                "AND (:src = '' OR iel.source = :src) " +
-                "AND (:fid = '' OR iel.facility_id = :fid) " +
-                "AND cel.received_at >= parseDateTime64BestEffort(:s) " +
-                "AND cel.received_at <= parseDateTime64BestEffort(:e) " +
-                "GROUP BY iel.source, cel.processing_status ORDER BY cnt DESC",
-                p, (rs, n) -> new Object[]{rs.getString(1), rs.getString(2), rs.getLong(3)});
+        String src = str(source);
+        String fid = str(facilityId);
+        var cel = finalAs(COMPLIANCE_EVENT_LOGS, "cel");
+        var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
+        return dsl.select(
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.SOURCE.getName()),
+                    DSL.field("cel." + COMPLIANCE_EVENT_LOGS.PROCESSING_STATUS.getName()),
+                    DSL.field("count()", Long.class).as("cnt"))
+                  .from(cel)
+                  .join(iel).on(DSL.condition(
+                          "iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName() +
+                          " = cel." + COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
+                  .where(DSL.field("iel." + INBOUND_EVENT_LOGS.SOURCE.getName()).ne(""))
+                  .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.SOURCE.getName() + " = ?", src, src))
+                  .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?", fid, fid))
+                  .and(DSL.condition(
+                          "cel." + COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
+                          dtStart(startDate)))
+                  .and(DSL.condition(
+                          "cel." + COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
+                          dtEnd(endDate)))
+                  .groupBy(
+                          DSL.field("iel." + INBOUND_EVENT_LOGS.SOURCE.getName()),
+                          DSL.field("cel." + COMPLIANCE_EVENT_LOGS.PROCESSING_STATUS.getName()))
+                  .orderBy(DSL.field("cnt").desc())
+                  .fetch()
+                  .map(r -> new Object[]{r.get(0, String.class), r.get(1, String.class), r.get(2, Long.class)});
     }
 
     @Override
     public List<Object[]> findFacilityEventCounts(UUID protocolDefId) {
         String pid = protocolDefId != null ? protocolDefId.toString() : "";
-        MapSqlParameterSource p = new MapSqlParameterSource().addValue("pid", pid);
-        return jdbc.query(
-                "SELECT iel.facility_id, uniqExact(pi.id) AS total_enrollments, count() AS total_events " +
-                "FROM compliance_event_logs cel" + finalClause() + " " +
-                "JOIN inbound_event_logs iel" + finalClause() + " ON iel.cloudevents_id = cel.cloudevents_id " +
-                "LEFT JOIN protocol_instances pi" + finalClause() + " ON pi.patient_id = iel.subject " +
-                "WHERE iel.facility_id != '' " +
-                "AND (toUUIDOrNull(:pid) IS NULL OR pi.protocol_definition_id = toUUIDOrNull(:pid)) " +
-                "GROUP BY iel.facility_id ORDER BY total_events DESC",
-                p, (rs, n) -> new Object[]{rs.getString(1), rs.getLong(2), rs.getLong(3)});
+        var cel = finalAs(COMPLIANCE_EVENT_LOGS, "cel");
+        var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
+        var pi  = finalAs(PROTOCOL_INSTANCES, "pi");
+        return dsl.select(
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()),
+                    DSL.field("uniqExact(pi.id)", Long.class).as("total_enrollments"),
+                    DSL.field("count()", Long.class).as("total_events"))
+                  .from(cel)
+                  .join(iel).on(DSL.condition(
+                          "iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName() +
+                          " = cel." + COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
+                  .leftJoin(pi).on(DSL.condition(
+                          "pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName() +
+                          " = iel." + INBOUND_EVENT_LOGS.SUBJECT.getName()))
+                  .where(DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()).ne(""))
+                  .and(DSL.condition(
+                          "toUUIDOrNull(?) IS NULL OR pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() +
+                          " = toUUIDOrNull(?)", pid, pid))
+                  .groupBy(DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()))
+                  .orderBy(DSL.field("total_events").desc())
+                  .fetch()
+                  .map(r -> new Object[]{r.get(0, String.class), r.get(1, Long.class), r.get(2, Long.class)});
     }
 
     @Override
     public List<Object[]> findActivePatientsByFacility(UUID protocolDefId) {
         String pid = protocolDefId != null ? protocolDefId.toString() : "";
-        MapSqlParameterSource p = new MapSqlParameterSource().addValue("pid", pid);
-        return jdbc.query(
-                "SELECT iel.facility_id, uniq(pi.patient_id) AS patient_count " +
-                "FROM compliance_event_logs cel" + finalClause() + " " +
-                "JOIN inbound_event_logs iel" + finalClause() + " ON iel.cloudevents_id = cel.cloudevents_id " +
-                "JOIN protocol_instances pi" + finalClause() + " ON pi.patient_id = iel.subject " +
-                "WHERE pi.status = 'ACTIVE' AND iel.facility_id != '' " +
-                "AND (toUUIDOrNull(:pid) IS NULL OR pi.protocol_definition_id = toUUIDOrNull(:pid)) " +
-                "GROUP BY iel.facility_id ORDER BY patient_count DESC",
-                p, (rs, n) -> new Object[]{rs.getString(1), rs.getLong(2)});
+        var cel = finalAs(COMPLIANCE_EVENT_LOGS, "cel");
+        var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
+        var pi  = finalAs(PROTOCOL_INSTANCES, "pi");
+        return dsl.select(
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()),
+                    DSL.field("uniq(pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName() + ")", Long.class).as("patient_count"))
+                  .from(cel)
+                  .join(iel).on(DSL.condition(
+                          "iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName() +
+                          " = cel." + COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
+                  .join(pi).on(DSL.condition(
+                          "pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName() +
+                          " = iel." + INBOUND_EVENT_LOGS.SUBJECT.getName()))
+                  .where(DSL.field("pi." + PROTOCOL_INSTANCES.STATUS.getName()).eq("ACTIVE"))
+                  .and(DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()).ne(""))
+                  .and(DSL.condition(
+                          "toUUIDOrNull(?) IS NULL OR pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() +
+                          " = toUUIDOrNull(?)", pid, pid))
+                  .groupBy(DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()))
+                  .orderBy(DSL.field("patient_count").desc())
+                  .fetch()
+                  .map(r -> new Object[]{r.get(0, String.class), r.get(1, Long.class)});
     }
 
     @Override
     public List<Object[]> findFacilityPatientMapping() {
-        return jdbc.query(
-                "SELECT DISTINCT iel.facility_id, pi.patient_id " +
-                "FROM compliance_event_logs cel" + finalClause() + " " +
-                "JOIN inbound_event_logs iel" + finalClause() + " ON iel.cloudevents_id = cel.cloudevents_id " +
-                "JOIN protocol_instances pi" + finalClause() + " ON pi.patient_id = iel.subject " +
-                "WHERE iel.facility_id != '' " +
-                "ORDER BY iel.facility_id, pi.patient_id",
-                new MapSqlParameterSource(),
-                (rs, n) -> new Object[]{rs.getString(1), rs.getString(2)});
+        var cel = finalAs(COMPLIANCE_EVENT_LOGS, "cel");
+        var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
+        var pi  = finalAs(PROTOCOL_INSTANCES, "pi");
+        return dsl.selectDistinct(
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()),
+                    DSL.field("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
+                  .from(cel)
+                  .join(iel).on(DSL.condition(
+                          "iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName() +
+                          " = cel." + COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
+                  .join(pi).on(DSL.condition(
+                          "pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName() +
+                          " = iel." + INBOUND_EVENT_LOGS.SUBJECT.getName()))
+                  .where(DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()).ne(""))
+                  .orderBy(
+                          DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()),
+                          DSL.field("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
+                  .fetch()
+                  .map(r -> new Object[]{r.get(0, String.class), r.get(1, String.class)});
     }
 
     @Override
     public List<Object[]> findPatientsByFacility(String facilityId) {
-        return jdbc.query(
-                "SELECT DISTINCT iel.facility_id, pi.patient_id, pi.id AS protocol_instance_id " +
-                "FROM inbound_event_logs iel" + finalClause() + " " +
-                "JOIN protocol_instances pi" + finalClause() + " ON pi.patient_id = iel.subject " +
-                "WHERE iel.facility_id = :fid AND iel.facility_id != '' " +
-                "ORDER BY pi.patient_id",
-                Map.of("fid", facilityId),
-                (rs, n) -> new Object[]{rs.getString(1), rs.getString(2), parseUUID(rs.getString(3))});
+        var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
+        var pi  = finalAs(PROTOCOL_INSTANCES, "pi");
+        return dsl.selectDistinct(
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()),
+                    DSL.field("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()),
+                    DSL.field("pi.id").as("protocol_instance_id"))
+                  .from(iel)
+                  .join(pi).on(DSL.condition(
+                          "pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName() +
+                          " = iel." + INBOUND_EVENT_LOGS.SUBJECT.getName()))
+                  .where(DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()).eq(facilityId))
+                  .and(DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()).ne(""))
+                  .orderBy(DSL.field("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
+                  .fetch()
+                  .map(r -> new Object[]{
+                          r.get(0, String.class), r.get(1, String.class),
+                          parseUUID(r.get(2, String.class))});
     }
 
     @Override
     public List<Object[]> findPractitionerSummary() {
-        return jdbc.query(
-                "SELECT iel.practitioner_ref, iel.practitioner_display, " +
-                "any(iel.facility_id) AS facility_id, " +
-                "count() AS event_count, uniq(iel.subject) AS patient_count " +
-                "FROM compliance_event_logs cel" + finalClause() + " " +
-                "JOIN inbound_event_logs iel" + finalClause() + " ON iel.cloudevents_id = cel.cloudevents_id " +
-                "WHERE iel.practitioner_ref != '' " +
-                "AND cel.processing_status != 'DUPLICATE' " +
-                "GROUP BY iel.practitioner_ref, iel.practitioner_display " +
-                "ORDER BY event_count DESC",
-                new MapSqlParameterSource(),
-                (rs, n) -> new Object[]{
-                        rs.getString(1), rs.getString(2), rs.getString(3),
-                        rs.getLong(4), rs.getLong(5)});
+        var cel = finalAs(COMPLIANCE_EVENT_LOGS, "cel");
+        var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
+        return dsl.select(
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.PRACTITIONER_REF.getName()),
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.PRACTITIONER_DISPLAY.getName()),
+                    DSL.field("any(iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + ")").as("facility_id"),
+                    DSL.field("count()", Long.class).as("event_count"),
+                    DSL.field("uniq(iel." + INBOUND_EVENT_LOGS.SUBJECT.getName() + ")", Long.class).as("patient_count"))
+                  .from(cel)
+                  .join(iel).on(DSL.condition(
+                          "iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName() +
+                          " = cel." + COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
+                  .where(DSL.field("iel." + INBOUND_EVENT_LOGS.PRACTITIONER_REF.getName()).ne(""))
+                  .and(DSL.field("cel." + COMPLIANCE_EVENT_LOGS.PROCESSING_STATUS.getName()).ne("DUPLICATE"))
+                  .groupBy(
+                          DSL.field("iel." + INBOUND_EVENT_LOGS.PRACTITIONER_REF.getName()),
+                          DSL.field("iel." + INBOUND_EVENT_LOGS.PRACTITIONER_DISPLAY.getName()))
+                  .orderBy(DSL.field("event_count").desc())
+                  .fetch()
+                  .map(r -> new Object[]{
+                          r.get(0, String.class), r.get(1, String.class), r.get(2, String.class),
+                          r.get(3, Long.class), r.get(4, Long.class)});
     }
 
     @Override
     public List<Object[]> findPractitionerSummaryFiltered(OffsetDateTime startDate,
                                                             OffsetDateTime endDate,
                                                             String facilityId) {
-        MapSqlParameterSource p = new MapSqlParameterSource()
-                .addValue("s", dtStart(startDate))
-                .addValue("e", dtEnd(endDate))
-                .addValue("fid", str(facilityId));
-        return jdbc.query(
-                "SELECT iel.practitioner_ref, iel.practitioner_display, " +
-                "any(iel.facility_id) AS facility_id, " +
-                "count() AS event_count, uniq(iel.subject) AS patient_count " +
-                "FROM compliance_event_logs cel" + finalClause() + " " +
-                "JOIN inbound_event_logs iel" + finalClause() + " ON iel.cloudevents_id = cel.cloudevents_id " +
-                "WHERE iel.practitioner_ref != '' " +
-                "AND cel.processing_status != 'DUPLICATE' " +
-                "AND iel.received_at >= parseDateTime64BestEffort(:s) " +
-                "AND iel.received_at <= parseDateTime64BestEffort(:e) " +
-                "AND (:fid = '' OR iel.facility_id = :fid) " +
-                "GROUP BY iel.practitioner_ref, iel.practitioner_display " +
-                "ORDER BY event_count DESC",
-                p, (rs, n) -> new Object[]{
-                        rs.getString(1), rs.getString(2), rs.getString(3),
-                        rs.getLong(4), rs.getLong(5)});
+        String fid = str(facilityId);
+        var cel = finalAs(COMPLIANCE_EVENT_LOGS, "cel");
+        var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
+        return dsl.select(
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.PRACTITIONER_REF.getName()),
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.PRACTITIONER_DISPLAY.getName()),
+                    DSL.field("any(iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + ")").as("facility_id"),
+                    DSL.field("count()", Long.class).as("event_count"),
+                    DSL.field("uniq(iel." + INBOUND_EVENT_LOGS.SUBJECT.getName() + ")", Long.class).as("patient_count"))
+                  .from(cel)
+                  .join(iel).on(DSL.condition(
+                          "iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName() +
+                          " = cel." + COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
+                  .where(DSL.field("iel." + INBOUND_EVENT_LOGS.PRACTITIONER_REF.getName()).ne(""))
+                  .and(DSL.field("cel." + COMPLIANCE_EVENT_LOGS.PROCESSING_STATUS.getName()).ne("DUPLICATE"))
+                  .and(DSL.condition(
+                          "iel." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
+                          dtStart(startDate)))
+                  .and(DSL.condition(
+                          "iel." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
+                          dtEnd(endDate)))
+                  .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?", fid, fid))
+                  .groupBy(
+                          DSL.field("iel." + INBOUND_EVENT_LOGS.PRACTITIONER_REF.getName()),
+                          DSL.field("iel." + INBOUND_EVENT_LOGS.PRACTITIONER_DISPLAY.getName()))
+                  .orderBy(DSL.field("event_count").desc())
+                  .fetch()
+                  .map(r -> new Object[]{
+                          r.get(0, String.class), r.get(1, String.class), r.get(2, String.class),
+                          r.get(3, Long.class), r.get(4, Long.class)});
     }
 }
