@@ -1,35 +1,37 @@
 package org.openphc.cce.insights.domain.repository;
 
+import org.jooq.DSLContext;
+import org.jooq.Record;
 import org.openphc.cce.insights.domain.entity.DestinationAdaptorMapping;
-import org.springframework.jdbc.core.RowMapper;
-import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import java.util.UUID;
+
+import static org.openphc.cce.insights.jooq.Tables.DESTINATION_ADAPTOR_MAPPING;
 
 @Repository
 public class DestinationAdaptorMappingRepositoryImpl
         extends AbstractClickHouseRepository<DestinationAdaptorMapping, UUID>
         implements DestinationAdaptorMappingRepository {
 
-    public DestinationAdaptorMappingRepositoryImpl(NamedParameterJdbcTemplate jdbc) {
-        super(jdbc);
+    public DestinationAdaptorMappingRepositoryImpl(DSLContext dsl) {
+        super(dsl);
     }
 
     @Override
     protected String getTableName() {
-        return "destination_adaptor_mapping";
+        return DESTINATION_ADAPTOR_MAPPING.getName();
     }
 
     @Override
-    protected RowMapper<DestinationAdaptorMapping> rowMapper() {
-        return (rs, n) -> DestinationAdaptorMapping.builder()
-                .id(UUID.fromString(rs.getString("id")))
-                .destination(rs.getString("destination"))
-                .receiverAdaptorId(parseUUID(rs.getString("receiver_adaptor_id")))
-                .status(rs.getString("status"))
-                .createdAt(toOffsetDateTime(rs, "created_at"))
-                .updatedAt(toOffsetDateTime(rs, "updated_at"))
+    protected DestinationAdaptorMapping fromRecord(Record r) {
+        return DestinationAdaptorMapping.builder()
+                .id(r.get(DESTINATION_ADAPTOR_MAPPING.ID.getName(), UUID.class))
+                .destination(r.get(DESTINATION_ADAPTOR_MAPPING.DESTINATION.getName(), String.class))
+                .receiverAdaptorId(parseUUID(r.get(DESTINATION_ADAPTOR_MAPPING.RECEIVER_ADAPTOR_ID.getName(), String.class)))
+                .status(r.get(DESTINATION_ADAPTOR_MAPPING.STATUS.getName(), String.class))
+                .createdAt(recordDateTime(r, DESTINATION_ADAPTOR_MAPPING.CREATED_AT.getName()))
+                .updatedAt(recordDateTime(r, DESTINATION_ADAPTOR_MAPPING.UPDATED_AT.getName()))
                 .build();
     }
 }

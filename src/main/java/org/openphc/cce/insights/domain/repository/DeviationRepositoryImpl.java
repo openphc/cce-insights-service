@@ -1,71 +1,97 @@
 package org.openphc.cce.insights.domain.repository;
 
+import org.jooq.DSLContext;
+import org.jooq.Record;
+import org.jooq.Table;
+import org.jooq.impl.DSL;
 import org.openphc.cce.insights.domain.entity.Deviation;
 import org.openphc.cce.insights.domain.enums.DeviationType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
-import org.springframework.jdbc.core.RowMapper;
-import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
-import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import java.time.OffsetDateTime;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
+
+import static org.openphc.cce.insights.jooq.Tables.DEVIATIONS;
+import static org.openphc.cce.insights.jooq.Tables.INBOUND_EVENT_LOGS;
+import static org.openphc.cce.insights.jooq.Tables.PROTOCOL_INSTANCES;
+import static org.openphc.cce.insights.jooq.Tables.STEP_INSTANCES;
 
 @Repository
 public class DeviationRepositoryImpl
         extends AbstractClickHouseRepository<Deviation, UUID>
         implements DeviationRepository {
 
-    public DeviationRepositoryImpl(NamedParameterJdbcTemplate jdbc) {
-        super(jdbc);
+    public DeviationRepositoryImpl(DSLContext dsl) {
+        super(dsl);
     }
 
     @Override
     protected String getTableName() {
-        return "deviations";
+        return DEVIATIONS.getName();
     }
 
     @Override
-    protected RowMapper<Deviation> rowMapper() {
-        return (rs, n) -> {
-            DeviationType dt = null;
-            try { dt = DeviationType.valueOf(rs.getString("deviation_type")); } catch (Exception ignored) {}
-            return Deviation.builder()
-                    .id(UUID.fromString(rs.getString("id")))
-                    .protocolInstanceId(parseUUID(rs.getString("protocol_instance_id")))
-                    .stepInstanceId(parseUUID(rs.getString("step_instance_id")))
-                    .deviationType(dt)
-                    .detectedAt(toOffsetDateTime(rs, "detected_at"))
-                    .metadata(rs.getString("metadata"))
-                    .intelligenceEventId(parseUUID(rs.getString("intelligence_event_id")))
-                    .build();
-        };
+    protected Deviation fromRecord(Record r) {
+        return toDeviation(r);
     }
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // Result mappers
+    // ══════════════════════════════════════════════════════════════════════════════
+
+    private Deviation toDeviation(Record r) {
+        DeviationType dt = null;
+        try {
+            String s = r.get(DEVIATIONS.DEVIATION_TYPE.getName(), String.class);
+            if (s != null) dt = DeviationType.valueOf(s);
+        } catch (Exception ignored) {}
+        return Deviation.builder()
+                .id(r.get(DEVIATIONS.ID.getName(), UUID.class))
+                .protocolInstanceId(r.get(DEVIATIONS.PROTOCOL_INSTANCE_ID.getName(), UUID.class))
+                .stepInstanceId(r.get(DEVIATIONS.STEP_INSTANCE_ID.getName(), UUID.class))
+                .deviationType(dt)
+                .detectedAt(recordDateTime(r, DEVIATIONS.DETECTED_AT.getName()))
+                .metadata(r.get(DEVIATIONS.METADATA.getName(), String.class))
+                .intelligenceEventId(parseUUID(r.get(DEVIATIONS.INTELLIGENCE_EVENT_ID.getName(), String.class)))
+                .build();
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // Repository methods — full jOOQ DSL
+    // ══════════════════════════════════════════════════════════════════════════════
 
     @Override
     public List<Deviation> findByProtocolInstanceId(UUID protocolInstanceId) {
-        return jdbc.query(
-                "SELECT * FROM deviations" + finalClause() + " WHERE protocol_instance_id = toUUID(:id)",
-                Map.of("id", protocolInstanceId.toString()), rowMapper());
+        var d = finalAs(DEVIATIONS, "d");
+        return dsl.select(DSL.asterisk())
+                  .from(d)
+                  .where(DSL.condition(
+                          "d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName() + " = toUUID(?)",
+                          protocolInstanceId.toString()))
+                  .fetch()
+                  .map(this::toDeviation);
     }
 
     @Override
     public Page<Deviation> findByDeviationType(DeviationType type, Pageable pageable) {
-        MapSqlParameterSource p = new MapSqlParameterSource()
-                .addValue("type", type.name())
-                .addValue("limit", pageable.getPageSize())
-                .addValue("offset", pageable.getOffset());
-        List<Deviation> content = jdbc.query(
-                "SELECT * FROM deviations" + finalClause() + " WHERE deviation_type = :type " +
-                "ORDER BY detected_at DESC LIMIT :limit OFFSET :offset",
-                p, rowMapper());
-        Long total = jdbc.queryForObject(
-                "SELECT count() FROM deviations" + finalClause() + " WHERE deviation_type = :type",
-                Map.of("type", type.name()), Long.class);
+        var d = finalAs(DEVIATIONS, "d");
+        var condition = DSL.field("d." + DEVIATIONS.DEVIATION_TYPE.getName()).eq(type.name());
+        List<Deviation> content = dsl.select(DSL.asterisk())
+                .from(d)
+                .where(condition)
+                .orderBy(DSL.field("d." + DEVIATIONS.DETECTED_AT.getName()).desc())
+                .limit(pageable.getPageSize())
+                .offset(pageable.getOffset())
+                .fetch()
+                .map(this::toDeviation);
+        Long total = dsl.select(DSL.field("count()", Long.class))
+                .from(d)
+                .where(condition)
+                .fetchOne(0, Long.class);
         return new PageImpl<>(content, pageable, total != null ? total : 0L);
     }
 
@@ -73,187 +99,282 @@ public class DeviationRepositoryImpl
     public List<Object[]> findFilteredDeviations(String deviationType, String facilityId,
                                                   OffsetDateTime startDate, OffsetDateTime endDate,
                                                   int lim) {
-        MapSqlParameterSource p = new MapSqlParameterSource()
-                .addValue("dtype", str(deviationType))
-                .addValue("fid", str(facilityId))
-                .addValue("s", dtStart(startDate))
-                .addValue("e", dtEnd(endDate))
-                .addValue("lim", lim);
-        return jdbc.query(
-                "SELECT d.id, pi.patient_id, d.protocol_instance_id, pi.protocol_canonical, " +
-                "d.step_instance_id, si.action_id, d.deviation_type, d.detected_at, " +
-                "pf.facility_id " +
-                "FROM deviations d" + finalClause() + " " +
-                "JOIN protocol_instances pi" + finalClause() + " ON d.protocol_instance_id = pi.id " +
-                "JOIN step_instances si" + finalClause() + " ON d.step_instance_id = si.id " +
-                "LEFT JOIN mv_patient_facility_latest pf ON pf.patient_id = pi.patient_id " +
-                "WHERE (:dtype = '' OR d.deviation_type = :dtype) " +
-                "AND (:fid = '' OR pf.facility_id = :fid) " +
-                "AND d.detected_at >= parseDateTime64BestEffort(:s) " +
-                "AND d.detected_at <= parseDateTime64BestEffort(:e) " +
-                "ORDER BY d.detected_at DESC LIMIT :lim",
-                p, (rs, n) -> new Object[]{
-                        rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4),
-                        rs.getString(5), rs.getString(6), rs.getString(7),
-                        toOffsetDateTime(rs, "detected_at"), rs.getString(9)});
+        String dtype = str(deviationType);
+        String fid   = str(facilityId);
+        var d  = finalAs(DEVIATIONS, "d");
+        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        var si = finalAs(STEP_INSTANCES, "si");
+        var pf = DSL.table("mv_patient_facility_latest").as("pf");
+
+        return dsl.select(
+                    DSL.field("d." + DEVIATIONS.ID.getName()),
+                    DSL.field("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()),
+                    DSL.field("d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName()),
+                    DSL.field("pi." + PROTOCOL_INSTANCES.PROTOCOL_CANONICAL.getName()),
+                    DSL.field("d." + DEVIATIONS.STEP_INSTANCE_ID.getName()),
+                    DSL.field("si." + STEP_INSTANCES.ACTION_ID.getName()),
+                    DSL.field("d." + DEVIATIONS.DEVIATION_TYPE.getName()),
+                    DSL.field("d." + DEVIATIONS.DETECTED_AT.getName()).as(DEVIATIONS.DETECTED_AT.getName()),
+                    DSL.field("pf.facility_id"))
+                  .from(d)
+                  .join(pi).on(DSL.condition(
+                          "d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                  .join(si).on(DSL.condition(
+                          "d." + DEVIATIONS.STEP_INSTANCE_ID.getName() + " = si.id"))
+                  .leftJoin(pf).on(DSL.condition(
+                          "pf.patient_id = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
+                  .where(DSL.condition(
+                          "? = '' OR d." + DEVIATIONS.DEVIATION_TYPE.getName() + " = ?", dtype, dtype))
+                  .and(DSL.condition("? = '' OR pf.facility_id = ?", fid, fid))
+                  .and(DSL.condition(
+                          "d." + DEVIATIONS.DETECTED_AT.getName() + " >= parseDateTime64BestEffort(?)",
+                          dtStart(startDate)))
+                  .and(DSL.condition(
+                          "d." + DEVIATIONS.DETECTED_AT.getName() + " <= parseDateTime64BestEffort(?)",
+                          dtEnd(endDate)))
+                  .orderBy(DSL.field("d." + DEVIATIONS.DETECTED_AT.getName()).desc())
+                  .limit(lim)
+                  .fetch()
+                  .map(r -> new Object[]{
+                          r.get(0, String.class), r.get(1, String.class), r.get(2, String.class),
+                          r.get(3, String.class), r.get(4, String.class), r.get(5, String.class),
+                          r.get(6, String.class),
+                          recordDateTime(r, DEVIATIONS.DETECTED_AT.getName()),
+                          r.get(8, String.class)});
     }
 
     @Override
     public List<Object[]> findDeviationTrends(String interval, OffsetDateTime startDate,
                                                OffsetDateTime endDate, String facilityId,
                                                String actionId) {
-        String periodExpr = dateTruncExpr(interval, "d.detected_at");
-        MapSqlParameterSource p = new MapSqlParameterSource()
-                .addValue("s", dtStart(startDate))
-                .addValue("e", dtEnd(endDate))
-                .addValue("fid", str(facilityId))
-                .addValue("aid", str(actionId));
-        return jdbc.query(
-                "SELECT " + periodExpr + " AS period, d.deviation_type, count() AS cnt " +
-                "FROM deviations d" + finalClause() + " " +
-                "JOIN step_instances si" + finalClause() + " ON d.step_instance_id = si.id " +
-                "LEFT JOIN protocol_instances pi" + finalClause() + " ON d.protocol_instance_id = pi.id " +
-                "LEFT JOIN mv_patient_facility_latest pf ON pf.patient_id = pi.patient_id " +
-                "WHERE d.detected_at >= parseDateTime64BestEffort(:s) " +
-                "AND d.detected_at <= parseDateTime64BestEffort(:e) " +
-                "AND (:fid = '' OR pf.facility_id = :fid) " +
-                "AND (:aid = '' OR si.action_id = :aid) " +
-                "GROUP BY period, d.deviation_type ORDER BY period",
-                p, (rs, n) -> new Object[]{rs.getObject(1), rs.getString(2), rs.getLong(3)});
+        String fid = str(facilityId);
+        String aid = str(actionId);
+        String periodExpr = dateTruncExpr(interval, "d." + DEVIATIONS.DETECTED_AT.getName());
+        var d  = finalAs(DEVIATIONS, "d");
+        var si = finalAs(STEP_INSTANCES, "si");
+        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        var pf = DSL.table("mv_patient_facility_latest").as("pf");
+
+        return dsl.select(
+                    DSL.field(DSL.sql(periodExpr)).as("period"),
+                    DSL.field("d." + DEVIATIONS.DEVIATION_TYPE.getName()),
+                    DSL.field("count()", Long.class).as("cnt"))
+                  .from(d)
+                  .join(si).on(DSL.condition(
+                          "d." + DEVIATIONS.STEP_INSTANCE_ID.getName() + " = si.id"))
+                  .leftJoin(pi).on(DSL.condition(
+                          "d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                  .leftJoin(pf).on(DSL.condition(
+                          "pf.patient_id = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
+                  .where(DSL.condition(
+                          "d." + DEVIATIONS.DETECTED_AT.getName() + " >= parseDateTime64BestEffort(?)",
+                          dtStart(startDate)))
+                  .and(DSL.condition(
+                          "d." + DEVIATIONS.DETECTED_AT.getName() + " <= parseDateTime64BestEffort(?)",
+                          dtEnd(endDate)))
+                  .and(DSL.condition("? = '' OR pf.facility_id = ?", fid, fid))
+                  .and(DSL.condition(
+                          "? = '' OR si." + STEP_INSTANCES.ACTION_ID.getName() + " = ?", aid, aid))
+                  .groupBy(
+                          DSL.field(DSL.sql("period")),
+                          DSL.field("d." + DEVIATIONS.DEVIATION_TYPE.getName()))
+                  .orderBy(DSL.field(DSL.sql("period")))
+                  .fetch()
+                  .map(r -> new Object[]{r.value1(), r.get(1, String.class), r.value3()});
     }
 
     @Override
     public List<Object[]> findDeviationsByAction(UUID protocolDefId, OffsetDateTime startDate,
                                                   OffsetDateTime endDate) {
-        MapSqlParameterSource p = new MapSqlParameterSource()
-                .addValue("pid", uuid(protocolDefId))
-                .addValue("s", dtStart(startDate))
-                .addValue("e", dtEnd(endDate));
-        return jdbc.query(
-                "SELECT si.action_id, pi.protocol_definition_id, pi.protocol_canonical, " +
-                "count() AS total_deviations, " +
-                "countIf(d.deviation_type = 'OVERDUE') AS overdue_count, " +
-                "countIf(d.deviation_type = 'MISSED') AS missed_count, " +
-                "countIf(d.deviation_type = 'ORDER_VIOLATION') AS order_violation_count, " +
-                "uniq(pi.patient_id) AS affected_patients " +
-                "FROM deviations d" + finalClause() + " " +
-                "JOIN step_instances si" + finalClause() + " ON d.step_instance_id = si.id " +
-                "JOIN protocol_instances pi" + finalClause() + " ON d.protocol_instance_id = pi.id " +
-                "WHERE (toUUIDOrNull(:pid) IS NULL OR pi.protocol_definition_id = toUUIDOrNull(:pid)) " +
-                "AND d.detected_at >= parseDateTime64BestEffort(:s) " +
-                "AND d.detected_at <= parseDateTime64BestEffort(:e) " +
-                "GROUP BY si.action_id, pi.protocol_definition_id, pi.protocol_canonical " +
-                "ORDER BY total_deviations DESC",
-                p, (rs, n) -> new Object[]{
-                        rs.getString(1), rs.getString(2), rs.getString(3),
-                        rs.getLong(4), rs.getLong(5), rs.getLong(6), rs.getLong(7), rs.getLong(8)});
+        String pid = uuid(protocolDefId);
+        var d  = finalAs(DEVIATIONS, "d");
+        var si = finalAs(STEP_INSTANCES, "si");
+        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+
+        return dsl.select(
+                    DSL.field("si." + STEP_INSTANCES.ACTION_ID.getName()),
+                    DSL.field("pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName()),
+                    DSL.field("pi." + PROTOCOL_INSTANCES.PROTOCOL_CANONICAL.getName()),
+                    DSL.field("count()", Long.class).as("total_deviations"),
+                    DSL.field("countIf(d." + DEVIATIONS.DEVIATION_TYPE.getName() + " = 'OVERDUE')", Long.class).as("overdue_count"),
+                    DSL.field("countIf(d." + DEVIATIONS.DEVIATION_TYPE.getName() + " = 'MISSED')", Long.class).as("missed_count"),
+                    DSL.field("countIf(d." + DEVIATIONS.DEVIATION_TYPE.getName() + " = 'ORDER_VIOLATION')", Long.class).as("order_violation_count"),
+                    DSL.field("uniq(pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName() + ")", Long.class).as("affected_patients"))
+                  .from(d)
+                  .join(si).on(DSL.condition(
+                          "d." + DEVIATIONS.STEP_INSTANCE_ID.getName() + " = si.id"))
+                  .join(pi).on(DSL.condition(
+                          "d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                  .where(DSL.condition(
+                          "toUUIDOrNull(?) IS NULL OR pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() +
+                          " = toUUIDOrNull(?)", pid, pid))
+                  .and(DSL.condition(
+                          "d." + DEVIATIONS.DETECTED_AT.getName() + " >= parseDateTime64BestEffort(?)",
+                          dtStart(startDate)))
+                  .and(DSL.condition(
+                          "d." + DEVIATIONS.DETECTED_AT.getName() + " <= parseDateTime64BestEffort(?)",
+                          dtEnd(endDate)))
+                  .groupBy(
+                          DSL.field("si." + STEP_INSTANCES.ACTION_ID.getName()),
+                          DSL.field("pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName()),
+                          DSL.field("pi." + PROTOCOL_INSTANCES.PROTOCOL_CANONICAL.getName()))
+                  .orderBy(DSL.field("total_deviations").desc())
+                  .fetch()
+                  .map(r -> new Object[]{
+                          r.get(0, String.class), r.get(1, String.class), r.get(2, String.class),
+                          r.get(3, Long.class), r.get(4, Long.class), r.get(5, Long.class),
+                          r.get(6, Long.class), r.get(7, Long.class)});
     }
 
     @Override
     public List<Object[]> findResolutionRate(UUID protocolDefId, OffsetDateTime startDate,
                                              OffsetDateTime endDate) {
-        MapSqlParameterSource p = new MapSqlParameterSource()
-                .addValue("pid", uuid(protocolDefId))
-                .addValue("s", dtStart(startDate))
-                .addValue("e", dtEnd(endDate));
-        return jdbc.query(
-                "SELECT " +
-                "countIf(si.state = 'COMPLETED') AS resolved_count, " +
-                "countIf(si.state = 'MISSED') AS escalated_count, " +
-                "count() AS total_overdue, " +
-                "avgIf(dateDiff('second', d.detected_at, si.completed_at) / 86400.0, " +
-                "      si.state = 'COMPLETED') AS avg_days_to_resolve " +
-                "FROM deviations d" + finalClause() + " " +
-                "JOIN step_instances si" + finalClause() + " ON d.step_instance_id = si.id " +
-                "WHERE d.deviation_type = 'OVERDUE' " +
-                "AND (toUUIDOrNull(:pid) IS NULL OR d.protocol_instance_id IN (" +
-                "  SELECT id FROM protocol_instances" + finalClause() +
-                "  WHERE protocol_definition_id = toUUIDOrNull(:pid))) " +
-                "AND d.detected_at >= parseDateTime64BestEffort(:s) " +
-                "AND d.detected_at <= parseDateTime64BestEffort(:e)",
-                p, (rs, n) -> new Object[]{
-                        rs.getLong(1), rs.getLong(2), rs.getLong(3), rs.getDouble(4)});
+        String pid = uuid(protocolDefId);
+        var d  = finalAs(DEVIATIONS, "d");
+        var si = finalAs(STEP_INSTANCES, "si");
+
+        // Subquery: resolve IN clause against protocol_instances with FINAL if enabled.
+        var piSubquery = dsl.select(DSL.field("id"))
+                            .from(DSL.table(DSL.sql(PROTOCOL_INSTANCES.getName() + finalClause())))
+                            .where(DSL.condition(
+                                    PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUIDOrNull(?)", pid));
+
+        return dsl.select(
+                    DSL.field("countIf(si." + STEP_INSTANCES.STATE.getName() + " = 'COMPLETED')", Long.class).as("resolved_count"),
+                    DSL.field("countIf(si." + STEP_INSTANCES.STATE.getName() + " = 'MISSED')", Long.class).as("escalated_count"),
+                    DSL.field("count()", Long.class).as("total_overdue"),
+                    DSL.field("avgIf(dateDiff('second', d." + DEVIATIONS.DETECTED_AT.getName() +
+                              ", si." + STEP_INSTANCES.COMPLETED_AT.getName() + ") / 86400.0" +
+                              ", si." + STEP_INSTANCES.STATE.getName() + " = 'COMPLETED')", Double.class).as("avg_days_to_resolve"))
+                  .from(d)
+                  .join(si).on(DSL.condition(
+                          "d." + DEVIATIONS.STEP_INSTANCE_ID.getName() + " = si.id"))
+                  .where(DSL.field("d." + DEVIATIONS.DEVIATION_TYPE.getName()).eq("OVERDUE"))
+                  .and(DSL.condition("toUUIDOrNull(?) IS NULL", pid)
+                      .or(DSL.field("d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName()).in(piSubquery)))
+                  .and(DSL.condition(
+                          "d." + DEVIATIONS.DETECTED_AT.getName() + " >= parseDateTime64BestEffort(?)",
+                          dtStart(startDate)))
+                  .and(DSL.condition(
+                          "d." + DEVIATIONS.DETECTED_AT.getName() + " <= parseDateTime64BestEffort(?)",
+                          dtEnd(endDate)))
+                  .fetch()
+                  .map(r -> new Object[]{r.value1(), r.value2(), r.value3(), r.value4()});
     }
 
     @Override
     public List<Object[]> countByTypeSince(OffsetDateTime since) {
-        return jdbc.query(
-                "SELECT deviation_type, count() FROM deviations" + finalClause() +
-                " WHERE detected_at >= parseDateTime64BestEffort(:since) " +
-                "GROUP BY deviation_type",
-                Map.of("since", dt(since)),
-                (rs, n) -> new Object[]{rs.getString(1), rs.getLong(2)});
+        var d = finalAs(DEVIATIONS, "d");
+        return dsl.select(
+                    DSL.field("d." + DEVIATIONS.DEVIATION_TYPE.getName()),
+                    DSL.field("count()", Long.class))
+                  .from(d)
+                  .where(DSL.condition(
+                          "d." + DEVIATIONS.DETECTED_AT.getName() + " >= parseDateTime64BestEffort(?)",
+                          dt(since)))
+                  .groupBy(DSL.field("d." + DEVIATIONS.DEVIATION_TYPE.getName()))
+                  .fetch()
+                  .map(r -> new Object[]{r.get(0, String.class), r.get(1, Long.class)});
     }
 
     @Override
     public List<Object[]> countByTypeInRange(OffsetDateTime startDate, OffsetDateTime endDate,
                                              String facilityId) {
-        MapSqlParameterSource p = new MapSqlParameterSource()
-                .addValue("s", dtStart(startDate))
-                .addValue("e", dtEnd(endDate))
-                .addValue("fid", str(facilityId));
-        return jdbc.query(
-                "SELECT d.deviation_type, count() " +
-                "FROM deviations d" + finalClause() + " " +
-                "JOIN protocol_instances pi" + finalClause() + " ON d.protocol_instance_id = pi.id " +
-                "LEFT JOIN mv_patient_facility_latest pf ON pf.patient_id = pi.patient_id " +
-                "WHERE d.detected_at >= parseDateTime64BestEffort(:s) " +
-                "AND d.detected_at <= parseDateTime64BestEffort(:e) " +
-                "AND (:fid = '' OR pf.facility_id = :fid) " +
-                "GROUP BY d.deviation_type",
-                p, (rs, n) -> new Object[]{rs.getString(1), rs.getLong(2)});
+        String fid = str(facilityId);
+        var d  = finalAs(DEVIATIONS, "d");
+        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        var pf = DSL.table("mv_patient_facility_latest").as("pf");
+
+        return dsl.select(
+                    DSL.field("d." + DEVIATIONS.DEVIATION_TYPE.getName()),
+                    DSL.field("count()", Long.class))
+                  .from(d)
+                  .join(pi).on(DSL.condition(
+                          "d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                  .leftJoin(pf).on(DSL.condition(
+                          "pf.patient_id = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
+                  .where(DSL.condition(
+                          "d." + DEVIATIONS.DETECTED_AT.getName() + " >= parseDateTime64BestEffort(?)",
+                          dtStart(startDate)))
+                  .and(DSL.condition(
+                          "d." + DEVIATIONS.DETECTED_AT.getName() + " <= parseDateTime64BestEffort(?)",
+                          dtEnd(endDate)))
+                  .and(DSL.condition("? = '' OR pf.facility_id = ?", fid, fid))
+                  .groupBy(DSL.field("d." + DEVIATIONS.DEVIATION_TYPE.getName()))
+                  .fetch()
+                  .map(r -> new Object[]{r.get(0, String.class), r.get(1, Long.class)});
     }
 
     @Override
     public List<Object[]> findRepeatDeviationPatients(int minDeviations, String facilityId,
                                                        OffsetDateTime startDate,
                                                        OffsetDateTime endDate) {
-        MapSqlParameterSource p = new MapSqlParameterSource()
-                .addValue("fid", str(facilityId))
-                .addValue("s", dtStart(startDate))
-                .addValue("e", dtEnd(endDate))
-                .addValue("min", minDeviations);
-        return jdbc.query(
-                "SELECT pi.patient_id, count() AS total_deviations, " +
-                "countIf(d.deviation_type = 'OVERDUE') AS overdue_count, " +
-                "countIf(d.deviation_type = 'MISSED') AS missed_count, " +
-                "countIf(d.deviation_type = 'ORDER_VIOLATION') AS order_violation_count, " +
-                "uniq(pi.id) AS affected_protocols, " +
-                "uniq(d.step_instance_id) AS affected_steps " +
-                "FROM deviations d" + finalClause() + " " +
-                "JOIN protocol_instances pi" + finalClause() + " ON d.protocol_instance_id = pi.id " +
-                "LEFT JOIN mv_patient_facility_latest pf ON pf.patient_id = pi.patient_id " +
-                "WHERE (:fid = '' OR pf.facility_id = :fid) " +
-                "AND d.detected_at >= parseDateTime64BestEffort(:s) " +
-                "AND d.detected_at <= parseDateTime64BestEffort(:e) " +
-                "GROUP BY pi.patient_id " +
-                "HAVING count() >= :min " +
-                "ORDER BY total_deviations DESC",
-                p, (rs, n) -> new Object[]{
-                        rs.getString(1), rs.getLong(2), rs.getLong(3),
-                        rs.getLong(4), rs.getLong(5), rs.getLong(6), rs.getLong(7)});
+        String fid = str(facilityId);
+        var d  = finalAs(DEVIATIONS, "d");
+        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        var pf = DSL.table("mv_patient_facility_latest").as("pf");
+
+        return dsl.select(
+                    DSL.field("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()),
+                    DSL.field("count()", Long.class).as("total_deviations"),
+                    DSL.field("countIf(d." + DEVIATIONS.DEVIATION_TYPE.getName() + " = 'OVERDUE')", Long.class).as("overdue_count"),
+                    DSL.field("countIf(d." + DEVIATIONS.DEVIATION_TYPE.getName() + " = 'MISSED')", Long.class).as("missed_count"),
+                    DSL.field("countIf(d." + DEVIATIONS.DEVIATION_TYPE.getName() + " = 'ORDER_VIOLATION')", Long.class).as("order_violation_count"),
+                    DSL.field("uniq(pi.id)", Long.class).as("affected_protocols"),
+                    DSL.field("uniq(d." + DEVIATIONS.STEP_INSTANCE_ID.getName() + ")", Long.class).as("affected_steps"))
+                  .from(d)
+                  .join(pi).on(DSL.condition(
+                          "d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                  .leftJoin(pf).on(DSL.condition(
+                          "pf.patient_id = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
+                  .where(DSL.condition("? = '' OR pf.facility_id = ?", fid, fid))
+                  .and(DSL.condition(
+                          "d." + DEVIATIONS.DETECTED_AT.getName() + " >= parseDateTime64BestEffort(?)",
+                          dtStart(startDate)))
+                  .and(DSL.condition(
+                          "d." + DEVIATIONS.DETECTED_AT.getName() + " <= parseDateTime64BestEffort(?)",
+                          dtEnd(endDate)))
+                  .groupBy(DSL.field("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
+                  .having(DSL.field("count()", Long.class).ge((long) minDeviations))
+                  .orderBy(DSL.field("total_deviations").desc())
+                  .fetch()
+                  .map(r -> new Object[]{
+                          r.get(0, String.class), r.get(1, Long.class), r.get(2, Long.class),
+                          r.get(3, Long.class), r.get(4, Long.class), r.get(5, Long.class),
+                          r.get(6, Long.class)});
     }
 
     @Override
     public List<Object[]> countDeviationsByFacility() {
-        return jdbc.query(
-                "SELECT iel.facility_id, uniq(d.id) AS deviation_count " +
-                "FROM deviations d" + finalClause() + " " +
-                "JOIN protocol_instances pi" + finalClause() + " ON d.protocol_instance_id = pi.id " +
-                "JOIN inbound_event_logs iel" + finalClause() + " ON iel.subject = pi.patient_id " +
-                "WHERE iel.facility_id != '' " +
-                "GROUP BY iel.facility_id",
-                new MapSqlParameterSource(),
-                (rs, n) -> new Object[]{rs.getString(1), rs.getLong(2)});
+        var d   = finalAs(DEVIATIONS, "d");
+        var pi  = finalAs(PROTOCOL_INSTANCES, "pi");
+        var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
+
+        return dsl.select(
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()),
+                    DSL.field("uniq(d." + DEVIATIONS.ID.getName() + ")", Long.class).as("deviation_count"))
+                  .from(d)
+                  .join(pi).on(DSL.condition(
+                          "d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                  .join(iel).on(DSL.condition(
+                          "iel." + INBOUND_EVENT_LOGS.SUBJECT.getName() + " = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
+                  .where(DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()).ne(""))
+                  .groupBy(DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()))
+                  .fetch()
+                  .map(r -> new Object[]{r.get(0, String.class), r.get(1, Long.class)});
     }
 
     @Override
     public long countDistinctPatientsWithDeviations() {
-        Long r = jdbc.queryForObject(
-                "SELECT uniq(pi.patient_id) " +
-                "FROM deviations d" + finalClause() + " " +
-                "JOIN protocol_instances pi" + finalClause() + " ON d.protocol_instance_id = pi.id",
-                new MapSqlParameterSource(), Long.class);
+        var d  = finalAs(DEVIATIONS, "d");
+        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+
+        Long r = dsl.select(
+                        DSL.field("uniq(pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName() + ")", Long.class))
+                    .from(d)
+                    .join(pi).on(DSL.condition(
+                            "d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                    .fetchOne(0, Long.class);
         return r != null ? r : 0L;
     }
 }

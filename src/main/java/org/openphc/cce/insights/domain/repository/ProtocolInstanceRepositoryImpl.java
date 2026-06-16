@@ -1,137 +1,180 @@
 package org.openphc.cce.insights.domain.repository;
 
+import org.jooq.DSLContext;
+import org.jooq.Record;
+import org.jooq.Table;
+import org.jooq.impl.DSL;
 import org.openphc.cce.insights.domain.entity.ProtocolInstance;
 import org.openphc.cce.insights.domain.enums.ProtocolInstanceStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
-import org.springframework.jdbc.core.RowMapper;
-import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
-import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import java.time.OffsetDateTime;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
+
+import static org.openphc.cce.insights.jooq.Tables.PROTOCOL_INSTANCES;
 
 @Repository
 public class ProtocolInstanceRepositoryImpl
         extends AbstractClickHouseRepository<ProtocolInstance, UUID>
         implements ProtocolInstanceRepository {
 
-    public ProtocolInstanceRepositoryImpl(NamedParameterJdbcTemplate jdbc) {
-        super(jdbc);
+    public ProtocolInstanceRepositoryImpl(DSLContext dsl) {
+        super(dsl);
     }
 
     @Override
     protected String getTableName() {
-        return "protocol_instances";
+        return PROTOCOL_INSTANCES.getName();
     }
 
     @Override
-    protected RowMapper<ProtocolInstance> rowMapper() {
-        return (rs, n) -> {
-            String statusStr = rs.getString("status");
-            ProtocolInstanceStatus status = null;
-            try { status = ProtocolInstanceStatus.valueOf(statusStr); } catch (Exception ignored) {}
-            return ProtocolInstance.builder()
-                    .id(UUID.fromString(rs.getString("id")))
-                    .protocolDefinitionId(parseUUID(rs.getString("protocol_definition_id")))
-                    .patientId(rs.getString("patient_id"))
-                    .protocolCanonical(rs.getString("protocol_canonical"))
-                    .status(status)
-                    .enrolledAt(toOffsetDateTime(rs, "enrolled_at"))
-                    .createdAt(toOffsetDateTime(rs, "enrolled_at"))
-                    .updatedAt(toOffsetDateTime(rs, "updated_at"))
-                    .build();
-        };
+    protected ProtocolInstance fromRecord(Record r) {
+        return toProtocolInstance(r);
     }
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // Result mappers
+    // ══════════════════════════════════════════════════════════════════════════════
+
+    private ProtocolInstance toProtocolInstance(Record r) {
+        ProtocolInstanceStatus status = null;
+        try {
+            String s = r.get(PROTOCOL_INSTANCES.STATUS.getName(), String.class);
+            if (s != null) status = ProtocolInstanceStatus.valueOf(s);
+        } catch (Exception ignored) {}
+        return ProtocolInstance.builder()
+                .id(r.get(PROTOCOL_INSTANCES.ID.getName(), UUID.class))
+                .protocolDefinitionId(r.get(PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName(), UUID.class))
+                .patientId(r.get(PROTOCOL_INSTANCES.PATIENT_ID.getName(), String.class))
+                .protocolCanonical(r.get(PROTOCOL_INSTANCES.PROTOCOL_CANONICAL.getName(), String.class))
+                .status(status)
+                .enrolledAt(recordDateTime(r, PROTOCOL_INSTANCES.ENROLLED_AT.getName()))
+                .createdAt(recordDateTime(r, PROTOCOL_INSTANCES.CREATED_AT.getName()))
+                .updatedAt(recordDateTime(r, PROTOCOL_INSTANCES.UPDATED_AT.getName()))
+                .build();
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // Repository methods — full jOOQ DSL
+    // ══════════════════════════════════════════════════════════════════════════════
 
     @Override
     public List<String> findDistinctPatientIds() {
-        return jdbc.queryForList(
-                "SELECT DISTINCT patient_id FROM protocol_instances" + finalClause() + " ORDER BY patient_id",
-                Map.of(), String.class);
+        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        return dsl.selectDistinct(DSL.field("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
+                  .from(pi)
+                  .orderBy(DSL.field("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
+                  .fetch(0, String.class);
     }
 
     @Override
     public List<ProtocolInstance> findByPatientId(String patientId) {
-        return jdbc.query(
-                "SELECT * FROM protocol_instances" + finalClause() + " WHERE patient_id = :pid",
-                Map.of("pid", patientId), rowMapper());
+        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        return dsl.select(DSL.asterisk())
+                  .from(pi)
+                  .where(DSL.field("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()).eq(patientId))
+                  .fetch()
+                  .map(this::toProtocolInstance);
     }
 
     @Override
     public List<ProtocolInstance> findByProtocolDefinitionId(UUID protocolDefinitionId) {
-        return jdbc.query(
-                "SELECT * FROM protocol_instances" + finalClause() + " WHERE protocol_definition_id = toUUID(:id)",
-                Map.of("id", protocolDefinitionId.toString()), rowMapper());
+        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        return dsl.select(DSL.asterisk())
+                  .from(pi)
+                  .where(DSL.condition(
+                          "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
+                          protocolDefinitionId.toString()))
+                  .fetch()
+                  .map(this::toProtocolInstance);
     }
 
     @Override
     public Page<ProtocolInstance> findByProtocolDefinitionId(UUID protocolDefinitionId, Pageable pageable) {
-        MapSqlParameterSource p = new MapSqlParameterSource()
-                .addValue("id", protocolDefinitionId.toString())
-                .addValue("limit", pageable.getPageSize())
-                .addValue("offset", pageable.getOffset());
-        List<ProtocolInstance> content = jdbc.query(
-                "SELECT * FROM protocol_instances" + finalClause() +
-                " WHERE protocol_definition_id = toUUID(:id) " +
-                "ORDER BY enrolled_at DESC LIMIT :limit OFFSET :offset",
-                p, rowMapper());
-        Long total = jdbc.queryForObject(
-                "SELECT count() FROM protocol_instances" + finalClause() + " WHERE protocol_definition_id = toUUID(:id)",
-                Map.of("id", protocolDefinitionId.toString()), Long.class);
-        return new PageImpl<>(content, pageable, total != null ? total : 0L);
+        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        var condition = DSL.condition(
+                "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
+                protocolDefinitionId.toString());
+        List<ProtocolInstance> content = dsl.select(DSL.asterisk())
+                .from(pi)
+                .where(condition)
+                .orderBy(DSL.field("pi." + PROTOCOL_INSTANCES.ENROLLED_AT.getName()).desc())
+                .limit(pageable.getPageSize())
+                .offset(pageable.getOffset())
+                .fetch()
+                .map(this::toProtocolInstance);
+        long total = dsl.select(DSL.field("count()", Long.class))
+                .from(pi)
+                .where(condition)
+                .fetchOne(0, Long.class);
+        return new PageImpl<>(content, pageable, total);
     }
 
     @Override
     public List<Object[]> countByProtocolDefinitionIdGroupByStatus(UUID protocolDefId) {
-        return jdbc.query(
-                "SELECT status, count() FROM protocol_instances" + finalClause() +
-                " WHERE protocol_definition_id = toUUID(:id) GROUP BY status",
-                Map.of("id", protocolDefId.toString()),
-                (rs, n) -> new Object[]{rs.getString(1), rs.getLong(2)});
+        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        return dsl.select(
+                    DSL.field("pi." + PROTOCOL_INSTANCES.STATUS.getName()),
+                    DSL.field("count()", Long.class))
+                  .from(pi)
+                  .where(DSL.condition(
+                          "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
+                          protocolDefId.toString()))
+                  .groupBy(DSL.field("pi." + PROTOCOL_INSTANCES.STATUS.getName()))
+                  .fetch()
+                  .map(r -> new Object[]{r.value1(), r.value2()});
     }
 
     @Override
     public List<Object[]> findEnrollmentTrends(UUID protocolDefId, String interval,
                                                OffsetDateTime startDate, OffsetDateTime endDate) {
-        String periodExpr = dateTruncExpr(interval, "enrolled_at");
-        MapSqlParameterSource p = new MapSqlParameterSource()
-                .addValue("id", protocolDefId.toString())
-                .addValue("s", dtStart(startDate))
-                .addValue("e", dtEnd(endDate));
-        return jdbc.query(
-                "SELECT " + periodExpr + " AS period, count() AS enrollments " +
-                "FROM protocol_instances" + finalClause() +
-                " WHERE protocol_definition_id = toUUID(:id) " +
-                "AND enrolled_at >= parseDateTime64BestEffort(:s) " +
-                "AND enrolled_at <= parseDateTime64BestEffort(:e) " +
-                "GROUP BY period ORDER BY period",
-                p, (rs, n) -> new Object[]{rs.getObject(1), rs.getLong(2)});
+        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        String periodExpr = dateTruncExpr(interval, "pi." + PROTOCOL_INSTANCES.ENROLLED_AT.getName());
+        return dsl.select(
+                    DSL.field(DSL.sql(periodExpr)).as("period"),
+                    DSL.field("count()", Long.class).as("enrollments"))
+                  .from(pi)
+                  .where(DSL.condition(
+                          "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
+                          protocolDefId.toString()))
+                  .and(DSL.condition(
+                          "pi." + PROTOCOL_INSTANCES.ENROLLED_AT.getName() + " >= parseDateTime64BestEffort(?)",
+                          dtStart(startDate)))
+                  .and(DSL.condition(
+                          "pi." + PROTOCOL_INSTANCES.ENROLLED_AT.getName() + " <= parseDateTime64BestEffort(?)",
+                          dtEnd(endDate)))
+                  .groupBy(DSL.field(DSL.sql("period")))
+                  .orderBy(DSL.field(DSL.sql("period")))
+                  .fetch()
+                  .map(r -> new Object[]{r.value1(), r.value2()});
     }
 
     @Override
     public Page<ProtocolInstance> findByProtocolDefinitionIdAndStatus(UUID protocolDefId,
                                                                        ProtocolInstanceStatus status,
                                                                        Pageable pageable) {
-        MapSqlParameterSource p = new MapSqlParameterSource()
-                .addValue("id", protocolDefId.toString())
-                .addValue("status", status.name())
-                .addValue("limit", pageable.getPageSize())
-                .addValue("offset", pageable.getOffset());
-        List<ProtocolInstance> content = jdbc.query(
-                "SELECT * FROM protocol_instances" + finalClause() +
-                " WHERE protocol_definition_id = toUUID(:id) AND status = :status " +
-                "ORDER BY enrolled_at DESC LIMIT :limit OFFSET :offset",
-                p, rowMapper());
-        Long total = jdbc.queryForObject(
-                "SELECT count() FROM protocol_instances" + finalClause() +
-                " WHERE protocol_definition_id = toUUID(:id) AND status = :status",
-                Map.of("id", protocolDefId.toString(), "status", status.name()), Long.class);
-        return new PageImpl<>(content, pageable, total != null ? total : 0L);
+        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        var condition = DSL.condition(
+                "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
+                protocolDefId.toString())
+            .and(DSL.field("pi." + PROTOCOL_INSTANCES.STATUS.getName()).eq(status.name()));
+        List<ProtocolInstance> content = dsl.select(DSL.asterisk())
+                .from(pi)
+                .where(condition)
+                .orderBy(DSL.field("pi." + PROTOCOL_INSTANCES.ENROLLED_AT.getName()).desc())
+                .limit(pageable.getPageSize())
+                .offset(pageable.getOffset())
+                .fetch()
+                .map(this::toProtocolInstance);
+        long total = dsl.select(DSL.field("count()", Long.class))
+                .from(pi)
+                .where(condition)
+                .fetchOne(0, Long.class);
+        return new PageImpl<>(content, pageable, total);
     }
 
     @Override
@@ -139,21 +182,24 @@ public class ProtocolInstanceRepositoryImpl
                                                                                     String patientId,
                                                                                     Pageable pageable) {
         String pattern = "%" + patientId.toLowerCase() + "%";
-        MapSqlParameterSource p = new MapSqlParameterSource()
-                .addValue("id", protocolDefId.toString())
-                .addValue("pattern", pattern)
-                .addValue("limit", pageable.getPageSize())
-                .addValue("offset", pageable.getOffset());
-        List<ProtocolInstance> content = jdbc.query(
-                "SELECT * FROM protocol_instances" + finalClause() +
-                " WHERE protocol_definition_id = toUUID(:id) " +
-                "AND lower(patient_id) LIKE :pattern " +
-                "ORDER BY enrolled_at DESC LIMIT :limit OFFSET :offset",
-                p, rowMapper());
-        Long total = jdbc.queryForObject(
-                "SELECT count() FROM protocol_instances" + finalClause() +
-                " WHERE protocol_definition_id = toUUID(:id) AND lower(patient_id) LIKE :pattern",
-                Map.of("id", protocolDefId.toString(), "pattern", pattern), Long.class);
-        return new PageImpl<>(content, pageable, total != null ? total : 0L);
+        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        var condition = DSL.condition(
+                "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
+                protocolDefId.toString())
+            .and(DSL.condition(
+                    "lower(pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName() + ") LIKE ?", pattern));
+        List<ProtocolInstance> content = dsl.select(DSL.asterisk())
+                .from(pi)
+                .where(condition)
+                .orderBy(DSL.field("pi." + PROTOCOL_INSTANCES.ENROLLED_AT.getName()).desc())
+                .limit(pageable.getPageSize())
+                .offset(pageable.getOffset())
+                .fetch()
+                .map(this::toProtocolInstance);
+        long total = dsl.select(DSL.field("count()", Long.class))
+                .from(pi)
+                .where(condition)
+                .fetchOne(0, Long.class);
+        return new PageImpl<>(content, pageable, total);
     }
 }

@@ -1,205 +1,259 @@
 package org.openphc.cce.insights.domain.repository;
 
+import org.jooq.DSLContext;
+import org.jooq.Record;
+import org.jooq.impl.DSL;
 import org.openphc.cce.insights.domain.entity.IntelligenceDelivery;
-import org.springframework.jdbc.core.RowMapper;
-import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
-import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
+import static org.openphc.cce.insights.jooq.Tables.INTELLIGENCE_DELIVERIES;
+
 @Repository
 public class IntelligenceDeliveryRepositoryImpl
         extends AbstractClickHouseRepository<IntelligenceDelivery, UUID>
         implements IntelligenceDeliveryRepository {
 
-    public IntelligenceDeliveryRepositoryImpl(NamedParameterJdbcTemplate jdbc) {
-        super(jdbc);
+    public IntelligenceDeliveryRepositoryImpl(DSLContext dsl) {
+        super(dsl);
     }
 
     @Override
     protected String getTableName() {
-        return "intelligence_deliveries";
+        return INTELLIGENCE_DELIVERIES.getName();
     }
 
     @Override
-    protected RowMapper<IntelligenceDelivery> rowMapper() {
-        return (rs, n) -> IntelligenceDelivery.builder()
-                .id(UUID.fromString(rs.getString("id")))
-                .intelligenceEventId(parseUUID(rs.getString("intelligence_event_id")))
-                .actionDefinitionId(parseUUID(rs.getString("action_definition_id")))
-                .destinationAdaptorMappingId(parseUUID(rs.getString("destination_adaptor_mapping_id")))
-                .actionType(rs.getString("action_type"))
-                .status(rs.getString("status"))
-                .subject(rs.getString("subject"))
-                .protocolCanonical(rs.getString("protocol_canonical"))
-                .actionId(rs.getString("action_id"))
-                .severity(rs.getString("severity"))
-                .destination(rs.getString("destination"))
-                .attemptCount(rs.getInt("attempt_count"))
-                .createdAt(toOffsetDateTime(rs, "created_at"))
-                .updatedAt(toOffsetDateTime(rs, "updated_at"))
-                .deliveredAt(toOffsetDateTime(rs, "delivered_at"))
+    protected IntelligenceDelivery fromRecord(Record r) {
+        return IntelligenceDelivery.builder()
+                .id(r.get(INTELLIGENCE_DELIVERIES.ID.getName(), UUID.class))
+                .intelligenceEventId(parseUUID(r.get(INTELLIGENCE_DELIVERIES.INTELLIGENCE_EVENT_ID.getName(), String.class)))
+                .actionDefinitionId(parseUUID(r.get(INTELLIGENCE_DELIVERIES.ACTION_DEFINITION_ID.getName(), String.class)))
+                .destinationAdaptorMappingId(parseUUID(r.get(INTELLIGENCE_DELIVERIES.DESTINATION_ADAPTOR_MAPPING_ID.getName(), String.class)))
+                .actionType(r.get(INTELLIGENCE_DELIVERIES.ACTION_TYPE.getName(), String.class))
+                .status(r.get(INTELLIGENCE_DELIVERIES.STATUS.getName(), String.class))
+                .subject(r.get(INTELLIGENCE_DELIVERIES.SUBJECT.getName(), String.class))
+                .protocolCanonical(r.get(INTELLIGENCE_DELIVERIES.PROTOCOL_CANONICAL.getName(), String.class))
+                .actionId(r.get(INTELLIGENCE_DELIVERIES.ACTION_ID.getName(), String.class))
+                .severity(r.get(INTELLIGENCE_DELIVERIES.SEVERITY.getName(), String.class))
+                .destination(r.get(INTELLIGENCE_DELIVERIES.DESTINATION.getName(), String.class))
+                .attemptCount(r.get(INTELLIGENCE_DELIVERIES.ATTEMPT_COUNT.getName(), Integer.class))
+                .createdAt(recordDateTime(r, INTELLIGENCE_DELIVERIES.CREATED_AT.getName()))
+                .updatedAt(recordDateTime(r, INTELLIGENCE_DELIVERIES.UPDATED_AT.getName()))
+                .deliveredAt(recordDateTime(r, INTELLIGENCE_DELIVERIES.DELIVERED_AT.getName()))
                 .build();
+    }
+
+    private String table() {
+        return INTELLIGENCE_DELIVERIES.getName() + finalClause();
     }
 
     @Override
     public List<Object[]> countByStatus() {
-        return jdbc.query(
-                "SELECT status, count() FROM intelligence_deliveries" + finalClause() + " GROUP BY status",
-                (rs, n) -> new Object[]{rs.getString(1), rs.getLong(2)});
+        return dsl.select(
+                    DSL.field(INTELLIGENCE_DELIVERIES.STATUS.getName()),
+                    DSL.field("count()", Long.class))
+                  .from(DSL.table(DSL.sql(table())))
+                  .groupBy(DSL.field(INTELLIGENCE_DELIVERIES.STATUS.getName()))
+                  .fetch()
+                  .map(r -> new Object[]{r.get(0, String.class), r.get(1, Long.class)});
     }
 
     @Override
     public List<Object[]> countByActionType() {
-        return jdbc.query(
-                "SELECT action_type, count() FROM intelligence_deliveries" + finalClause() + " GROUP BY action_type",
-                (rs, n) -> new Object[]{rs.getString(1), rs.getLong(2)});
+        return dsl.select(
+                    DSL.field(INTELLIGENCE_DELIVERIES.ACTION_TYPE.getName()),
+                    DSL.field("count()", Long.class))
+                  .from(DSL.table(DSL.sql(table())))
+                  .groupBy(DSL.field(INTELLIGENCE_DELIVERIES.ACTION_TYPE.getName()))
+                  .fetch()
+                  .map(r -> new Object[]{r.get(0, String.class), r.get(1, Long.class)});
     }
 
     @Override
     public List<Object[]> countBySeverity() {
-        return jdbc.query(
-                "SELECT severity, count() FROM intelligence_deliveries" + finalClause() + " GROUP BY severity",
-                (rs, n) -> new Object[]{rs.getString(1), rs.getLong(2)});
+        return dsl.select(
+                    DSL.field(INTELLIGENCE_DELIVERIES.SEVERITY.getName()),
+                    DSL.field("count()", Long.class))
+                  .from(DSL.table(DSL.sql(table())))
+                  .groupBy(DSL.field(INTELLIGENCE_DELIVERIES.SEVERITY.getName()))
+                  .fetch()
+                  .map(r -> new Object[]{r.get(0, String.class), r.get(1, Long.class)});
     }
 
     @Override
     public List<Object[]> countByDestination() {
-        return jdbc.query(
-                "SELECT destination, count() AS cnt FROM intelligence_deliveries" + finalClause() +
-                " GROUP BY destination ORDER BY cnt DESC",
-                (rs, n) -> new Object[]{rs.getString(1), rs.getLong(2)});
+        return dsl.select(
+                    DSL.field(INTELLIGENCE_DELIVERIES.DESTINATION.getName()),
+                    DSL.field("count()", Long.class).as("cnt"))
+                  .from(DSL.table(DSL.sql(table())))
+                  .groupBy(DSL.field(INTELLIGENCE_DELIVERIES.DESTINATION.getName()))
+                  .orderBy(DSL.field("cnt").desc())
+                  .fetch()
+                  .map(r -> new Object[]{r.get(0, String.class), r.get(1, Long.class)});
     }
 
     @Override
     public long countDelivered() {
-        Long r = jdbc.queryForObject(
-                "SELECT count() FROM intelligence_deliveries" + finalClause() + " WHERE status = 'DELIVERED'",
-                new MapSqlParameterSource(), Long.class);
+        Long r = dsl.select(DSL.field("count()", Long.class))
+                    .from(DSL.table(DSL.sql(table())))
+                    .where(DSL.field(INTELLIGENCE_DELIVERIES.STATUS.getName()).eq("DELIVERED"))
+                    .fetchOne(0, Long.class);
         return r != null ? r : 0L;
     }
 
     @Override
     public long countFailed() {
-        Long r = jdbc.queryForObject(
-                "SELECT count() FROM intelligence_deliveries" + finalClause() + " WHERE status = 'FAILED'",
-                new MapSqlParameterSource(), Long.class);
+        Long r = dsl.select(DSL.field("count()", Long.class))
+                    .from(DSL.table(DSL.sql(table())))
+                    .where(DSL.field(INTELLIGENCE_DELIVERIES.STATUS.getName()).eq("FAILED"))
+                    .fetchOne(0, Long.class);
         return r != null ? r : 0L;
     }
 
     @Override
     public Double avgDeliveryLatencySeconds() {
-        Double r = jdbc.queryForObject(
-                "SELECT avg(toFloat64(dateDiff('millisecond', created_at, delivered_at))) / 1000.0 " +
-                "FROM intelligence_deliveries" + finalClause() + " WHERE status = 'DELIVERED'",
-                new MapSqlParameterSource(), Double.class);
-        return r;
+        return dsl.select(DSL.field(
+                        "avg(toFloat64(dateDiff('millisecond', " +
+                        INTELLIGENCE_DELIVERIES.CREATED_AT.getName() + ", " +
+                        INTELLIGENCE_DELIVERIES.DELIVERED_AT.getName() + "))) / 1000.0",
+                        Double.class))
+                  .from(DSL.table(DSL.sql(table())))
+                  .where(DSL.field(INTELLIGENCE_DELIVERIES.STATUS.getName()).eq("DELIVERED"))
+                  .fetchOne(0, Double.class);
     }
 
     @Override
     public long countFiltered(OffsetDateTime startDate, OffsetDateTime endDate) {
-        MapSqlParameterSource p = new MapSqlParameterSource()
-                .addValue("s", dtStart(startDate))
-                .addValue("e", dtEnd(endDate));
-        Long r = jdbc.queryForObject(
-                "SELECT count() FROM intelligence_deliveries" + finalClause() +
-                " WHERE created_at >= parseDateTime64BestEffort(:s) " +
-                "AND created_at <= parseDateTime64BestEffort(:e)",
-                p, Long.class);
+        Long r = dsl.select(DSL.field("count()", Long.class))
+                    .from(DSL.table(DSL.sql(table())))
+                    .where(DSL.condition(
+                            INTELLIGENCE_DELIVERIES.CREATED_AT.getName() + " >= parseDateTime64BestEffort(?)",
+                            dtStart(startDate)))
+                    .and(DSL.condition(
+                            INTELLIGENCE_DELIVERIES.CREATED_AT.getName() + " <= parseDateTime64BestEffort(?)",
+                            dtEnd(endDate)))
+                    .fetchOne(0, Long.class);
         return r != null ? r : 0L;
     }
 
     @Override
     public long countDeliveredFiltered(OffsetDateTime startDate, OffsetDateTime endDate) {
-        MapSqlParameterSource p = new MapSqlParameterSource()
-                .addValue("s", dtStart(startDate))
-                .addValue("e", dtEnd(endDate));
-        Long r = jdbc.queryForObject(
-                "SELECT count() FROM intelligence_deliveries" + finalClause() + " WHERE status = 'DELIVERED' " +
-                "AND created_at >= parseDateTime64BestEffort(:s) " +
-                "AND created_at <= parseDateTime64BestEffort(:e)",
-                p, Long.class);
+        Long r = dsl.select(DSL.field("count()", Long.class))
+                    .from(DSL.table(DSL.sql(table())))
+                    .where(DSL.field(INTELLIGENCE_DELIVERIES.STATUS.getName()).eq("DELIVERED"))
+                    .and(DSL.condition(
+                            INTELLIGENCE_DELIVERIES.CREATED_AT.getName() + " >= parseDateTime64BestEffort(?)",
+                            dtStart(startDate)))
+                    .and(DSL.condition(
+                            INTELLIGENCE_DELIVERIES.CREATED_AT.getName() + " <= parseDateTime64BestEffort(?)",
+                            dtEnd(endDate)))
+                    .fetchOne(0, Long.class);
         return r != null ? r : 0L;
     }
 
     @Override
     public long countFailedFiltered(OffsetDateTime startDate, OffsetDateTime endDate) {
-        MapSqlParameterSource p = new MapSqlParameterSource()
-                .addValue("s", dtStart(startDate))
-                .addValue("e", dtEnd(endDate));
-        Long r = jdbc.queryForObject(
-                "SELECT count() FROM intelligence_deliveries" + finalClause() + " WHERE status = 'FAILED' " +
-                "AND created_at >= parseDateTime64BestEffort(:s) " +
-                "AND created_at <= parseDateTime64BestEffort(:e)",
-                p, Long.class);
+        Long r = dsl.select(DSL.field("count()", Long.class))
+                    .from(DSL.table(DSL.sql(table())))
+                    .where(DSL.field(INTELLIGENCE_DELIVERIES.STATUS.getName()).eq("FAILED"))
+                    .and(DSL.condition(
+                            INTELLIGENCE_DELIVERIES.CREATED_AT.getName() + " >= parseDateTime64BestEffort(?)",
+                            dtStart(startDate)))
+                    .and(DSL.condition(
+                            INTELLIGENCE_DELIVERIES.CREATED_AT.getName() + " <= parseDateTime64BestEffort(?)",
+                            dtEnd(endDate)))
+                    .fetchOne(0, Long.class);
         return r != null ? r : 0L;
     }
 
     @Override
     public Double avgDeliveryLatencySecondsFiltered(OffsetDateTime startDate, OffsetDateTime endDate) {
-        MapSqlParameterSource p = new MapSqlParameterSource()
-                .addValue("s", dtStart(startDate))
-                .addValue("e", dtEnd(endDate));
-        return jdbc.queryForObject(
-                "SELECT avg(toFloat64(dateDiff('millisecond', created_at, delivered_at))) / 1000.0 " +
-                "FROM intelligence_deliveries" + finalClause() + " WHERE status = 'DELIVERED' " +
-                "AND created_at >= parseDateTime64BestEffort(:s) " +
-                "AND created_at <= parseDateTime64BestEffort(:e)",
-                p, Double.class);
+        return dsl.select(DSL.field(
+                        "avg(toFloat64(dateDiff('millisecond', " +
+                        INTELLIGENCE_DELIVERIES.CREATED_AT.getName() + ", " +
+                        INTELLIGENCE_DELIVERIES.DELIVERED_AT.getName() + "))) / 1000.0",
+                        Double.class))
+                  .from(DSL.table(DSL.sql(table())))
+                  .where(DSL.field(INTELLIGENCE_DELIVERIES.STATUS.getName()).eq("DELIVERED"))
+                  .and(DSL.condition(
+                          INTELLIGENCE_DELIVERIES.CREATED_AT.getName() + " >= parseDateTime64BestEffort(?)",
+                          dtStart(startDate)))
+                  .and(DSL.condition(
+                          INTELLIGENCE_DELIVERIES.CREATED_AT.getName() + " <= parseDateTime64BestEffort(?)",
+                          dtEnd(endDate)))
+                  .fetchOne(0, Double.class);
     }
 
     @Override
     public List<Object[]> countByStatusFiltered(OffsetDateTime startDate, OffsetDateTime endDate) {
-        MapSqlParameterSource p = new MapSqlParameterSource()
-                .addValue("s", dtStart(startDate))
-                .addValue("e", dtEnd(endDate));
-        return jdbc.query(
-                "SELECT status, count() FROM intelligence_deliveries" + finalClause() +
-                " WHERE created_at >= parseDateTime64BestEffort(:s) " +
-                "AND created_at <= parseDateTime64BestEffort(:e) " +
-                "GROUP BY status",
-                p, (rs, n) -> new Object[]{rs.getString(1), rs.getLong(2)});
+        return dsl.select(
+                    DSL.field(INTELLIGENCE_DELIVERIES.STATUS.getName()),
+                    DSL.field("count()", Long.class))
+                  .from(DSL.table(DSL.sql(table())))
+                  .where(DSL.condition(
+                          INTELLIGENCE_DELIVERIES.CREATED_AT.getName() + " >= parseDateTime64BestEffort(?)",
+                          dtStart(startDate)))
+                  .and(DSL.condition(
+                          INTELLIGENCE_DELIVERIES.CREATED_AT.getName() + " <= parseDateTime64BestEffort(?)",
+                          dtEnd(endDate)))
+                  .groupBy(DSL.field(INTELLIGENCE_DELIVERIES.STATUS.getName()))
+                  .fetch()
+                  .map(r -> new Object[]{r.get(0, String.class), r.get(1, Long.class)});
     }
 
     @Override
     public List<Object[]> countByActionTypeFiltered(OffsetDateTime startDate, OffsetDateTime endDate) {
-        MapSqlParameterSource p = new MapSqlParameterSource()
-                .addValue("s", dtStart(startDate))
-                .addValue("e", dtEnd(endDate));
-        return jdbc.query(
-                "SELECT action_type, count() FROM intelligence_deliveries" + finalClause() +
-                " WHERE created_at >= parseDateTime64BestEffort(:s) " +
-                "AND created_at <= parseDateTime64BestEffort(:e) " +
-                "GROUP BY action_type",
-                p, (rs, n) -> new Object[]{rs.getString(1), rs.getLong(2)});
+        return dsl.select(
+                    DSL.field(INTELLIGENCE_DELIVERIES.ACTION_TYPE.getName()),
+                    DSL.field("count()", Long.class))
+                  .from(DSL.table(DSL.sql(table())))
+                  .where(DSL.condition(
+                          INTELLIGENCE_DELIVERIES.CREATED_AT.getName() + " >= parseDateTime64BestEffort(?)",
+                          dtStart(startDate)))
+                  .and(DSL.condition(
+                          INTELLIGENCE_DELIVERIES.CREATED_AT.getName() + " <= parseDateTime64BestEffort(?)",
+                          dtEnd(endDate)))
+                  .groupBy(DSL.field(INTELLIGENCE_DELIVERIES.ACTION_TYPE.getName()))
+                  .fetch()
+                  .map(r -> new Object[]{r.get(0, String.class), r.get(1, Long.class)});
     }
 
     @Override
     public List<Object[]> countBySeverityFiltered(OffsetDateTime startDate, OffsetDateTime endDate) {
-        MapSqlParameterSource p = new MapSqlParameterSource()
-                .addValue("s", dtStart(startDate))
-                .addValue("e", dtEnd(endDate));
-        return jdbc.query(
-                "SELECT severity, count() FROM intelligence_deliveries" + finalClause() +
-                " WHERE created_at >= parseDateTime64BestEffort(:s) " +
-                "AND created_at <= parseDateTime64BestEffort(:e) " +
-                "GROUP BY severity",
-                p, (rs, n) -> new Object[]{rs.getString(1), rs.getLong(2)});
+        return dsl.select(
+                    DSL.field(INTELLIGENCE_DELIVERIES.SEVERITY.getName()),
+                    DSL.field("count()", Long.class))
+                  .from(DSL.table(DSL.sql(table())))
+                  .where(DSL.condition(
+                          INTELLIGENCE_DELIVERIES.CREATED_AT.getName() + " >= parseDateTime64BestEffort(?)",
+                          dtStart(startDate)))
+                  .and(DSL.condition(
+                          INTELLIGENCE_DELIVERIES.CREATED_AT.getName() + " <= parseDateTime64BestEffort(?)",
+                          dtEnd(endDate)))
+                  .groupBy(DSL.field(INTELLIGENCE_DELIVERIES.SEVERITY.getName()))
+                  .fetch()
+                  .map(r -> new Object[]{r.get(0, String.class), r.get(1, Long.class)});
     }
 
     @Override
     public List<Object[]> countByDestinationFiltered(OffsetDateTime startDate, OffsetDateTime endDate) {
-        MapSqlParameterSource p = new MapSqlParameterSource()
-                .addValue("s", dtStart(startDate))
-                .addValue("e", dtEnd(endDate));
-        return jdbc.query(
-                "SELECT destination, count() AS cnt FROM intelligence_deliveries" + finalClause() +
-                " WHERE created_at >= parseDateTime64BestEffort(:s) " +
-                "AND created_at <= parseDateTime64BestEffort(:e) " +
-                "GROUP BY destination ORDER BY cnt DESC",
-                p, (rs, n) -> new Object[]{rs.getString(1), rs.getLong(2)});
+        return dsl.select(
+                    DSL.field(INTELLIGENCE_DELIVERIES.DESTINATION.getName()),
+                    DSL.field("count()", Long.class).as("cnt"))
+                  .from(DSL.table(DSL.sql(table())))
+                  .where(DSL.condition(
+                          INTELLIGENCE_DELIVERIES.CREATED_AT.getName() + " >= parseDateTime64BestEffort(?)",
+                          dtStart(startDate)))
+                  .and(DSL.condition(
+                          INTELLIGENCE_DELIVERIES.CREATED_AT.getName() + " <= parseDateTime64BestEffort(?)",
+                          dtEnd(endDate)))
+                  .groupBy(DSL.field(INTELLIGENCE_DELIVERIES.DESTINATION.getName()))
+                  .orderBy(DSL.field("cnt").desc())
+                  .fetch()
+                  .map(r -> new Object[]{r.get(0, String.class), r.get(1, Long.class)});
     }
 }
