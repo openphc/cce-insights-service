@@ -51,11 +51,8 @@ jobs:
         echo "version_tag=${VERSION_TAG}" >> "$GITHUB_OUTPUT"
         echo "Version tag for this build: ${VERSION_TAG}"
 
-    - name: Build with Gradle
-      run: ./gradlew build -x generateJooq
-
-    - name: Build container image
-      run: ./gradlew bootBuildImage --imageName=${IMAGE_URI}:${{ steps.version.outputs.version_tag }}
+    - name: Build and package container image
+      run: ./gradlew build bootBuildImage -x generateJooq --imageName=${IMAGE_URI}:${{ steps.version.outputs.version_tag }}
 
     - name: Tag image as latest
       run: docker tag ${IMAGE_URI}:${{ steps.version.outputs.version_tag }} ${IMAGE_URI}:latest
