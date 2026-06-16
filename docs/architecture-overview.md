@@ -33,7 +33,7 @@ graph TB
     end
 
     subgraph Shared Infrastructure
-        DB[("PostgreSQL 16<br/>(cce_collector)")]
+        DB[("ClickHouse<br/>(cce_analytics)")]
     end
 
     UI --> GATEWAY
@@ -92,163 +92,83 @@ graph TB
 | Language | Java | 21 (LTS) |
 | Framework | Spring Boot | 3.4.x |
 | Build tool | Gradle | 8.x |
-| Database | PostgreSQL | 16+ (shared with Compliance Service) |
-| DB access | Spring Data JPA + Hibernate | (Spring Boot managed) |
+| Database | ClickHouse | (deployed via deploy-scripts) |
+| DB access | jOOQ | 3.19.x (type-safe SQL, no ORM) |
+| DB driver | ClickHouse JDBC | 0.8.3 |
 | Observability | Micrometer + Prometheus | (Spring Boot managed) |
 | Logging | Logstash Logback Encoder | 7.4 |
-| Testing | JUnit 5, Testcontainers, MockMvc | |
+| Testing | JUnit 5, MockMvc (`@WebMvcTest`) | |
 
 ### Key Gradle Dependencies
 
 ```groovy
 // Spring Boot starters
 implementation 'org.springframework.boot:spring-boot-starter-web'
-implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+implementation 'org.springframework.boot:spring-boot-starter-jdbc'
+implementation 'org.springframework.boot:spring-boot-starter-jooq'
 implementation 'org.springframework.boot:spring-boot-starter-actuator'
-implementation 'org.springframework.boot:spring-boot-starter-validation'
+
+// ClickHouse JDBC driver
+implementation 'com.clickhouse:clickhouse-jdbc:0.8.3'
+runtimeOnly 'org.apache.httpcomponents.client5:httpclient5'
 
 // Caching
+implementation 'org.springframework.boot:spring-boot-starter-cache'
 implementation 'com.github.ben-manes.caffeine:caffeine'
-
-// Database
-runtimeOnly 'org.postgresql:postgresql'
 
 // Observability
 implementation 'io.micrometer:micrometer-registry-prometheus'
 implementation 'net.logstash.logback:logstash-logback-encoder:7.4'
 
-// Testing
-testImplementation 'org.springframework.boot:spring-boot-starter-test'
-testImplementation 'org.testcontainers:postgresql'
-testImplementation 'org.testcontainers:junit-jupiter'
+// jOOQ code generator (build-time only)
+jooqGenerator 'com.clickhouse:clickhouse-jdbc:0.8.3'
+jooqGenerator 'org.apache.httpcomponents.client5:httpclient5'
+jooqGenerator 'org.slf4j:slf4j-simple:2.0.13'
 ```
 
-**Not included:** Spring Kafka (no Kafka integration), Flyway (no owned tables), HAPI FHIR (no FHIR parsing), json-logic-java (no expression evaluation).
+**Not included:** Spring Data JPA, Hibernate, Flyway (ClickHouse schema is managed by deploy-scripts), Spring Kafka, Testcontainers (unit tests use `@WebMvcTest` mocks).
 
 ---
 
 ## 3. Package Structure
 
 ```
-src/main/java/org/openphc/cce/insights/
-├── InsightsServiceApplication.java            # @SpringBootApplication
-├── config/
-│   ├── CacheConfig.java                       # Caffeine cache configuration (3-tier: lookups/analytics/metrics)
-│   ├── JpaConfig.java                         # Read-only transaction defaults
-│   ├── MetricsConfig.java                     # Custom Micrometer metrics
-│   └── ObservabilityConfig.java               # Observability configuration
-├── domain/
-│   ├── entity/
-│   │   ├── ProtocolDefinition.java            # Read-only entity
-│   │   ├── ProtocolInstance.java              # Read-only entity
-│   │   ├── StepInstance.java                  # Read-only entity
-│   │   ├── Deviation.java                     # Read-only entity
-│   │   ├── EventLog.java                      # Read-only entity
-│   │   ├── InboundEvent.java                  # Read-only entity (Collector Service)
-│   │   ├── IntelligenceDelivery.java          # Read-only entity (Intelligence Service)
-│   │   ├── ReceiverAdaptor.java               # Read-only entity (Intelligence Service)
-│   │   └── DestinationAdaptorMapping.java     # Read-only entity (Intelligence Service)
-│   ├── enums/
-│   │   ├── ProtocolInstanceStatus.java        # ACTIVE, COMPLETED, WITHDRAWN, EXPIRED
-│   │   ├── StepState.java                     # PENDING, DUE, OVERDUE, MISSED, COMPLETED, SKIPPED, NOT_STARTED
-│   │   ├── CompletionStatus.java              # EARLY, ON_TIME, LATE
-│   │   ├── DeviationType.java                 # OVERDUE, MISSED
-│   │   └── ComplianceCategory.java            # COMPLIANT, MODERATE, NON_COMPLIANT
-│   └── repository/
-│       ├── ReadOnlyRepository.java            # Base repo (no save/delete)
-│       ├── ProtocolDefinitionRepository.java
-│       ├── ProtocolInstanceRepository.java
-│       ├── StepInstanceRepository.java
-│       ├── DeviationRepository.java
-│       ├── EventLogRepository.java
-│       ├── InboundEventRepository.java        # Ingestion pipeline queries
-│       ├── IntelligenceDeliveryRepository.java
-│       └── DestinationAdaptorMappingRepository.java
-├── health/
-│   └── DatabaseHealthIndicator.java           # Custom DB health check
-├── service/
-│   ├── ComplianceSummaryService.java          # Protocol & facility compliance aggregation
-│   ├── DashboardService.java                  # Dashboard overview and compliance summary KPIs
-│   ├── ProtocolAnalyticsService.java          # Step analytics, completion funnel, outcome distribution, enrollment trends, action order
-│   ├── PatientTimelineService.java            # Patient event timeline + tracking
-│   ├── PatientRiskService.java                # At-risk hotspots, repeat deviations
-│   ├── DeviationAnalyticsService.java         # Deviation trends, by-action, resolution rate, intelligence summary
-│   ├── FacilityRankingService.java            # Facility leaderboard
-│   ├── PractitionerRankingService.java        # Practitioner leaderboard
-│   ├── EventVolumeService.java                # Event volume by resourceType, facility, practitioner, source + source comparison
-│   ├── ProcessingQualityService.java          # Event processing quality (MATCHED/ZERO_MATCH/DUPLICATE)
-│   ├── IngestionAnalyticsService.java         # Ingestion funnel, rejections, source quality, pipeline loss
-│   ├── ExportService.java                     # CSV/JSON export generation
-│   └── DateUtil.java                          # Shared interval mapping, date extraction & type conversion utility
-├── web/
-│   ├── GlobalExceptionHandler.java            # @ControllerAdvice error handling (with logging)
-│   ├── controller/
-│   │   ├── ComplianceSummaryController.java
-│   │   ├── DashboardController.java           # Dashboard overview + compliance summary
-│   │   ├── ProtocolAnalyticsController.java
-│   │   ├── PatientController.java             # Timeline, tracking, events
-│   │   ├── PatientRiskController.java
-│   │   ├── DeviationController.java
-│   │   ├── FacilityRankingController.java
-│   │   ├── PractitionerRankingController.java
-│   │   ├── EventVolumeController.java         # Volume + source comparison
-│   │   ├── ProcessingQualityController.java
-│   │   ├── IngestionAnalyticsController.java  # Ingestion pipeline analytics
-│   │   ├── IntelligenceAnalyticsController.java # Intelligence delivery summary
-│   │   ├── LookupController.java              # Dropdown filter data (protocols, facilities, practitioners, sources, patients)
-│   │   └── ExportController.java
-│   └── dto/
-│       ├── ApiResponse.java                   # Standard response envelope
-│       ├── ComplianceSummaryDto.java
-│       ├── FacilitySummaryDto.java
-│       ├── PatientComplianceDto.java
-│       ├── PatientTimelineDto.java
-│       ├── StepAnalyticsDto.java
-│       ├── CompletionFunnelDto.java
-│       ├── OutcomeDistributionDto.java
-│       ├── EnrollmentTrendDto.java
-│       ├── ActionOrderEntryDto.java
-│       ├── FacilityRankingDto.java
-│       ├── PractitionerRankingDto.java
-│       ├── DashboardOverviewDto.java
-│       ├── DashboardComplianceSummaryDto.java
-│       ├── DeviationDto.java
-│       ├── DeviationTrendDto.java
-│       ├── DeviationByActionDto.java
-│       ├── DeviationResolutionDto.java
-│       ├── DeviationIntelligenceSummaryDto.java
-│       ├── IntelligenceSummaryDto.java
-│       ├── EventVolumeSummaryDto.java
-│       ├── ResourceTypeCountDto.java
-│       ├── FacilityEventCountDto.java
-│       ├── PractitionerEventCountDto.java
-│       ├── SourceSystemCountDto.java
-│       ├── SourceComparisonDto.java
-│       ├── EventVolumeTrendDto.java
-│       ├── ProcessingQualityDto.java
-│       ├── AtRiskHotspotDto.java
-│       ├── RepeatDeviationPatientDto.java
-│       ├── IngestionFunnelDto.java
-│       ├── RejectionAnalyticsDto.java
-│       ├── SourceDataQualityDto.java
-│       ├── PipelineLossDto.java
-│       └── PaginationDto.java
+src/
+├── generated/jooq/org/openphc/cce/insights/jooq/   # Auto-generated — do not edit manually
+│   ├── Tables.java          # Static field: Tables.STEP_INSTANCES, Tables.DEVIATIONS, etc.
+│   ├── Keys.java            # Primary key definitions
+│   ├── CceAnalytics.java    # Schema descriptor
+│   └── tables/              # One class per table/materialized view (67 total)
+│
+└── main/java/org/openphc/cce/insights/
+    ├── InsightsServiceApplication.java
+    ├── config/
+    │   ├── CacheConfig.java             # Caffeine 3-tier cache (lookups/analytics/metrics)
+    │   ├── JooqConfig.java              # DSLContext with ClickHouse render settings
+    │   ├── MetricsConfig.java
+    │   └── ObservabilityConfig.java
+    ├── domain/repository/               # jOOQ-based repositories (no JPA entities)
+    │   ├── ProtocolDefinitionRepositoryImpl.java
+    │   ├── ProtocolInstanceRepositoryImpl.java
+    │   ├── StepInstanceRepositoryImpl.java
+    │   ├── DeviationRepositoryImpl.java
+    │   ├── ComplianceEventLogRepositoryImpl.java
+    │   ├── InboundEventLogRepositoryImpl.java
+    │   ├── IntelligenceDeliveryRepositoryImpl.java
+    │   ├── ReceiverAdaptorRepositoryImpl.java
+    │   └── DestinationAdaptorMappingRepositoryImpl.java
+    ├── health/
+    │   └── DatabaseHealthIndicator.java
+    ├── service/                         # Business logic / aggregation
+    └── web/                             # Controllers + DTOs
 
 src/main/resources/
 ├── application.yml
-├── application-local.yml
-├── application-docker.yml
-├── application-test.yml
 └── logback-spring.xml
 
-src/test/java/org/openphc/cce/insights/           # Unit tests
-src/integrationTest/java/org/openphc/cce/insights/ # Integration tests (Testcontainers)
-src/integrationTest/resources/
-├── init-schema.sql                                # DDL for all 6 tables
-└── seed-data.sql                                  # Sample data
+src/test/                                # @WebMvcTest unit tests (no DB needed)
+src/integrationTest/                     # Integration tests
 ```
-
-**Total:** ~85 source files across 12 packages.
 
 ---
 
@@ -256,21 +176,36 @@ src/integrationTest/resources/
 
 ### 4.1 Read-Only Design
 
-All database access uses `@Transactional(readOnly = true)`. The Insights Service never performs `INSERT`, `UPDATE`, or `DELETE` operations. JPA entities can use `@Immutable` to enforce this at the Hibernate level.
+All queries are read-only. The Insights Service never performs `INSERT`, `UPDATE`, or `DELETE`. ClickHouse is an append-only analytics engine — mutations are rare and handled exclusively by the data pipeline, never by this service.
+
+jOOQ generates type-safe Java field references from the live ClickHouse schema. The generated classes live in `src/generated/jooq/` and are committed to the repo. Repositories use `DSLContext` directly — no ORM, no entity manager, no `@Transactional`.
+
+```java
+// Example: type-safe field reference instead of raw string
+dsl.select(DSL.field(STEP_INSTANCES.STATE.getName()))
+   .from(DSL.table(DSL.sql("step_instances")))
+   .where(DSL.field(STEP_INSTANCES.PATIENT_ID.getName()).eq(patientId))
+   .fetch();
+```
 
 ### 4.2 Tables Queried
 
-| Table | Owner | Queries Used For |
+| Table | Type | Queries Used For |
 |---|---|---|
-| `protocol_definition` | Compliance Service | Protocol metadata (name, version, canonical URL), action order extraction from JSONB |
-| `protocol_instance` | Compliance Service | Patient enrollments, compliance rates, filtering by status/facility |
-| `step_instance` | Compliance Service | Step states, timing, completion status, aggregation |
-| `deviation` | Compliance Service | Deviation records, trends, counts by type, facility deviation counts |
-| `event_log` | Compliance Service | Patient event history, timeline visualization, event volume analytics |
-| `inbound_event` | Collector Service | Ingestion funnel, rejection analytics, source quality, pipeline loss, source comparison, source event counts |
-| `intelligence_delivery` | Intelligence Service | Intelligence delivery tracking, action type statistics, delivery status |
-| `receiver_adaptor` | Intelligence Service | Adaptor registry lookups |
-| `destination_adaptor_mapping` | Intelligence Service | Destination routing configuration |
+| `protocol_definitions` | ReplacingMergeTree | Protocol metadata (name, version, URL) |
+| `protocol_instances` | ReplacingMergeTree | Patient enrollments, compliance rates, filtering |
+| `step_instances` | ReplacingMergeTree | Step states, timing, completion, facility joins via `mv_patient_facility_latest` |
+| `deviations` | ReplacingMergeTree | Deviation records, trends, counts by type |
+| `compliance_event_logs` | MergeTree | Patient event history, timeline, event volume analytics |
+| `inbound_event_logs` | MergeTree | Ingestion funnel, rejection analytics, source quality, pipeline loss |
+| `intelligence_deliveries` | ReplacingMergeTree | Intelligence delivery tracking, action type stats, delivery status |
+| `receiver_adaptor` | ReplacingMergeTree | Adaptor registry lookups |
+| `destination_adaptor_mapping` | ReplacingMergeTree | Destination routing configuration |
+| `mv_patient_facility_latest` | AggregatingMV | Latest facility per patient (used in step_instances joins) |
+| `mv_practitioner_summary` | AggregatingMV | Pre-aggregated practitioner analytics |
+| `mv_facility_summary` | AggregatingMV | Pre-aggregated facility summaries |
+
+> **FINAL clause:** ClickHouse `ReplacingMergeTree` tables may have duplicate rows until background merges complete. The `FINAL` modifier forces deduplication at query time. It is disabled by default (`CLICKHOUSE_USE_FINAL=false`) for performance and can be enabled per environment.
 
 ### 4.3 Key Query Patterns
 

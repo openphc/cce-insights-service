@@ -6,118 +6,56 @@
 |---|---|---|---|
 | **Java JDK** | 21 LTS | Yes | Build and runtime |
 | **Gradle** | 8.x | Yes | Build tool (via wrapper) |
-| **Docker** | 24+ | Recommended | Run PostgreSQL locally |
-| **Docker Compose** | 2.x | Recommended | Orchestrate infrastructure |
-| **PostgreSQL** | 16+ | Yes | Shared database (with Compliance Service) |
+| **Docker** | 24+ | Yes | Run ClickHouse locally |
+| **Docker Compose** | 2.x | Yes | Orchestrate infrastructure |
 | **Git** | 2.x | Yes | Version control |
 
-> **Note:** No Kafka is required — the Insights Service does not consume from or produce to Kafka.
+> **No Kafka, no PostgreSQL, no JPA.** The Insights Service connects to ClickHouse only and uses jOOQ for type-safe SQL. There is no ORM, no schema migration tool, and no Kafka integration.
+
+---
 
 ## 2. Quick Start
 
 ### 2.1 Clone & Build
 
 ```bash
-# Clone the repository
 git clone <repository-url>
 cd cce-insights-service
 
-# Build (skip tests for fast iteration)
-./gradlew build -x test
+# Build executable JAR (skips JOOQ generation — pre-generated sources are committed)
+./gradlew bootJar -x generateJooq
 
-# Build with tests
-./gradlew build
+# Run unit tests
+./gradlew test
 ```
 
 ### 2.2 Start Infrastructure
 
-PostgreSQL and the shared database (`cce_collector`) are deployed by the **CCE Collector Service**. All CCE services share the same database.
+ClickHouse is deployed via the **deploy-scripts** repository. The `cce-clickhouse` container is part of the shared `deploy-scripts_cce-net` Docker network.
 
 ```bash
-# Start shared infrastructure (PostgreSQL on port 5433 + Kafka on port 9092)
-cd /path/to/cce-collector-service
-docker compose up -d
+# In the deploy-scripts repo
+cd /path/to/deploy-scripts
+docker compose up -d cce-clickhouse
 
-# Verify shared services are running
-docker compose ps
+# Verify
+curl http://localhost:8123/ping   # should respond: Ok.
 ```
 
-> **Note:** The Insights Service only needs PostgreSQL (no Kafka), but using the Collector Service's Docker Compose is the standard way to start shared infrastructure.
-
-### 2.3 Shared Database Requirement
-
-The Insights Service connects to the **same PostgreSQL database** (`cce_collector`) as all other CCE services. The database and infrastructure are deployed by the **CCE Collector Service**. All tables must exist before the Insights Service can function. The Insights Service does **not run Flyway migrations** — it has no owned tables.
-
-> **Event Volume Queries:** The event volume analytics feature relies on JSONB path queries against `event_log.data` (e.g., `data->>'resourceType'` for resource type grouping, `data->'participant'->0->'individual'->>'reference'` for practitioner extraction). Ensure the `event_log` table is populated with realistic event data (including FHIR resources with practitioner references) to test these endpoints. See `data-dictionary.md` §3.3 for the full list of JSONB extraction paths.
-
-> **Ingestion Analytics:** The ingestion analytics endpoints query the `inbound_event` table (owned by the Collector Service). This table must be populated with event intake records to test the ingestion funnel, rejection analytics, source quality, and pipeline loss endpoints.
-
-**Development options:**
-1. **Run Compliance Service first** — its Flyway migrations create all tables
-2. **Use init script** — apply the Compliance Service schema manually
-3. **Seed test data** — use the provided seed script to populate sample data for dashboard development
-
-### 2.4 Run the Application
+### 2.3 Run the Application
 
 ```bash
-# Run with defaults (connects to localhost:5433)
+# Run with defaults (connects to localhost:8123)
 ./gradlew bootRun
 
+# Or run the JAR directly
+java -jar build/libs/cce-insights-service-1.0.0-SNAPSHOT.jar
+
 # Verify health
-curl localhost:8084/actuator/health
-
-# Test an endpoint
-curl localhost:8084/v1/insights/deviations?limit=5
-
-# Test protocol analytics
-curl localhost:8084/v1/insights/protocols/{protocolDefinitionId}/step-analytics
-curl localhost:8084/v1/insights/protocols/{protocolDefinitionId}/completion-funnel
-curl localhost:8084/v1/insights/protocols/{protocolDefinitionId}/outcome-distribution
-curl localhost:8084/v1/insights/protocols/{protocolDefinitionId}/enrollment-trends?interval=weekly
-
-# Test facility ranking and deviation analytics
-curl localhost:8084/v1/insights/facilities/ranking?rankBy=complianceRate&order=desc
-curl localhost:8084/v1/insights/deviations/by-action?limit=10
-curl localhost:8084/v1/insights/deviations/resolution-rate
-
-# Test event processing quality and patient risk
-curl localhost:8084/v1/insights/events/processing-quality
-curl localhost:8084/v1/insights/patients/at-risk-hotspots
-curl localhost:8084/v1/insights/patients/repeat-deviations?minDeviations=3
-
-# Test patient events and deviations
-curl localhost:8084/v1/insights/patients/{patientId}/events?limit=10
-curl localhost:8084/v1/insights/patients/{patientId}/deviations
-
-# Test source comparison
-curl "localhost:8084/v1/insights/events/source-comparison?sourceA=ehr-system-a&sourceB=ehr-system-b&windowSeconds=300"
-
-# Test ingestion analytics
-curl localhost:8084/v1/insights/ingestion/funnel
-curl localhost:8084/v1/insights/ingestion/rejections
-curl localhost:8084/v1/insights/ingestion/source-quality
-curl localhost:8084/v1/insights/ingestion/pipeline-loss
-
-# Test lookup/filter endpoints
-curl localhost:8084/v1/insights/lookups/protocols
-curl localhost:8084/v1/insights/lookups/facilities
-curl localhost:8084/v1/insights/lookups/practitioners
-curl localhost:8084/v1/insights/lookups/sources
-curl localhost:8084/v1/insights/lookups/patients
-
-# Test dashboard endpoints
-curl localhost:8084/v1/insights/dashboard/overview
-curl localhost:8084/v1/insights/dashboard/compliance-summary
-
-# Test practitioner ranking
-curl "localhost:8084/v1/insights/practitioners/ranking?rankBy=complianceRate&order=desc"
-
-# Test protocol action order (intelligence actions)
-curl localhost:8084/v1/insights/protocols/{protocolDefinitionId}/action-order
-
-# Test intelligence summary
-curl localhost:8084/v1/insights/deviations/intelligence-summary
+curl http://localhost:8084/actuator/health
 ```
+
+---
 
 ## 3. Configuration Reference
 
@@ -130,36 +68,24 @@ server:
 spring:
   application:
     name: cce-insights-service
+  jooq:
+    sql-dialect: DEFAULT
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5433}/${DB_NAME:cce_collector}
-    username: ${DB_USERNAME:cce_user}
-    password: ${DB_PASSWORD:cce_pass}
+    url: jdbc:clickhouse://${DB_HOST:localhost}:${DB_PORT:8123}/${DB_NAME:cce_analytics}
+    username: ${DB_USERNAME:cce_pipeline}
+    password: ${DB_PASSWORD:cce_analytics_dev}
+    driver-class-name: com.clickhouse.jdbc.ClickHouseDriver
     hikari:
       maximum-pool-size: ${DB_POOL_SIZE:10}
-      read-only: true
-  jpa:
-    hibernate:
-      ddl-auto: validate
-    open-in-view: false
-    properties:
-      hibernate:
-        jdbc:
-          time_zone: UTC
-        default_read_only: true
 
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info,prometheus,metrics
-  endpoint:
-    health:
-      show-details: always
-      probes:
-        enabled: true
-  metrics:
-    tags:
-      application: cce-insights-service
+cce:
+  clickhouse:
+    use-final: ${CLICKHOUSE_USE_FINAL:false}   # append FINAL to ReplacingMergeTree queries
+  cache:
+    ttl:
+      lookups: ${CACHE_TTL_LOOKUPS:60}
+      analytics: ${CACHE_TTL_ANALYTICS:30}
+      metrics: ${CACHE_TTL_METRICS:15}
 ```
 
 ### 3.2 Environment Variables
@@ -167,15 +93,18 @@ management:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SERVER_PORT` | `8084` | HTTP port |
-| `DB_HOST` | `localhost` | PostgreSQL host |
-| `DB_PORT` | `5433` | PostgreSQL port (shared with Collector Service) |
-| `DB_NAME` | `cce_collector` | Shared database name (all CCE services) |
-| `DB_USERNAME` | `cce_user` | Database username (shared with Collector Service) |
-| `DB_PASSWORD` | `cce_pass` | Database password (shared with Collector Service) |
+| `DB_HOST` | `localhost` | ClickHouse host |
+| `DB_PORT` | `8123` | ClickHouse HTTP port |
+| `DB_NAME` | `cce_analytics` | ClickHouse database |
+| `DB_USERNAME` | `cce_pipeline` | ClickHouse username |
+| `DB_PASSWORD` | `cce_analytics_dev` | ClickHouse password |
 | `DB_POOL_SIZE` | `10` | HikariCP max pool size |
-| `CACHE_TTL_LOOKUPS` | `60` | Lookup cache TTL in minutes |
-| `CACHE_TTL_ANALYTICS` | `30` | Analytics cache TTL in minutes |
-| `CACHE_TTL_METRICS` | `15` | Metrics cache TTL in minutes |
+| `CLICKHOUSE_USE_FINAL` | `false` | Append FINAL clause to ReplacingMergeTree queries |
+| `CACHE_TTL_LOOKUPS` | `60` | Lookup cache TTL (minutes) |
+| `CACHE_TTL_ANALYTICS` | `30` | Analytics cache TTL (minutes) |
+| `CACHE_TTL_METRICS` | `15` | Metrics cache TTL (minutes) |
+
+---
 
 ## 4. Project Structure
 
@@ -187,113 +116,144 @@ cce-insights-service/
 ├── gradle/wrapper/
 ├── Dockerfile
 ├── docker-compose.yml
-├── .dockerignore
-├── .env.example
-├── .gitignore
-├── README.md
-├── RELEASE_NOTES.md
 ├── docs/
 │   ├── architecture-overview.md
 │   ├── api-reference.md
 │   ├── data-dictionary.md
-│   ├── developer-setup.md
+│   ├── developer-setup.md        ← this file
 │   ├── deployment-guide.md
 │   └── flow-diagrams.md
-├── artifacts/
-│   └── subtasks.md
 └── src/
+    ├── generated/
+    │   └── jooq/                  # Auto-generated jOOQ table/field classes (committed)
+    │       └── org/openphc/cce/insights/jooq/
+    │           ├── Tables.java    # Static imports: Tables.STEP_INSTANCES etc.
+    │           ├── Keys.java
+    │           ├── CceAnalytics.java
+    │           └── tables/        # One class per table/view
     ├── main/
     │   ├── java/org/openphc/cce/insights/
     │   │   ├── InsightsServiceApplication.java
-    │   │   ├── config/          # CacheConfig, JpaConfig, MetricsConfig, ObservabilityConfig
-    │   │   ├── domain/entity/   # 9 @Immutable entities
-    │   │   ├── domain/enums/    # 5 enums
-    │   │   ├── domain/repository/ # 9 repos (ReadOnlyRepository + 8)
-    │   │   ├── health/          # DatabaseHealthIndicator
-    │   │   ├── service/         # 12 services + DateUtil utility
-    │   │   └── web/controller/ + web/dto/  # 14 controllers, ~35 DTOs
+    │   │   ├── config/
+    │   │   │   ├── CacheConfig.java
+    │   │   │   ├── JooqConfig.java         # DSLContext, render settings for ClickHouse
+    │   │   │   ├── MetricsConfig.java
+    │   │   │   └── ObservabilityConfig.java
+    │   │   ├── domain/repository/          # jOOQ-based repositories
+    │   │   ├── health/
+    │   │   │   └── DatabaseHealthIndicator.java
+    │   │   ├── service/
+    │   │   └── web/
     │   └── resources/
     │       ├── application.yml
-    │       ├── application-local.yml
-    │       ├── application-docker.yml
-    │       ├── application-test.yml
     │       └── logback-spring.xml
-    ├── test/java/                    # Unit tests
-    └── integrationTest/
-        ├── java/                    # Integration tests (Testcontainers)
-        └── resources/
-            ├── init-schema.sql      # DDL for all 6 tables
-            └── seed-data.sql        # Sample data
+    ├── test/                      # @WebMvcTest unit tests (no ClickHouse needed)
+    └── integrationTest/           # Integration tests
 ```
 
-## 5. Testing
+---
 
-### 5.1 Commands
+## 5. jOOQ Code Generation
+
+jOOQ generates type-safe Java classes from the live ClickHouse schema. The generated sources are **committed** to `src/generated/jooq/` so the Docker build does not need a database connection.
+
+Re-run `generateJooq` only when the ClickHouse schema changes (new tables, column renames, etc.).
+
+### 5.1 Generate from Local ClickHouse
 
 ```bash
-# Unit tests
+# Requires cce-clickhouse running on localhost:8123
+./gradlew generateJooq
+```
+
+### 5.2 Generate from Remote ClickHouse (dev/uat/prod)
+
+ClickHouse is not publicly exposed — access requires an SSH tunnel.
+
+```bash
+# 1. Open SSH tunnel (forward remote port 8123 to local 18123)
+ssh -i ~/.ssh/id_ed25519 -L 18123:localhost:8123 ubuntu@<server-ip> -N -f
+
+# 2. Generate against the remote schema
+./gradlew generateJooq -PjooqUrl=jdbc:clickhouse://localhost:18123/cce_analytics
+
+# 3. Close the tunnel
+pkill -f "ssh.*18123"
+```
+
+> The remote ClickHouse credentials (`cce_pipeline` / `cce_analytics_dev`) are the same as local defaults, so no extra flags are needed unless credentials differ.
+
+### 5.3 JooqConfig Settings
+
+`JooqConfig` configures the DSLContext for ClickHouse compatibility:
+
+| Setting | Value | Reason |
+|---|---|---|
+| `withRenderSchema(false)` | false | ClickHouse has no schema prefix |
+| `withRenderQuotedNames` | `NEVER` | ClickHouse doesn't use quoted identifiers |
+| `withRenderNameCase` | `LOWER` | Normalize to lowercase column names |
+
+---
+
+## 6. Testing
+
+### 6.1 Commands
+
+```bash
+# Unit tests (no ClickHouse required — all mocked)
 ./gradlew test
 
 # Integration tests
 ./gradlew integrationTest
 
 # All tests
-./gradlew build
-
-# Specific test
-./gradlew test --tests ComplianceSummaryServiceTest
+./gradlew test integrationTest
 
 # Coverage report
 ./gradlew test jacocoTestReport
 ```
 
-### 5.2 Test Strategy
+### 6.2 Test Strategy
 
-- **Unit tests:** Mock repositories, test service layer aggregation logic
-- **API tests:** `@WebMvcTest` with MockMvc — test controllers, request validation, response serialization
-- **Integration tests:** Testcontainers PostgreSQL with seeded compliance data — test end-to-end query execution
+- **Unit tests:** `@WebMvcTest` with mocked repositories — test controllers, request validation, response serialization. No ClickHouse needed.
+- **Integration tests:** Test end-to-end query execution against a real database.
 
-### 5.3 Test Data Seeding
+> Tests are skipped in the Docker build (`bootJar -x generateJooq`) since they require a ClickHouse connection for integration tests. Unit tests pass without any infrastructure.
 
-Integration tests use SQL scripts to seed the Compliance Service schema and sample data:
+---
 
-```sql
--- init-schema.sql: Create Compliance Service tables
--- seed-data.sql: Insert sample protocols, instances, steps, deviations
-```
+## 7. Docker Build
 
-## 6. Docker Build
-
-The project includes a multi-stage Dockerfile and docker-compose.yml for containerized development.
-
-### 6.1 Docker Compose (Recommended)
+### 7.1 Docker Compose (Recommended)
 
 ```bash
-# Copy and configure environment
-cp .env.example .env
+# Requires deploy-scripts_cce-net network to exist
+docker compose up --build -d
 
-# Start PostgreSQL + Insights Service
-docker compose up -d
-
-# Verify
-curl localhost:8084/actuator/health
+# Verify (service runs on port 8088 in Docker)
+curl http://localhost:8088/actuator/health
 ```
 
-### 6.2 Standalone Docker Build
+> The Docker Compose file maps `SERVER_PORT=8088` and exposes port `8088`. The bare `bootRun`/JAR uses `8084` (default).
+
+### 7.2 Standalone Docker Build
 
 ```bash
-# Build Docker image
 docker build -t cce-insights-service .
 
-# Run with Docker
-docker run -p 8084:8084 \
-  -e SPRING_PROFILES_ACTIVE=docker \
+docker run -p 8088:8088 \
+  -e SERVER_PORT=8088 \
   -e DB_HOST=host.docker.internal \
-  -e DB_PORT=5432 \
-  -e DB_NAME=cce_collector \
-  -e DB_USERNAME=cce_user \
-  -e DB_PASSWORD=cce_pass \
+  -e DB_PORT=8123 \
+  -e DB_NAME=cce_analytics \
+  -e DB_USERNAME=cce_pipeline \
+  -e DB_PASSWORD=cce_analytics_dev \
   cce-insights-service
 ```
 
-> See [deployment-guide.md](deployment-guide.md) for production deployment options including Kubernetes manifests.
+### 7.3 How the Dockerfile Works
+
+The Dockerfile uses a **two-stage build**:
+
+1. **Build stage** (`eclipse-temurin:21-jdk-alpine`) — caches Gradle dependencies, then runs `bootJar -x generateJooq` (skips JOOQ generation since no ClickHouse is available at build time; the pre-generated sources in `src/generated/jooq/` are copied from the repo).
+2. **Runtime stage** (`eclipse-temurin:21-jre-alpine`) — copies only the fat JAR, runs as a non-root user.
