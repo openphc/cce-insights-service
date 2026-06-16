@@ -52,8 +52,7 @@ jobs:
         echo "Version tag for this build: ${VERSION_TAG}"
 
     - name: Build with Gradle
-
-      run: ./gradlew build
+      run: ./gradlew build -x generateJooq
 
     - name: Build container image
       run: ./gradlew bootBuildImage --imageName=${IMAGE_URI}:${{ steps.version.outputs.version_tag }}
