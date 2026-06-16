@@ -55,7 +55,7 @@ jobs:
       run: ./gradlew build -x generateJooq
 
     - name: Build container image
-      run: ./gradlew bootBuildImage --imageName=${IMAGE_URI}:${{ steps.version.outputs.version_tag }}
+      run: ./gradlew bootBuildImage -x generateJooq --imageName=${IMAGE_URI}:${{ steps.version.outputs.version_tag }}
 
     - name: Tag image as latest
       run: docker tag ${IMAGE_URI}:${{ steps.version.outputs.version_tag }} ${IMAGE_URI}:latest
