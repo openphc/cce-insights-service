@@ -77,6 +77,44 @@ public class DeviationRepositoryImpl
     }
 
     @Override
+    public List<Object[]> countDeviationsByProtocolInstanceIdIn(List<UUID> ids) {
+        if (ids == null || ids.isEmpty()) return List.of();
+        List<String> idStrings = ids.stream().map(UUID::toString).collect(java.util.stream.Collectors.toList());
+        var d = finalAs(DEVIATIONS, "d");
+        return dsl.select(
+                    DSL.field("d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName()),
+                    DSL.field("count()", Long.class).as("cnt")
+                )
+                .from(d)
+                .where(DSL.field("d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName()).in(idStrings))
+                .groupBy(DSL.field("d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName()))
+                .fetch()
+                .map(r -> new Object[]{r.get(0, UUID.class), r.get(1, Long.class)});
+    }
+
+    @Override
+    public List<Object[]> findDeviationCountsByFacilityGroupedByProtocol(String facilityId) {
+        var d  = finalAs(DEVIATIONS, "d");
+        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        var pf = DSL.table("mv_patient_facility_latest").as("pf");
+        String zeroUuid = "toUUID('00000000-0000-0000-0000-000000000000')";
+
+        return dsl.select(
+                    DSL.field("pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName()),
+                    DSL.field("countIf(d.id != " + zeroUuid + ")", Long.class).as("deviation_count")
+                )
+                .from(pi)
+                .join(pf).on(DSL.condition(
+                        "pf.patient_id = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
+                .leftJoin(d).on(DSL.condition(
+                        "d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                .where(DSL.field("pf.facility_id").eq(facilityId))
+                .groupBy(DSL.field("pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName()))
+                .fetch()
+                .map(r -> new Object[]{r.get(0, String.class), r.get(1, Long.class)});
+    }
+
+    @Override
     public Page<Deviation> findByDeviationType(DeviationType type, Pageable pageable) {
         var d = finalAs(DEVIATIONS, "d");
         var condition = DSL.field("d." + DEVIATIONS.DEVIATION_TYPE.getName()).eq(type.name());
@@ -376,5 +414,147 @@ public class DeviationRepositoryImpl
                             "d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
                     .fetchOne(0, Long.class);
         return r != null ? r : 0L;
+    }
+
+    @Override
+    public Object[] aggregateDeviationMetrics(UUID protocolDefinitionId) {
+        var d  = finalAs(DEVIATIONS, "d");
+        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        String devType  = "d." + DEVIATIONS.DEVIATION_TYPE.getName();
+        String zeroUuid = "toUUID('00000000-0000-0000-0000-000000000000')";
+
+        Table<?> perInstance = dsl.select(
+                    DSL.field("pi.id"),
+                    DSL.field("countIf(" + devType + " = 'OVERDUE')",         Long.class).as("overdue_devs"),
+                    DSL.field("countIf(" + devType + " = 'MISSED')",          Long.class).as("missed_devs"),
+                    DSL.field("countIf(" + devType + " = 'ORDER_VIOLATION')", Long.class).as("order_devs"),
+                    DSL.field("countIf(d.id != " + zeroUuid + ")",            Long.class).as("total_devs")
+                )
+                .from(pi)
+                .leftJoin(d).on(DSL.condition(
+                        "d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                .where(DSL.condition(
+                        "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
+                        protocolDefinitionId.toString()))
+                .groupBy(DSL.field("pi.id"))
+                .asTable("t");
+
+        org.jooq.Record r = dsl.select(
+                    DSL.field("countIf(t.total_devs = 0)", Long.class).as("compliant_patients"),
+                    DSL.field("sum(t.total_devs)",          Long.class).as("total_deviations"),
+                    DSL.field("sum(t.overdue_devs)",        Long.class).as("overdue_deviations"),
+                    DSL.field("sum(t.missed_devs)",         Long.class).as("missed_deviations"),
+                    DSL.field("sum(t.order_devs)",          Long.class).as("order_violation_deviations")
+                )
+                .from(perInstance)
+                .fetchOne();
+        return r != null ? r.intoArray() : new Object[]{0L, 0L, 0L, 0L, 0L};
+    }
+
+    @Override
+    public Object[] aggregateDeviationMetricsByFacility(String facilityId) {
+        var d  = finalAs(DEVIATIONS, "d");
+        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        var pf = DSL.table("mv_patient_facility_latest").as("pf");
+        String devType  = "d." + DEVIATIONS.DEVIATION_TYPE.getName();
+        String zeroUuid = "toUUID('00000000-0000-0000-0000-000000000000')";
+
+        Table<?> perInstance = dsl.select(
+                    DSL.field("pi.id"),
+                    DSL.field("countIf(" + devType + " = 'OVERDUE')",         Long.class).as("overdue_devs"),
+                    DSL.field("countIf(" + devType + " = 'MISSED')",          Long.class).as("missed_devs"),
+                    DSL.field("countIf(" + devType + " = 'ORDER_VIOLATION')", Long.class).as("order_devs"),
+                    DSL.field("countIf(d.id != " + zeroUuid + ")",            Long.class).as("total_devs")
+                )
+                .from(pi)
+                .join(pf).on(DSL.condition(
+                        "pf.patient_id = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
+                .leftJoin(d).on(DSL.condition(
+                        "d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                .where(DSL.field("pf.facility_id").eq(facilityId))
+                .groupBy(DSL.field("pi.id"))
+                .asTable("t");
+
+        org.jooq.Record r = dsl.select(
+                    DSL.field("countIf(t.total_devs = 0)", Long.class).as("compliant_patients"),
+                    DSL.field("sum(t.total_devs)",          Long.class).as("total_deviations"),
+                    DSL.field("sum(t.overdue_devs)",        Long.class).as("overdue_deviations"),
+                    DSL.field("sum(t.missed_devs)",         Long.class).as("missed_deviations"),
+                    DSL.field("sum(t.order_devs)",          Long.class).as("order_violation_deviations")
+                )
+                .from(perInstance)
+                .fetchOne();
+        return r != null ? r.intoArray() : new Object[]{0L, 0L, 0L, 0L, 0L};
+    }
+
+    @Override
+    public Object[] aggregateDeviationMetricsByProtocolAndFacility(UUID protocolDefinitionId, String facilityId) {
+        var d  = finalAs(DEVIATIONS, "d");
+        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        var pf = DSL.table("mv_patient_facility_latest").as("pf");
+        String devType  = "d." + DEVIATIONS.DEVIATION_TYPE.getName();
+        String zeroUuid = "toUUID('00000000-0000-0000-0000-000000000000')";
+
+        Table<?> perInstance = dsl.select(
+                    DSL.field("pi.id"),
+                    DSL.field("countIf(" + devType + " = 'OVERDUE')",         Long.class).as("overdue_devs"),
+                    DSL.field("countIf(" + devType + " = 'MISSED')",          Long.class).as("missed_devs"),
+                    DSL.field("countIf(" + devType + " = 'ORDER_VIOLATION')", Long.class).as("order_devs"),
+                    DSL.field("countIf(d.id != " + zeroUuid + ")",            Long.class).as("total_devs")
+                )
+                .from(pi)
+                .join(pf).on(DSL.condition(
+                        "pf.patient_id = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
+                .leftJoin(d).on(DSL.condition(
+                        "d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                .where(DSL.condition(
+                        "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
+                        protocolDefinitionId.toString()))
+                .and(DSL.field("pf.facility_id").eq(facilityId))
+                .groupBy(DSL.field("pi.id"))
+                .asTable("t");
+
+        org.jooq.Record r = dsl.select(
+                    DSL.field("countIf(t.total_devs = 0)", Long.class).as("compliant_patients"),
+                    DSL.field("sum(t.total_devs)",          Long.class).as("total_deviations"),
+                    DSL.field("sum(t.overdue_devs)",        Long.class).as("overdue_deviations"),
+                    DSL.field("sum(t.missed_devs)",         Long.class).as("missed_deviations"),
+                    DSL.field("sum(t.order_devs)",          Long.class).as("order_violation_deviations")
+                )
+                .from(perInstance)
+                .fetchOne();
+        return r != null ? r.intoArray() : new Object[]{0L, 0L, 0L, 0L, 0L};
+    }
+
+    @Override
+    public Object[] aggregateDeviationMetricsAll() {
+        var d  = finalAs(DEVIATIONS, "d");
+        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        String devType  = "d." + DEVIATIONS.DEVIATION_TYPE.getName();
+        String zeroUuid = "toUUID('00000000-0000-0000-0000-000000000000')";
+
+        Table<?> perInstance = dsl.select(
+                    DSL.field("pi.id"),
+                    DSL.field("countIf(" + devType + " = 'OVERDUE')",         Long.class).as("overdue_devs"),
+                    DSL.field("countIf(" + devType + " = 'MISSED')",          Long.class).as("missed_devs"),
+                    DSL.field("countIf(" + devType + " = 'ORDER_VIOLATION')", Long.class).as("order_devs"),
+                    DSL.field("countIf(d.id != " + zeroUuid + ")",            Long.class).as("total_devs")
+                )
+                .from(pi)
+                .leftJoin(d).on(DSL.condition(
+                        "d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                .groupBy(DSL.field("pi.id"))
+                .asTable("t");
+
+        org.jooq.Record r = dsl.select(
+                    DSL.field("countIf(t.total_devs = 0)", Long.class).as("compliant_patients"),
+                    DSL.field("sum(t.total_devs)",          Long.class).as("total_deviations"),
+                    DSL.field("sum(t.overdue_devs)",        Long.class).as("overdue_deviations"),
+                    DSL.field("sum(t.missed_devs)",         Long.class).as("missed_deviations"),
+                    DSL.field("sum(t.order_devs)",          Long.class).as("order_violation_deviations")
+                )
+                .from(perInstance)
+                .fetchOne();
+        return r != null ? r.intoArray() : new Object[]{0L, 0L, 0L, 0L, 0L};
     }
 }

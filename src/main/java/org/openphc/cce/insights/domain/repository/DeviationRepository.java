@@ -35,4 +35,19 @@ public interface DeviationRepository extends ReadOnlyRepository<Deviation, UUID>
     List<Object[]> countDeviationsByFacility();
 
     long countDistinctPatientsWithDeviations();
+
+    // Batch count — returns [protocolInstanceId, count] per instance; replaces per-instance calls
+    List<Object[]> countDeviationsByProtocolInstanceIdIn(List<UUID> ids);
+
+    // Returns one row per protocol: [protocolDefinitionId, totalDeviations]
+    List<Object[]> findDeviationCountsByFacilityGroupedByProtocol(String facilityId);
+
+    // Returns single row: [compliantPatients, totalDeviations, overdueDevs, missedDevs, orderViolationDevs]
+    Object[] aggregateDeviationMetrics(UUID protocolDefinitionId);
+
+    Object[] aggregateDeviationMetricsAll();
+
+    Object[] aggregateDeviationMetricsByFacility(String facilityId);
+
+    Object[] aggregateDeviationMetricsByProtocolAndFacility(UUID protocolDefinitionId, String facilityId);
 }
