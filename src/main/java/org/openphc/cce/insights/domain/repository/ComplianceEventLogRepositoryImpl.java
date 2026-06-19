@@ -5,6 +5,7 @@ import org.jooq.Record;
 import org.jooq.Table;
 import org.jooq.impl.DSL;
 import org.openphc.cce.insights.domain.entity.ComplianceEventLog;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Repository;
 
 import java.time.OffsetDateTime;
@@ -141,31 +142,29 @@ public class ComplianceEventLogRepositoryImpl
     }
 
     @Override
+    @Cacheable(value = "analytics", key = "'facility-names'")
     public List<Object[]> findFacilityNames() {
-        // UNION ALL subquery — combines facility_name extraction from Encounter and ServiceRequest events.
-        var ielEncounter   = finalAs(INBOUND_EVENT_LOGS, "iel_enc");
-        var ielServiceReq  = finalAs(INBOUND_EVENT_LOGS, "iel_sr");
-        var encounterSub = dsl.select(
-                    DSL.field("iel_enc." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()).as("facility_id"),
-                    DSL.field("JSONExtractString(JSONExtractRaw(arrayElement(JSONExtractArrayRaw(JSONExtractRaw(iel_enc." +
-                              INBOUND_EVENT_LOGS.RAW_PAYLOAD.getName() + ", 'data'), 'location'), 1), 'location'), 'display')").as("facility_name"))
-                .from(ielEncounter)
-                .where(DSL.field("iel_enc." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName()).eq("Encounter"))
-                .and(DSL.field("iel_enc." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()).ne(""));
-        var serviceReqSub = dsl.select(
-                    DSL.field("iel_sr." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()).as("facility_id"),
-                    DSL.field("JSONExtractString(arrayElement(JSONExtractArrayRaw(JSONExtractRaw(iel_sr." +
-                              INBOUND_EVENT_LOGS.RAW_PAYLOAD.getName() + ", 'data'), 'locationReference'), 1), 'display')").as("facility_name"))
-                .from(ielServiceReq)
-                .where(DSL.field("iel_sr." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName()).eq("ServiceRequest"))
-                .and(DSL.field("iel_sr." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()).ne(""));
-        var sub = encounterSub.unionAll(serviceReqSub).asTable("sub");
+        // Single-pass scan: one read of inbound_event_logs with anyIf() per resource type.
+        // Replaces the previous UNION ALL which scanned the table twice.
+        var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
+        String fid  = "iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName();
+        String rt   = "iel." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName();
+        String raw  = "iel." + INBOUND_EVENT_LOGS.RAW_PAYLOAD.getName();
+
+        String encounterName   = "JSONExtractString(JSONExtractRaw(arrayElement(JSONExtractArrayRaw(JSONExtractRaw(" + raw + ", 'data'), 'location'), 1), 'location'), 'display')";
+        String serviceReqName  = "JSONExtractString(arrayElement(JSONExtractArrayRaw(JSONExtractRaw(" + raw + ", 'data'), 'locationReference'), 1), 'display')";
+
         return dsl.select(
-                    DSL.field("sub.facility_id"),
-                    DSL.field("COALESCE(NULLIF(anyIf(sub.facility_name, sub.facility_name != ''), ''), sub.facility_id)").as("facility_name"))
-                  .from(sub)
-                  .groupBy(DSL.field("sub.facility_id"))
-                  .orderBy(DSL.field("sub.facility_id"))
+                    DSL.field(fid),
+                    DSL.field("COALESCE(" +
+                            "NULLIF(anyIf(" + encounterName  + ", " + rt + " = 'Encounter'), ''), " +
+                            "NULLIF(anyIf(" + serviceReqName + ", " + rt + " = 'ServiceRequest'), ''), " +
+                            fid + ")").as("facility_name"))
+                  .from(iel)
+                  .where(DSL.field(rt).in("Encounter", "ServiceRequest"))
+                  .and(DSL.field(fid).ne(""))
+                  .groupBy(DSL.field(fid))
+                  .orderBy(DSL.field(fid))
                   .fetch()
                   .map(r -> new Object[]{r.get(0, String.class), r.get(1, String.class)});
     }

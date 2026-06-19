@@ -51,8 +51,25 @@ public class PatientController {
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getProtocolTracking(
             @PathVariable String patientId) {
         List<ProtocolInstance> instances = protocolInstanceRepository.findByPatientId(patientId);
+        List<UUID> instanceIds = instances.stream().map(ProtocolInstance::getId).collect(Collectors.toList());
+
+        // Batch load steps (1 query)
+        Map<UUID, List<StepInstance>> stepsByInstance = stepInstanceRepository
+                .findByProtocolInstanceIdIn(instanceIds)
+                .stream()
+                .collect(Collectors.groupingBy(StepInstance::getProtocolInstanceId));
+
+        // Pre-load distinct protocol definitions (usually just 1 per patient)
+        Map<UUID, ProtocolDefinition> protocolDefs = instances.stream()
+                .map(ProtocolInstance::getProtocolDefinitionId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .map(id -> protocolDefinitionRepository.findById(id).orElse(null))
+                .filter(Objects::nonNull)
+                .collect(Collectors.toMap(ProtocolDefinition::getId, pd -> pd));
+
         List<Map<String, Object>> result = instances.stream().map(pi -> {
-            List<StepInstance> steps = stepInstanceRepository.findByProtocolInstanceId(pi.getId());
+            List<StepInstance> steps = stepsByInstance.getOrDefault(pi.getId(), List.of());
             long completed = steps.stream().filter(s -> s.getCompletedAt() != null).count();
             double rate = steps.isEmpty() ? 0 : Math.round((double) completed / steps.size() * 1000.0) / 10.0;
 
@@ -64,7 +81,7 @@ public class PatientController {
             String protocolTitle = pi.getProtocolCanonical();
             List<Map<String, Object>> relatedArtifacts = null;
             try {
-                ProtocolDefinition pd = protocolDefinitionRepository.findById(pi.getProtocolDefinitionId()).orElse(null);
+                ProtocolDefinition pd = protocolDefs.get(pi.getProtocolDefinitionId());
                 if (pd != null && pd.getDefinition() != null) {
                     JsonNode root = objectMapper.readTree(pd.getDefinition());
                     JsonNode titleNode = root.get("title");
@@ -221,24 +238,30 @@ public class PatientController {
             @RequestParam(required = false) OffsetDateTime endDate) {
         List<ProtocolInstance> instances = protocolInstanceRepository.findByPatientId(patientId);
 
-        // Build actionId→title map from protocol definitions
+        // Build actionId→title map from protocol definitions (1 query per unique protocol def)
         Map<String, String> stepTitles = new HashMap<>();
-        for (ProtocolInstance pi : instances) {
-            if (pi.getProtocolDefinitionId() != null) {
-                resolveStepTitles(pi.getProtocolDefinitionId(), stepTitles);
-            }
-        }
+        instances.stream()
+                .map(ProtocolInstance::getProtocolDefinitionId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .forEach(pdId -> resolveStepTitles(pdId, stepTitles));
 
-        // Build stepInstanceId→actionId lookup
-        Map<UUID, String> stepActionIds = new HashMap<>();
-        for (ProtocolInstance pi : instances) {
-            for (StepInstance si : stepInstanceRepository.findByProtocolInstanceId(pi.getId())) {
-                stepActionIds.put(si.getId(), si.getActionId());
-            }
-        }
+        List<UUID> instanceIds = instances.stream().map(ProtocolInstance::getId).collect(Collectors.toList());
+
+        // Batch load steps for actionId lookup (1 query, replaces N+1)
+        Map<UUID, String> stepActionIds = stepInstanceRepository
+                .findByProtocolInstanceIdIn(instanceIds)
+                .stream()
+                .collect(Collectors.toMap(StepInstance::getId, StepInstance::getActionId, (a, b) -> a));
+
+        // Batch load deviations (1 query, replaces N+1)
+        Map<UUID, List<Deviation>> deviationsByInstance = deviationRepository
+                .findByProtocolInstanceIdIn(instanceIds)
+                .stream()
+                .collect(Collectors.groupingBy(Deviation::getProtocolInstanceId));
 
         List<Map<String, Object>> result = instances.stream()
-                .flatMap(pi -> deviationRepository.findByProtocolInstanceId(pi.getId()).stream()
+                .flatMap(pi -> deviationsByInstance.getOrDefault(pi.getId(), List.of()).stream()
                         .map(d -> {
                             String actionId = stepActionIds.get(d.getStepInstanceId());
                             String stepName = actionId != null ? stepTitles.getOrDefault(actionId, formatActionId(actionId)) : null;

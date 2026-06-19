@@ -36,6 +36,9 @@ public interface DeviationRepository extends ReadOnlyRepository<Deviation, UUID>
 
     long countDistinctPatientsWithDeviations();
 
+    // Batch load full Deviation objects for a set of protocol instances
+    List<Deviation> findByProtocolInstanceIdIn(List<UUID> ids);
+
     // Batch count — returns [protocolInstanceId, count] per instance; replaces per-instance calls
     List<Object[]> countDeviationsByProtocolInstanceIdIn(List<UUID> ids);
 

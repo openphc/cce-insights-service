@@ -77,6 +77,18 @@ public class DeviationRepositoryImpl
     }
 
     @Override
+    public List<Deviation> findByProtocolInstanceIdIn(List<UUID> ids) {
+        if (ids == null || ids.isEmpty()) return List.of();
+        List<String> idStrings = ids.stream().map(UUID::toString).collect(java.util.stream.Collectors.toList());
+        var d = finalAs(DEVIATIONS, "d");
+        return dsl.select(DSL.asterisk())
+                  .from(d)
+                  .where(DSL.field("d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName()).in(idStrings))
+                  .fetch()
+                  .map(this::toDeviation);
+    }
+
+    @Override
     public List<Object[]> countDeviationsByProtocolInstanceIdIn(List<UUID> ids) {
         if (ids == null || ids.isEmpty()) return List.of();
         List<String> idStrings = ids.stream().map(UUID::toString).collect(java.util.stream.Collectors.toList());
