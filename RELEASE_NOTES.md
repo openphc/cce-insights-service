@@ -172,16 +172,16 @@ First production release of the **CCE Insights Service** — a read-only analyti
 
 | Component | Details |
 |-----------|---------|
-| **Framework** | Spring Boot 3.4.4, Java 21 |
+| **Framework** | Spring Boot 3.x, Java 21 |
 | **Build** | Gradle 8.12 with JaCoCo |
-| **Database** | PostgreSQL 16 (shared `cce_collector`, read-only) |
-| **Entities** | 9: ProtocolDefinition, ProtocolInstance, StepInstance, Deviation, EventLog, InboundEvent, IntelligenceDelivery, ReceiverAdaptor, DestinationAdaptorMapping |
-| **Repositories** | 9 (including ReadOnlyRepository base) |
+| **Database** | ClickHouse (analytics backend, read-only via jOOQ 3.19) |
+| **Entities** | 9: ProtocolDefinition, ProtocolInstance, StepInstance, Deviation, ComplianceEventLog, InboundEventLog, IntelligenceDelivery, ReceiverAdaptor, DestinationAdaptorMapping |
+| **Repositories** | 9 (jOOQ DSL implementations extending AbstractClickHouseRepository) |
 | **Services** | 12 + DateUtil utility |
 | **Controllers** | 14 |
 | **DTOs** | ~35 |
-| **Configs** | 5 (CacheConfig, JpaConfig, MetricsConfig, ObservabilityConfig, DatabaseHealthIndicator) |
-| **Integration Tests** | 10 IT classes with Testcontainers |
+| **Configs** | 5 (CacheConfig, JooqConfig, MetricsConfig, ObservabilityConfig, DatabaseHealthIndicator) |
+| **Integration Tests** | 10 IT classes with MockMvc / @WebMvcTest |
 
 ---
 
@@ -189,15 +189,16 @@ First production release of the **CCE Insights Service** — a read-only analyti
 
 | Table | Owner | Purpose |
 |-------|-------|---------|
-| `protocol_definition` | Compliance Service | Protocol metadata |
-| `protocol_instance` | Compliance Service | Patient enrollments |
-| `step_instance` | Compliance Service | Step states & timing |
-| `deviation` | Compliance Service | Deviation records |
-| `event_log` | Compliance Service | Event history & volume |
-| `inbound_event` | Collector Service | Ingestion pipeline analytics |
-| `intelligence_delivery` | Intelligence Service | Intelligence delivery tracking |
-| `receiver_adaptor` | Intelligence Service | Adaptor registry |
-| `destination_adaptor_mapping` | Intelligence Service | Destination routing |
+| `protocol_definitions` | Compliance Service | Protocol metadata |
+| `protocol_instances` | Compliance Service | Patient enrollments |
+| `step_instances` | Compliance Service | Step states & timing |
+| `deviations` | Compliance Service | Deviation records |
+| `compliance_event_logs` | Compliance Service | Event history & volume |
+| `inbound_event_logs` | Collector Service | Ingestion pipeline analytics & facility names |
+| `intelligence_deliveries` | Intelligence Service | Intelligence delivery tracking |
+| `receiver_adaptors` | Intelligence Service | Adaptor registry |
+| `destination_adaptor_mappings` | Intelligence Service | Destination routing |
+| `mv_patient_facility_latest` | Collector Service | Materialized view — patient→facility mapping |
 
 ---
 
@@ -229,7 +230,6 @@ First production release of the **CCE Insights Service** — a read-only analyti
 
 ### Known Limitations
 
-- **N+1 query patterns** in `ComplianceSummaryService`, `PatientTimelineService`, `ExportService`, and `PatientRiskService` — acceptable at current scale, targeted for Phase 2 optimization.
 - **PatientController** accesses repositories directly — business logic should be delegated to services in a future refactor.
 - **No pagination** on some list endpoints — cursor pagination to be added where missing.
 - **Per-instance caching** — Caffeine caches are not shared across instances. Phase 2 will introduce Redis for distributed caching.
@@ -240,12 +240,11 @@ First production release of the **CCE Insights Service** — a read-only analyti
 
 | Dependency | Version |
 |------------|---------|
-| Spring Boot | 3.4.4 |
-| Spring Data JPA | (managed) |
+| Spring Boot | 3.x |
+| jOOQ | 3.19 |
+| ClickHouse JDBC | 0.8.3 |
 | Caffeine | (managed) |
 | Micrometer Prometheus | (managed) |
 | Logstash Logback Encoder | 7.4 |
-| PostgreSQL JDBC Driver | (managed) |
 | Lombok | (managed) |
-| Testcontainers | (managed) |
 | JUnit 5 | (managed) |

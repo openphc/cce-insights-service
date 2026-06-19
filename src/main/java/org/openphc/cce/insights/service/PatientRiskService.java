@@ -43,12 +43,17 @@ public class PatientRiskService {
             facilityNameMap.put((String) row[0], (String) row[1]);
         }
 
-        // Build patient -> steps mapping (global, loaded once)
+        // Build patient -> steps mapping using batch load (2 queries instead of N+1)
         List<ProtocolInstance> allInstances = protocolInstanceRepository.findAll();
+        Map<UUID, String> instanceToPatient = allInstances.stream()
+                .collect(Collectors.toMap(ProtocolInstance::getId, ProtocolInstance::getPatientId));
         Map<String, List<StepInstance>> patientSteps = new HashMap<>();
-        for (ProtocolInstance pi : allInstances) {
-            List<StepInstance> steps = stepInstanceRepository.findByProtocolInstanceId(pi.getId());
-            patientSteps.computeIfAbsent(pi.getPatientId(), k -> new ArrayList<>()).addAll(steps);
+        for (StepInstance si : stepInstanceRepository.findByProtocolInstanceIdIn(
+                new ArrayList<>(instanceToPatient.keySet()))) {
+            String patientId = instanceToPatient.get(si.getProtocolInstanceId());
+            if (patientId != null) {
+                patientSteps.computeIfAbsent(patientId, k -> new ArrayList<>()).add(si);
+            }
         }
 
         // For each facility, categorize only its own patients

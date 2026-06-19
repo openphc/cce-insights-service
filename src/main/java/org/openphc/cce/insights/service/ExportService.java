@@ -13,6 +13,7 @@ import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -35,8 +36,14 @@ public class ExportService {
             instances = protocolInstanceRepository.findAll();
         }
 
+        List<UUID> instanceIds = instances.stream().map(ProtocolInstance::getId).collect(Collectors.toList());
+        Map<UUID, List<StepInstance>> stepsByInstance = stepInstanceRepository
+                .findByProtocolInstanceIdIn(instanceIds)
+                .stream()
+                .collect(Collectors.groupingBy(StepInstance::getProtocolInstanceId));
+
         for (ProtocolInstance pi : instances) {
-            List<StepInstance> steps = stepInstanceRepository.findByProtocolInstanceId(pi.getId());
+            List<StepInstance> steps = stepsByInstance.getOrDefault(pi.getId(), List.of());
             long total = steps.size();
             long completed = steps.stream().filter(s -> s.getCompletedAt() != null).count();
             long overdue = steps.stream()
@@ -64,9 +71,15 @@ public class ExportService {
             instances = protocolInstanceRepository.findAll();
         }
 
+        List<UUID> instanceIds = instances.stream().map(ProtocolInstance::getId).collect(Collectors.toList());
+        Map<UUID, List<StepInstance>> stepsByInstance = stepInstanceRepository
+                .findByProtocolInstanceIdIn(instanceIds)
+                .stream()
+                .collect(Collectors.groupingBy(StepInstance::getProtocolInstanceId));
+
         List<Map<String, Object>> results = new ArrayList<>();
         for (ProtocolInstance pi : instances) {
-            List<StepInstance> steps = stepInstanceRepository.findByProtocolInstanceId(pi.getId());
+            List<StepInstance> steps = stepsByInstance.getOrDefault(pi.getId(), List.of());
             long total = steps.size();
             long completed = steps.stream().filter(s -> s.getCompletedAt() != null).count();
             long overdue = steps.stream()

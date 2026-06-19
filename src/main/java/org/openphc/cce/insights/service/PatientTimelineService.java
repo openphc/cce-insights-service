@@ -29,10 +29,23 @@ public class PatientTimelineService {
 
     public PatientTimelineDto getTimeline(String patientId) {
         List<ProtocolInstance> instances = protocolInstanceRepository.findByPatientId(patientId);
+        List<UUID> instanceIds = instances.stream().map(ProtocolInstance::getId).collect(Collectors.toList());
+
+        // Batch load steps and deviations in 2 queries (replaces N+1 per protocol instance)
+        Map<UUID, List<StepInstance>> stepsByInstance = stepInstanceRepository
+                .findByProtocolInstanceIdIn(instanceIds)
+                .stream()
+                .sorted(Comparator.comparing(StepInstance::getDueDate,
+                        Comparator.nullsLast(Comparator.naturalOrder())))
+                .collect(Collectors.groupingBy(StepInstance::getProtocolInstanceId));
+        Map<UUID, List<Deviation>> deviationsByInstance = deviationRepository
+                .findByProtocolInstanceIdIn(instanceIds)
+                .stream()
+                .collect(Collectors.groupingBy(Deviation::getProtocolInstanceId));
 
         List<PatientTimelineDto.ProtocolTimeline> protocols = new ArrayList<>();
         for (ProtocolInstance pi : instances) {
-            List<StepInstance> steps = stepInstanceRepository.findByProtocolInstanceIdOrderByDueDateAsc(pi.getId());
+            List<StepInstance> steps = stepsByInstance.getOrDefault(pi.getId(), List.of());
             long completed = steps.stream()
                     .filter(s -> s.getState() == StepState.COMPLETED || s.getState() == StepState.SKIPPED)
                     .count();
@@ -48,8 +61,8 @@ public class PatientTimelineService {
             // Build event context lookup: stepInstance.matchedEventId → EventContext (effectiveDateTime, practitioner, facilityId)
             Map<UUID, EventContext> eventContextMap = resolveEventContext(steps);
 
-            // Resolve deviations for this protocol instance
-            List<Deviation> deviations = deviationRepository.findByProtocolInstanceId(pi.getId());
+            // Deviations already loaded in batch above
+            List<Deviation> deviations = deviationsByInstance.getOrDefault(pi.getId(), List.of());
             Map<String, Deviation> deviationByActionId = resolveDeviationsByActionId(deviations, steps);
 
             // Build Protocol Journey (one row per protocol-defined action)

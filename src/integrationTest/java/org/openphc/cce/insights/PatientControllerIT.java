@@ -109,6 +109,14 @@ class PatientControllerIT extends AbstractIntegrationTest {
         Deviation dev3 = mockDeviation(UUID.randomUUID(), PI_ID_3, DeviationType.MISSED, now.minusDays(3), "http://example.org/anc|1.0");
         when(deviationRepository.findByProtocolInstanceId(PI_ID_3)).thenReturn(List.of(dev3));
 
+        // Batch method stubs — used by the refactored controller endpoints
+        when(stepInstanceRepository.findByProtocolInstanceIdIn(List.of(PI_ID_1))).thenReturn(List.of(step1));
+        when(stepInstanceRepository.findByProtocolInstanceIdIn(List.of(PI_ID_2))).thenReturn(List.of(step2a, step2b, step2c));
+        when(stepInstanceRepository.findByProtocolInstanceIdIn(List.of(PI_ID_3))).thenReturn(List.of());
+        when(deviationRepository.findByProtocolInstanceIdIn(List.of(PI_ID_1))).thenReturn(List.of());
+        when(deviationRepository.findByProtocolInstanceIdIn(List.of(PI_ID_2))).thenReturn(List.of(dev2));
+        when(deviationRepository.findByProtocolInstanceIdIn(List.of(PI_ID_3))).thenReturn(List.of(dev3));
+
         // Patient events
         ComplianceEventLog event1 = mockComplianceEventLog(UUID.randomUUID(), "Patient/" + PATIENT_1, "org.openphc.cce.encounter",
                 now.minusDays(10), "ebuzima-direct", "{\"resourceType\":\"Encounter\"}", "MATCHED", "fac-1");
