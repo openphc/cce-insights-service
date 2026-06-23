@@ -8,6 +8,8 @@ import java.util.UUID;
 
 public interface IntelligenceDeliveryRepository extends ReadOnlyRepository<IntelligenceDelivery, UUID> {
 
+    List<IntelligenceDelivery> findBySubject(String subject);
+
     List<Object[]> countByStatus();
 
     List<Object[]> countByActionType();
@@ -22,19 +24,19 @@ public interface IntelligenceDeliveryRepository extends ReadOnlyRepository<Intel
 
     Double avgDeliveryLatencySeconds();
 
-    long countFiltered(OffsetDateTime startDate, OffsetDateTime endDate);
+    long countFiltered(OffsetDateTime startDate, OffsetDateTime endDate, String protocolCanonical);
 
-    long countDeliveredFiltered(OffsetDateTime startDate, OffsetDateTime endDate);
+    long countDeliveredFiltered(OffsetDateTime startDate, OffsetDateTime endDate, String protocolCanonical);
 
-    long countFailedFiltered(OffsetDateTime startDate, OffsetDateTime endDate);
+    long countFailedFiltered(OffsetDateTime startDate, OffsetDateTime endDate, String protocolCanonical);
 
-    Double avgDeliveryLatencySecondsFiltered(OffsetDateTime startDate, OffsetDateTime endDate);
+    Double avgDeliveryLatencySecondsFiltered(OffsetDateTime startDate, OffsetDateTime endDate, String protocolCanonical);
 
-    List<Object[]> countByStatusFiltered(OffsetDateTime startDate, OffsetDateTime endDate);
+    List<Object[]> countByStatusFiltered(OffsetDateTime startDate, OffsetDateTime endDate, String protocolCanonical);
 
-    List<Object[]> countByActionTypeFiltered(OffsetDateTime startDate, OffsetDateTime endDate);
+    List<Object[]> countByActionTypeFiltered(OffsetDateTime startDate, OffsetDateTime endDate, String protocolCanonical);
 
-    List<Object[]> countBySeverityFiltered(OffsetDateTime startDate, OffsetDateTime endDate);
+    List<Object[]> countBySeverityFiltered(OffsetDateTime startDate, OffsetDateTime endDate, String protocolCanonical);
 
-    List<Object[]> countByDestinationFiltered(OffsetDateTime startDate, OffsetDateTime endDate);
+    List<Object[]> countByDestinationFiltered(OffsetDateTime startDate, OffsetDateTime endDate, String protocolCanonical);
 }

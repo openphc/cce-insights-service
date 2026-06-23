@@ -10,10 +10,10 @@ public class FacilityRankingDto {
     private String facilityId;
     private String facilityName;
     private long totalEnrollments;
+    private long compliantPatients;
+    private long nonCompliantPatients;
     private double complianceRate;
     private long activeDeviations;
     private long totalEvents;
-    private long outboundEvents;
-    private long inboundEvents;
     private long patientsFromHIE;
 }

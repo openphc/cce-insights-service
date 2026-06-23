@@ -2,6 +2,7 @@ package org.openphc.cce.insights.service;
 
 import lombok.RequiredArgsConstructor;
 import org.openphc.cce.insights.domain.repository.ComplianceEventLogRepository;
+import org.openphc.cce.insights.domain.repository.DailyKpiRepository;
 import org.openphc.cce.insights.domain.repository.InboundEventRepository;
 import org.openphc.cce.insights.web.dto.*;
 import org.springframework.cache.annotation.Cacheable;
@@ -17,6 +18,7 @@ public class EventVolumeService {
 
     private final ComplianceEventLogRepository complianceEventLogRepository;
     private final InboundEventRepository inboundEventRepository;
+    private final DailyKpiRepository dailyKpiRepository;
 
     @Cacheable(value = "metrics", key = "'vol-summary-' + #startDate + '-' + #endDate")
     public EventVolumeSummaryDto getSummary(OffsetDateTime startDate, OffsetDateTime endDate) {
@@ -58,6 +60,22 @@ public class EventVolumeService {
                 .processingStatusBreakdown(statusBreakdown)
                 .byFacility(facilityTop)
                 .bySource(sourceCounts)
+                .build();
+    }
+
+    @Cacheable(value = "analytics", key = "'event-kpis'")
+    public EventKpiDto getEventKpis() {
+        // Reads from mv_daily_event_kpis (all-time totals, refreshed every 30 min).
+        // Use this for the events page header cards; use getSummary() for date-filtered breakdowns.
+        Object[] row = dailyKpiRepository.getEventKpis();
+        return EventKpiDto.builder()
+                .totalEvents(((Number) row[0]).longValue())
+                .matchedCount(((Number) row[1]).longValue())
+                .zeroMatchCount(((Number) row[2]).longValue())
+                .duplicateCount(((Number) row[3]).longValue())
+                .matchedRatePct(((Number) row[4]).doubleValue())
+                .zeroMatchRatePct(((Number) row[5]).doubleValue())
+                .pipelineLossCount(((Number) row[6]).longValue())
                 .build();
     }
 

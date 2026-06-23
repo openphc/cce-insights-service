@@ -1,6 +1,7 @@
 package org.openphc.cce.insights.service;
 
 import lombok.RequiredArgsConstructor;
+import org.openphc.cce.insights.domain.repository.DailyKpiRepository;
 import org.openphc.cce.insights.domain.repository.DeviationRepository;
 import org.openphc.cce.insights.web.dto.*;
 import org.springframework.cache.annotation.Cacheable;
@@ -16,12 +17,14 @@ import java.util.stream.Collectors;
 public class DeviationAnalyticsService {
 
     private final DeviationRepository deviationRepository;
+    private final DailyKpiRepository dailyKpiRepository;
 
     public List<DeviationDto> getDeviations(String deviationType, String facilityId,
+                                             UUID protocolDefinitionId,
                                              OffsetDateTime startDate, OffsetDateTime endDate,
                                              int limit) {
         List<Object[]> rows = deviationRepository.findFilteredDeviations(
-                deviationType, facilityId, startDate, endDate, limit);
+                deviationType, facilityId, protocolDefinitionId, startDate, endDate, limit);
         return rows.stream().map(row -> DeviationDto.builder()
                 .deviationId(uuidOf(row[0]))
                 .patientId((String) row[1])
@@ -35,11 +38,23 @@ public class DeviationAnalyticsService {
                 .build()).collect(Collectors.toList());
     }
 
-    @Cacheable(value = "analytics", key = "'dev-trends-' + #interval + '-' + #facilityId")
+    @Cacheable(value = "analytics", key = "'deviation-kpis-' + (#protocolDefinitionId ?: 'all')")
+    public DeviationKpiDto getDeviationKpis(UUID protocolDefinitionId) {
+        Object[] row = dailyKpiRepository.getDeviationKpis(protocolDefinitionId);
+        return DeviationKpiDto.builder()
+                .totalDeviations(((Number) row[0]).longValue())
+                .overdueCount(((Number) row[1]).longValue())
+                .missedCount(((Number) row[2]).longValue())
+                .orderViolationCount(((Number) row[3]).longValue())
+                .build();
+    }
+
+    @Cacheable(value = "analytics", key = "'dev-trends-' + #interval + '-' + (#protocolDefinitionId ?: 'all') + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all')")
     public DeviationTrendDto getDeviationTrends(String interval, OffsetDateTime startDate,
-                                                 OffsetDateTime endDate, String facilityId) {
+                                                 OffsetDateTime endDate, String facilityId,
+                                                 UUID protocolDefinitionId) {
         String dbInterval = DateUtil.mapInterval(interval);
-        List<Object[]> rows = deviationRepository.findDeviationTrends(dbInterval, startDate, endDate, facilityId, null);
+        List<Object[]> rows = deviationRepository.findDeviationTrends(dbInterval, startDate, endDate, facilityId, protocolDefinitionId);
 
         Map<String, DeviationTrendDto.TrendPoint.TrendPointBuilder> pointMap = new LinkedHashMap<>();
         for (Object[] row : rows) {

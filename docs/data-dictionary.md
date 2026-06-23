@@ -162,6 +162,92 @@ Destination routing configuration for intelligence delivery.
 | `created_at` | `TIMESTAMPTZ` | No | Record creation |
 | `updated_at` | `TIMESTAMPTZ` | No | Last update |
 
+### 1.10 `facility_reference` (schema/08 — static reference table)
+
+Manually managed list of in-scope facilities. The agreed list defines the denominator for facility
+activity metrics (active/inactive count) and the expected throughput baseline for e-Buzima adoption.
+Engine: `ReplacingMergeTree(updated_at)` ORDER BY `(facility_id)` — insert a new row with the same
+`facility_id` and a newer timestamp to "update". Delete the row to remove a facility from scope.
+Always read with `FINAL` to see the deduplicated view.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `facility_id` | `String` | FOSA facility ID — unique key (ReplacingMergeTree dedup) |
+| `facility_name` | `String` | Human-readable facility name |
+| `expected_patients_per_day` | `UInt32` | Agreed daily patient throughput baseline for adoption calculation |
+| `updated_at` | `DateTime64(3)` | Version timestamp — highest wins on dedup |
+
+### 1.11 Daily KPI Materialized Views (schema/07)
+
+Six APPEND-mode refreshable MVs that snapshot compliance, facility, and pipeline KPIs every 30
+minutes. Backing tables use `ReplacingMergeTree(refreshed_at)` with `snapshot_date` as the first
+ORDER BY key, so within a day multiple refresh rows deduplicate to the latest (use `FINAL`), and
+across days all snapshots are preserved.
+
+Always filter with `FINAL` and `WHERE snapshot_date = today()` for the current day's snapshot.
+
+**`mv_daily_compliance_kpis`** — one row per `(snapshot_date, protocol_definition_id)`
+
+| Column | Description |
+|--------|-------------|
+| `snapshot_date` | Calendar day of the snapshot |
+| `refreshed_at` | Refresh timestamp — version for ReplacingMergeTree dedup |
+| `protocol_definition_id` | UUID of the protocol |
+| `total_enrollments`, `status_active`, `status_completed`, `status_withdrawn`, `status_expired` | Enrollment status breakdown |
+| `tracked_patients`, `compliant_count`, `non_compliant_count`, `compliance_rate_pct` | Patient compliance summary |
+| `total_deviations`, `overdue_deviations`, `missed_deviations`, `order_violation_deviations` | Deviation breakdown |
+| `step_total`, `step_completed`, `step_overdue`, `step_missed`, `step_due`, `step_pending`, `step_on_time`, `step_early`, `step_late` | Step state and timing metrics |
+
+**`mv_daily_facility_kpis`** — one row per `(snapshot_date, facility_id)`
+
+| Column | Description |
+|--------|-------------|
+| `snapshot_date` | Calendar day |
+| `facility_id` | FOSA facility ID |
+| `tracked_patients`, `compliant_patients`, `non_compliant_patients`, `compliance_rate_pct` | Facility compliance |
+| `total_deviations` | Deviation count at this facility |
+| `event_count` | HIE transmissions received on this day |
+
+**`mv_daily_facility_activity_summary`** — one row per `snapshot_date` (global summary)
+
+| Column | Description |
+|--------|-------------|
+| `snapshot_date` | Calendar day |
+| `total_in_scope` | Total facilities in `facility_reference` |
+| `active_facilities` | Facilities with at least one HIE event on this day |
+| `inactive_facilities` | In-scope facilities with no events on this day |
+| `active_facility_rate_pct` | `active_facilities / total_in_scope × 100` |
+
+**`mv_daily_adoption_kpis`** — one row per `(snapshot_date, facility_id)`, joined with `facility_reference`
+
+| Column | Description |
+|--------|-------------|
+| `snapshot_date` | Calendar day |
+| `facility_id` | FOSA facility ID |
+| `facility_name` | From `facility_reference` |
+| `expected_patients_per_day` | From `facility_reference` |
+| `actual_patients` | Distinct patients with a compliance event at this facility on this day |
+| `adoption_rate_pct` | `actual_patients / expected_patients_per_day × 100` |
+| `reporting_gap` | `expected_patients_per_day − actual_patients` |
+
+**`mv_daily_deviation_kpis`** — one row per `(snapshot_date, protocol_definition_id)`
+
+| Column | Description |
+|--------|-------------|
+| `snapshot_date` | Calendar day |
+| `protocol_definition_id` | UUID of the protocol |
+| `total_deviations`, `overdue_count`, `missed_count`, `order_violation_count` | Deviation header card values |
+
+**`mv_daily_event_kpis`** — one row per `snapshot_date` (global pipeline summary)
+
+| Column | Description |
+|--------|-------------|
+| `snapshot_date` | Calendar day |
+| `total_events` | Total events received (from `mv_event_volume_hourly`) |
+| `matched_count`, `zero_match_count`, `duplicate_count` | Processing status breakdown |
+| `matched_rate_pct`, `zero_match_rate_pct` | Processing quality rates |
+| `pipeline_loss_count` | `total_events − total_processed` |
+
 ## 2. Enum Values
 
 ### 2.1 `ProtocolInstanceStatus`
@@ -408,6 +494,44 @@ percentage = category_count / total_patients_at_facility * 100
 ```
 
 > **Note:** Facility is derived by joining `protocol_instance` → `event_log.facility_id`.
+
+### 3.13a Facility Activity Formulas (mv_daily_facility_activity_summary)
+
+```
+total_in_scope       = COUNT(*) FROM facility_reference FINAL
+
+active_facilities    = COUNT(facility_id) FROM mv_daily_facility_kpis FINAL
+                       WHERE snapshot_date = today() AND event_count > 0
+                       (facilities in scope that had at least one HIE transmission today)
+
+inactive_facilities  = total_in_scope − active_facilities
+
+active_facility_rate = active_facilities / total_in_scope × 100
+```
+
+> The denominator (`total_in_scope`) comes from `facility_reference`, not from observed event data.
+> This ensures facilities that transmitted no events today are counted as inactive (not omitted).
+
+### 3.13b e-Buzima Adoption Formulas (mv_daily_adoption_kpis)
+
+```
+actual_patients   = COUNT(DISTINCT patient_id) FROM compliance_event_logs
+                    WHERE facility_id = :facility_id AND toDate(event_time) = snapshot_date
+
+adoption_rate_pct = actual_patients / expected_patients_per_day × 100
+                    (0 when expected_patients_per_day = 0)
+
+reporting_gap     = expected_patients_per_day − actual_patients
+                    (negative = over-reporting; positive = under-reporting)
+```
+
+Multi-day (date-range) aggregation (via `DailyKpiRepository.getAdoptionKpisByDateRange`):
+```
+total_actual          = SUM(actual_patients) over the date range
+total_expected        = expected_patients_per_day × COUNT(distinct days in range)
+period_adoption_rate  = total_actual / total_expected × 100
+period_reporting_gap  = total_expected − total_actual
+```
 
 ### 3.14 Repeat Deviation Formulas
 

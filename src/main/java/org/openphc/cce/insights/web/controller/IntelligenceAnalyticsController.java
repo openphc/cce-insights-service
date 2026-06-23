@@ -8,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.OffsetDateTime;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/v1/insights/intelligence")
@@ -18,9 +19,10 @@ public class IntelligenceAnalyticsController {
 
     @GetMapping("/summary")
     public ResponseEntity<ApiResponse<IntelligenceSummaryDto>> getSummary(
+            @RequestParam(required = false) UUID protocolDefinitionId,
             @RequestParam(required = false) OffsetDateTime startDate,
             @RequestParam(required = false) OffsetDateTime endDate) {
-        IntelligenceSummaryDto summary = intelligenceAnalyticsService.getSummary(startDate, endDate);
+        IntelligenceSummaryDto summary = intelligenceAnalyticsService.getSummary(protocolDefinitionId, startDate, endDate);
         return ResponseEntity.ok(ApiResponse.ok(summary));
     }
 }

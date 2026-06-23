@@ -52,6 +52,15 @@ public class IntelligenceDeliveryRepositoryImpl
     }
 
     @Override
+    public List<IntelligenceDelivery> findBySubject(String subject) {
+        return dsl.selectFrom(DSL.table(DSL.sql(table())))
+                  .where(DSL.field(INTELLIGENCE_DELIVERIES.SUBJECT.getName()).eq(subject))
+                  .orderBy(DSL.field(INTELLIGENCE_DELIVERIES.CREATED_AT.getName()).desc())
+                  .fetch()
+                  .map(r -> fromRecord(r));
+    }
+
+    @Override
     public List<Object[]> countByStatus() {
         return dsl.select(
                     DSL.field(INTELLIGENCE_DELIVERIES.STATUS.getName()),
@@ -127,51 +136,39 @@ public class IntelligenceDeliveryRepositoryImpl
     }
 
     @Override
-    public long countFiltered(OffsetDateTime startDate, OffsetDateTime endDate) {
+    public long countFiltered(OffsetDateTime startDate, OffsetDateTime endDate, String protocolCanonical) {
         Long r = dsl.select(DSL.field("count()", Long.class))
                     .from(DSL.table(DSL.sql(table())))
-                    .where(DSL.condition(
-                            INTELLIGENCE_DELIVERIES.CREATED_AT.getName() + " >= parseDateTime64BestEffort(?)",
-                            dtStart(startDate)))
-                    .and(DSL.condition(
-                            INTELLIGENCE_DELIVERIES.CREATED_AT.getName() + " <= parseDateTime64BestEffort(?)",
-                            dtEnd(endDate)))
+                    .where(dateRange(startDate, endDate))
+                    .and(protocolCondition(protocolCanonical))
                     .fetchOne(0, Long.class);
         return r != null ? r : 0L;
     }
 
     @Override
-    public long countDeliveredFiltered(OffsetDateTime startDate, OffsetDateTime endDate) {
+    public long countDeliveredFiltered(OffsetDateTime startDate, OffsetDateTime endDate, String protocolCanonical) {
         Long r = dsl.select(DSL.field("count()", Long.class))
                     .from(DSL.table(DSL.sql(table())))
                     .where(DSL.field(INTELLIGENCE_DELIVERIES.STATUS.getName()).eq("DELIVERED"))
-                    .and(DSL.condition(
-                            INTELLIGENCE_DELIVERIES.CREATED_AT.getName() + " >= parseDateTime64BestEffort(?)",
-                            dtStart(startDate)))
-                    .and(DSL.condition(
-                            INTELLIGENCE_DELIVERIES.CREATED_AT.getName() + " <= parseDateTime64BestEffort(?)",
-                            dtEnd(endDate)))
+                    .and(dateRange(startDate, endDate))
+                    .and(protocolCondition(protocolCanonical))
                     .fetchOne(0, Long.class);
         return r != null ? r : 0L;
     }
 
     @Override
-    public long countFailedFiltered(OffsetDateTime startDate, OffsetDateTime endDate) {
+    public long countFailedFiltered(OffsetDateTime startDate, OffsetDateTime endDate, String protocolCanonical) {
         Long r = dsl.select(DSL.field("count()", Long.class))
                     .from(DSL.table(DSL.sql(table())))
                     .where(DSL.field(INTELLIGENCE_DELIVERIES.STATUS.getName()).eq("FAILED"))
-                    .and(DSL.condition(
-                            INTELLIGENCE_DELIVERIES.CREATED_AT.getName() + " >= parseDateTime64BestEffort(?)",
-                            dtStart(startDate)))
-                    .and(DSL.condition(
-                            INTELLIGENCE_DELIVERIES.CREATED_AT.getName() + " <= parseDateTime64BestEffort(?)",
-                            dtEnd(endDate)))
+                    .and(dateRange(startDate, endDate))
+                    .and(protocolCondition(protocolCanonical))
                     .fetchOne(0, Long.class);
         return r != null ? r : 0L;
     }
 
     @Override
-    public Double avgDeliveryLatencySecondsFiltered(OffsetDateTime startDate, OffsetDateTime endDate) {
+    public Double avgDeliveryLatencySecondsFiltered(OffsetDateTime startDate, OffsetDateTime endDate, String protocolCanonical) {
         return dsl.select(DSL.field(
                         "avg(toFloat64(dateDiff('millisecond', " +
                         INTELLIGENCE_DELIVERIES.CREATED_AT.getName() + ", " +
@@ -179,81 +176,76 @@ public class IntelligenceDeliveryRepositoryImpl
                         Double.class))
                   .from(DSL.table(DSL.sql(table())))
                   .where(DSL.field(INTELLIGENCE_DELIVERIES.STATUS.getName()).eq("DELIVERED"))
-                  .and(DSL.condition(
-                          INTELLIGENCE_DELIVERIES.CREATED_AT.getName() + " >= parseDateTime64BestEffort(?)",
-                          dtStart(startDate)))
-                  .and(DSL.condition(
-                          INTELLIGENCE_DELIVERIES.CREATED_AT.getName() + " <= parseDateTime64BestEffort(?)",
-                          dtEnd(endDate)))
+                  .and(dateRange(startDate, endDate))
+                  .and(protocolCondition(protocolCanonical))
                   .fetchOne(0, Double.class);
     }
 
     @Override
-    public List<Object[]> countByStatusFiltered(OffsetDateTime startDate, OffsetDateTime endDate) {
+    public List<Object[]> countByStatusFiltered(OffsetDateTime startDate, OffsetDateTime endDate, String protocolCanonical) {
         return dsl.select(
                     DSL.field(INTELLIGENCE_DELIVERIES.STATUS.getName()),
                     DSL.field("count()", Long.class))
                   .from(DSL.table(DSL.sql(table())))
-                  .where(DSL.condition(
-                          INTELLIGENCE_DELIVERIES.CREATED_AT.getName() + " >= parseDateTime64BestEffort(?)",
-                          dtStart(startDate)))
-                  .and(DSL.condition(
-                          INTELLIGENCE_DELIVERIES.CREATED_AT.getName() + " <= parseDateTime64BestEffort(?)",
-                          dtEnd(endDate)))
+                  .where(dateRange(startDate, endDate))
+                  .and(protocolCondition(protocolCanonical))
                   .groupBy(DSL.field(INTELLIGENCE_DELIVERIES.STATUS.getName()))
                   .fetch()
                   .map(r -> new Object[]{r.get(0, String.class), r.get(1, Long.class)});
     }
 
     @Override
-    public List<Object[]> countByActionTypeFiltered(OffsetDateTime startDate, OffsetDateTime endDate) {
+    public List<Object[]> countByActionTypeFiltered(OffsetDateTime startDate, OffsetDateTime endDate, String protocolCanonical) {
         return dsl.select(
                     DSL.field(INTELLIGENCE_DELIVERIES.ACTION_TYPE.getName()),
                     DSL.field("count()", Long.class))
                   .from(DSL.table(DSL.sql(table())))
-                  .where(DSL.condition(
-                          INTELLIGENCE_DELIVERIES.CREATED_AT.getName() + " >= parseDateTime64BestEffort(?)",
-                          dtStart(startDate)))
-                  .and(DSL.condition(
-                          INTELLIGENCE_DELIVERIES.CREATED_AT.getName() + " <= parseDateTime64BestEffort(?)",
-                          dtEnd(endDate)))
+                  .where(dateRange(startDate, endDate))
+                  .and(protocolCondition(protocolCanonical))
                   .groupBy(DSL.field(INTELLIGENCE_DELIVERIES.ACTION_TYPE.getName()))
                   .fetch()
                   .map(r -> new Object[]{r.get(0, String.class), r.get(1, Long.class)});
     }
 
     @Override
-    public List<Object[]> countBySeverityFiltered(OffsetDateTime startDate, OffsetDateTime endDate) {
+    public List<Object[]> countBySeverityFiltered(OffsetDateTime startDate, OffsetDateTime endDate, String protocolCanonical) {
         return dsl.select(
                     DSL.field(INTELLIGENCE_DELIVERIES.SEVERITY.getName()),
                     DSL.field("count()", Long.class))
                   .from(DSL.table(DSL.sql(table())))
-                  .where(DSL.condition(
-                          INTELLIGENCE_DELIVERIES.CREATED_AT.getName() + " >= parseDateTime64BestEffort(?)",
-                          dtStart(startDate)))
-                  .and(DSL.condition(
-                          INTELLIGENCE_DELIVERIES.CREATED_AT.getName() + " <= parseDateTime64BestEffort(?)",
-                          dtEnd(endDate)))
+                  .where(dateRange(startDate, endDate))
+                  .and(protocolCondition(protocolCanonical))
                   .groupBy(DSL.field(INTELLIGENCE_DELIVERIES.SEVERITY.getName()))
                   .fetch()
                   .map(r -> new Object[]{r.get(0, String.class), r.get(1, Long.class)});
     }
 
     @Override
-    public List<Object[]> countByDestinationFiltered(OffsetDateTime startDate, OffsetDateTime endDate) {
+    public List<Object[]> countByDestinationFiltered(OffsetDateTime startDate, OffsetDateTime endDate, String protocolCanonical) {
         return dsl.select(
                     DSL.field(INTELLIGENCE_DELIVERIES.DESTINATION.getName()),
                     DSL.field("count()", Long.class).as("cnt"))
                   .from(DSL.table(DSL.sql(table())))
-                  .where(DSL.condition(
-                          INTELLIGENCE_DELIVERIES.CREATED_AT.getName() + " >= parseDateTime64BestEffort(?)",
-                          dtStart(startDate)))
-                  .and(DSL.condition(
-                          INTELLIGENCE_DELIVERIES.CREATED_AT.getName() + " <= parseDateTime64BestEffort(?)",
-                          dtEnd(endDate)))
+                  .where(dateRange(startDate, endDate))
+                  .and(protocolCondition(protocolCanonical))
                   .groupBy(DSL.field(INTELLIGENCE_DELIVERIES.DESTINATION.getName()))
                   .orderBy(DSL.field("cnt").desc())
                   .fetch()
                   .map(r -> new Object[]{r.get(0, String.class), r.get(1, Long.class)});
+    }
+
+    private org.jooq.Condition dateRange(OffsetDateTime startDate, OffsetDateTime endDate) {
+        return DSL.condition(
+                INTELLIGENCE_DELIVERIES.CREATED_AT.getName() + " >= parseDateTime64BestEffort(?)",
+                dtStart(startDate))
+            .and(DSL.condition(
+                INTELLIGENCE_DELIVERIES.CREATED_AT.getName() + " <= parseDateTime64BestEffort(?)",
+                dtEnd(endDate)));
+    }
+
+    private org.jooq.Condition protocolCondition(String protocolCanonical) {
+        return (protocolCanonical == null || protocolCanonical.isBlank())
+                ? DSL.noCondition()
+                : DSL.field(INTELLIGENCE_DELIVERIES.PROTOCOL_CANONICAL.getName()).eq(protocolCanonical);
     }
 }

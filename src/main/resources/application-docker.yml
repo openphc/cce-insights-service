@@ -2,6 +2,8 @@ server:
   port: ${SERVER_PORT:8084}
 
 cce:
+  clickhouse:
+    use-final: true
   cache:
     ttl:
       metrics: 5
