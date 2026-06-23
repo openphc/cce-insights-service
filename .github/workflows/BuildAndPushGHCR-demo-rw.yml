@@ -71,21 +71,3 @@ jobs:
         VERSION_TAG="${{ steps.version.outputs.version_tag }}"
         docker push ${IMAGE_URI}:${VERSION_TAG}
         docker push ${IMAGE_URI}:${LATEST_TAG}
-
-  trigger-deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/demo-rw' && success()
-    env:
-      GH_TOKEN: ${{ secrets.CROSS_REPO_TOKEN }}
-    steps:
-      - name: Trigger deploy-scripts workflow_dispatch
-        run: |
-          gh api --method POST \
-            /repos/openphc/deploy-scripts/actions/workflows/deploy.yml/dispatches \
-            --input - <<'JSON'
-          {
-            "ref": "main",
-            "inputs": { "target_env": "dev" }
-          }
-          JSON
