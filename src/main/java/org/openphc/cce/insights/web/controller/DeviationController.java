@@ -17,15 +17,22 @@ public class DeviationController {
 
     private final DeviationAnalyticsService deviationAnalyticsService;
 
+    @GetMapping("/deviations/kpis")
+    public ResponseEntity<ApiResponse<DeviationKpiDto>> getDeviationKpis(
+            @RequestParam(required = false) UUID protocolDefinitionId) {
+        return ResponseEntity.ok(ApiResponse.ok(deviationAnalyticsService.getDeviationKpis(protocolDefinitionId)));
+    }
+
     @GetMapping("/deviations")
     public ResponseEntity<ApiResponse<List<DeviationDto>>> getDeviations(
             @RequestParam(required = false) String deviationType,
             @RequestParam(required = false) String facilityId,
+            @RequestParam(required = false) UUID protocolDefinitionId,
             @RequestParam(required = false) OffsetDateTime startDate,
             @RequestParam(required = false) OffsetDateTime endDate,
             @RequestParam(defaultValue = "50") int limit) {
         List<DeviationDto> deviations = deviationAnalyticsService.getDeviations(
-                deviationType, facilityId, startDate, endDate, limit);
+                deviationType, facilityId, protocolDefinitionId, startDate, endDate, limit);
         return ResponseEntity.ok(ApiResponse.ok(deviations));
     }
 
@@ -37,7 +44,7 @@ public class DeviationController {
             @RequestParam(required = false) OffsetDateTime startDate,
             @RequestParam(required = false) OffsetDateTime endDate) {
         DeviationTrendDto trends = deviationAnalyticsService.getDeviationTrends(
-                interval, startDate, endDate, facilityId);
+                interval, startDate, endDate, facilityId, protocolDefinitionId);
         return ResponseEntity.ok(ApiResponse.ok(trends));
     }
 

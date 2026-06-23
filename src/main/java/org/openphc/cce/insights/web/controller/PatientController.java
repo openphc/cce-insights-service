@@ -6,11 +6,13 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.openphc.cce.insights.domain.entity.Deviation;
 import org.openphc.cce.insights.domain.entity.ComplianceEventLog;
+import org.openphc.cce.insights.domain.entity.IntelligenceDelivery;
 import org.openphc.cce.insights.domain.entity.ProtocolDefinition;
 import org.openphc.cce.insights.domain.entity.ProtocolInstance;
 import org.openphc.cce.insights.domain.entity.StepInstance;
 import org.openphc.cce.insights.domain.repository.DeviationRepository;
 import org.openphc.cce.insights.domain.repository.ComplianceEventLogRepository;
+import org.openphc.cce.insights.domain.repository.IntelligenceDeliveryRepository;
 import org.openphc.cce.insights.domain.repository.ProtocolDefinitionRepository;
 import org.openphc.cce.insights.domain.repository.ProtocolInstanceRepository;
 import org.openphc.cce.insights.domain.repository.StepInstanceRepository;
@@ -35,6 +37,7 @@ public class PatientController {
     private final StepInstanceRepository stepInstanceRepository;
     private final DeviationRepository deviationRepository;
     private final ComplianceEventLogRepository complianceEventLogRepository;
+    private final IntelligenceDeliveryRepository intelligenceDeliveryRepository;
     private final ProtocolDefinitionRepository protocolDefinitionRepository;
     private final ObjectMapper objectMapper;
 
@@ -156,6 +159,7 @@ public class PatientController {
         result.put("protocolInstanceId", pi.getId());
         result.put("patientId", pi.getPatientId());
         result.put("protocolCanonical", pi.getProtocolCanonical());
+        result.put("protocolDefinitionId", pi.getProtocolDefinitionId());
         result.put("status", pi.getStatus());
         result.put("enrolledAt", pi.getEnrolledAt());
         result.put("complianceRate", rate);
@@ -289,6 +293,30 @@ public class PatientController {
                 .sorted(Comparator.comparing(m -> ((OffsetDateTime) m.get("detectedAt")),
                         Comparator.reverseOrder()))
                 .collect(Collectors.toList());
+        return ResponseEntity.ok(ApiResponse.ok(result));
+    }
+
+    @GetMapping("/{patientId}/intelligence-deliveries")
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getPatientIntelligenceDeliveries(
+            @PathVariable String patientId) {
+        List<IntelligenceDelivery> deliveries = intelligenceDeliveryRepository.findBySubject(patientId);
+        if (deliveries.isEmpty()) {
+            deliveries = intelligenceDeliveryRepository.findBySubject("Patient/" + patientId);
+        }
+        List<Map<String, Object>> result = deliveries.stream().map(d -> {
+            Map<String, Object> map = new LinkedHashMap<>();
+            map.put("id", d.getId());
+            map.put("actionType", d.getActionType());
+            map.put("status", d.getStatus());
+            map.put("severity", d.getSeverity());
+            map.put("destination", d.getDestination());
+            map.put("protocolCanonical", d.getProtocolCanonical());
+            map.put("actionId", d.getActionId());
+            map.put("attemptCount", d.getAttemptCount());
+            map.put("createdAt", d.getCreatedAt());
+            map.put("deliveredAt", d.getDeliveredAt());
+            return map;
+        }).collect(Collectors.toList());
         return ResponseEntity.ok(ApiResponse.ok(result));
     }
 

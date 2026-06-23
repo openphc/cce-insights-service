@@ -156,7 +156,8 @@ src/
     │   ├── InboundEventLogRepositoryImpl.java
     │   ├── IntelligenceDeliveryRepositoryImpl.java
     │   ├── ReceiverAdaptorRepositoryImpl.java
-    │   └── DestinationAdaptorMappingRepositoryImpl.java
+    │   ├── DestinationAdaptorMappingRepositoryImpl.java
+    │   └── DailyKpiRepositoryImpl.java  # raw DSL queries against schema/07 MVs + facility_reference
     ├── health/
     │   └── DatabaseHealthIndicator.java
     ├── service/                         # Business logic / aggregation
@@ -204,8 +205,15 @@ dsl.select(DSL.field(STEP_INSTANCES.STATE.getName()))
 | `mv_patient_facility_latest` | AggregatingMV | Latest facility per patient (used in step_instances joins) |
 | `mv_practitioner_summary` | AggregatingMV | Pre-aggregated practitioner analytics |
 | `mv_facility_summary` | AggregatingMV | Pre-aggregated facility summaries |
+| `facility_reference` | ReplacingMergeTree | Static in-scope facility list + expected daily patient throughput (schema/08) — denominator for facility activity and adoption metrics |
+| `mv_daily_compliance_kpis` | ReplacingMergeTree | Daily compliance KPI snapshots per protocol (schema/07, APPEND-mode refresh) |
+| `mv_daily_facility_kpis` | ReplacingMergeTree | Daily facility compliance + event count snapshots (schema/07) |
+| `mv_daily_facility_activity_summary` | ReplacingMergeTree | Daily global facility activity cards: total_in_scope, active, inactive, rate (schema/07) |
+| `mv_daily_adoption_kpis` | ReplacingMergeTree | Daily e-Buzima adoption per facility: actual vs expected patients (schema/07) |
+| `mv_daily_deviation_kpis` | ReplacingMergeTree | Daily deviation header cards per protocol (schema/07) |
+| `mv_daily_event_kpis` | ReplacingMergeTree | Daily event pipeline summary: totals, rates, pipeline loss (schema/07) |
 
-> **FINAL clause:** ClickHouse `ReplacingMergeTree` tables may have duplicate rows until background merges complete. The `FINAL` modifier forces deduplication at query time. It is disabled by default (`CLICKHOUSE_USE_FINAL=false`) for performance and can be enabled per environment.
+> **FINAL clause:** ClickHouse `ReplacingMergeTree` tables may have duplicate rows until background merges complete. The `FINAL` modifier forces deduplication at query time. All queries against `mv_daily_*` tables and `facility_reference` must use `FINAL` — these are always queried with explicit `FINAL` in `DailyKpiRepositoryImpl`.
 
 ### 4.3 Key Query Patterns
 
@@ -350,14 +358,18 @@ The Insights Service uses **Caffeine** for in-memory response caching, organized
 
 **Cache annotations:** `@Cacheable` is applied to 25 service methods across 9 service classes. Cache keys are derived from method parameters (date ranges, filters, IDs).
 
-### Phased Architecture
+### Data Source
 
-| Phase | Data Source | Caching | Trade-off |
-|---|---|---|---|
-| **Phase 1 (current)** | Compliance DB `cce_collector` (direct queries) | Caffeine (in-memory, 3-tier) | Simple deployment; good for low-to-moderate scale |
-| **Phase 2 (future)** | Dedicated analytics DB (materialized views or CDC) | Redis (distributed) | Query performance at scale; eventual consistency |
+The Insights Service queries **ClickHouse** (`cce_analytics`) — the dedicated analytics DB populated
+by the CDC data pipeline (cce-data-pipeline repo). Most analytical endpoints read from pre-aggregated
+materialized views (schema/03, schema/06, schema/07) rather than scanning base tables.
 
-Phase 2 transition will be transparent to API consumers — same endpoints, same response schemas.
+| Query type | Source | Notes |
+|---|---|---|
+| Compliance / facility / deviation header cards | `mv_daily_*` (schema/07) | 30-min refresh, snapshot_date filter |
+| Protocol timelines, drill-downs | base tables + schema/06 rollups | Live, FINAL |
+| Facility adoption / activity | `mv_daily_facility_activity_summary`, `mv_daily_adoption_kpis` | Requires `facility_reference` seeded |
+| Event volume, ingestion, trends | `mv_event_volume_hourly`, `compliance_event_logs`, `inbound_event_logs` | Live or hourly MVs |
 
 ---
 

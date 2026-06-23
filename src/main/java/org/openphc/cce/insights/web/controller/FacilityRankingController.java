@@ -28,7 +28,7 @@ public class FacilityRankingController {
             @RequestParam(defaultValue = "50") int limit,
             @RequestParam(required = false) String cursor) {
         List<FacilityRankingDto> rankings = facilityRankingService.getRankings(
-                startDate, endDate, rankBy, order, limit);
+                protocolDefinitionId, startDate, endDate, rankBy, order, limit);
         return ResponseEntity.ok(ApiResponse.ok(rankings));
     }
 }

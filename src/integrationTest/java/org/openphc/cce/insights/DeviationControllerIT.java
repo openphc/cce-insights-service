@@ -32,7 +32,7 @@ class DeviationControllerIT extends AbstractIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        when(deviationAnalyticsService.getDeviationTrends(eq("weekly"), any(), any(), any()))
+        when(deviationAnalyticsService.getDeviationTrends(eq("weekly"), any(), any(), any(), any()))
                 .thenReturn(DeviationTrendDto.builder()
                         .interval("weekly")
                         .trends(List.of(DeviationTrendDto.TrendPoint.builder()

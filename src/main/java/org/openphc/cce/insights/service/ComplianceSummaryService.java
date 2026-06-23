@@ -8,6 +8,8 @@ import org.openphc.cce.insights.domain.entity.StepInstance;
 import org.openphc.cce.insights.domain.enums.StepState;
 import org.openphc.cce.insights.domain.repository.*;
 import org.openphc.cce.insights.web.dto.ComplianceSummaryDto;
+
+import java.time.LocalDate;
 import org.openphc.cce.insights.web.dto.FacilitySummaryDto;
 import org.openphc.cce.insights.web.dto.PatientComplianceDto;
 import org.springframework.stereotype.Service;
@@ -30,16 +32,44 @@ public class ComplianceSummaryService {
     private final StepInstanceRepository stepInstanceRepository;
     private final DeviationRepository deviationRepository;
     private final ComplianceEventLogRepository complianceEventLogRepository;
+    private final DailyKpiRepository dailyKpiRepository;
 
     @Cacheable(value = "analytics", key = "'compliance-all-' + (#facilityId ?: 'all')")
     public ComplianceSummaryDto getAllProtocolsComplianceSummary(String facilityId) {
         boolean hasFacility = facilityId != null && !facilityId.isEmpty();
-        Object[] sm = hasFacility
-                ? stepInstanceRepository.aggregateStepMetricsByFacility(facilityId)
-                : stepInstanceRepository.aggregateStepMetricsAll();
-        Object[] dm = hasFacility
-                ? deviationRepository.aggregateDeviationMetricsByFacility(facilityId)
-                : deviationRepository.aggregateDeviationMetricsAll();
+
+        if (!hasFacility) {
+            // No facility filter — use pre-aggregated MV (replaces 2 full base-table scans)
+            Object[] kpis = dailyKpiRepository.getComplianceKpisAll(null); // null = today's snapshot
+            long totalEnrollments = toLong(kpis[9]);
+            if (totalEnrollments == 0) {
+                return ComplianceSummaryDto.builder()
+                        .totalEnrollments(0).compliantPatients(0).complianceRate(0.0)
+                        .stepMetrics(ComplianceSummaryDto.StepMetrics.builder().build())
+                        .deviationCount(0).deviationBreakdown(Map.of())
+                        .build();
+            }
+            long compliantPatients = toLong(kpis[10]);
+            return ComplianceSummaryDto.builder()
+                    .totalEnrollments(totalEnrollments)
+                    .compliantPatients(compliantPatients)
+                    .complianceRate(Math.round((double) compliantPatients / totalEnrollments * 1000.0) / 10.0)
+                    .stepMetrics(ComplianceSummaryDto.StepMetrics.builder()
+                            .totalSteps(toLong(kpis[8])).completed(toLong(kpis[0]))
+                            .onTime(toLong(kpis[6])).late(toLong(kpis[7])).early(toLong(kpis[5]))
+                            .overdue(toLong(kpis[1])).missed(toLong(kpis[2])).due(toLong(kpis[3])).pending(toLong(kpis[4]))
+                            .build())
+                    .deviationCount(toLong(kpis[11]))
+                    .deviationBreakdown(Map.of(
+                            "overdue",        toLong(kpis[12]),
+                            "missed",         toLong(kpis[13]),
+                            "orderViolation", toLong(kpis[14])))
+                    .build();
+        }
+
+        // facilityId provided — mv_daily_compliance_kpis has no facility dimension, fall back to base tables
+        Object[] sm = stepInstanceRepository.aggregateStepMetricsByFacility(facilityId);
+        Object[] dm = deviationRepository.aggregateDeviationMetricsByFacility(facilityId);
 
         long totalEnrollments = toLong(sm[9]);
         if (totalEnrollments == 0) {
@@ -56,7 +86,7 @@ public class ComplianceSummaryService {
         return ComplianceSummaryDto.builder()
                 .totalEnrollments(totalEnrollments)
                 .compliantPatients(compliantPatients)
-                .complianceRate(Math.round(complianceRate * 100.0) / 100.0)
+                .complianceRate(Math.round(complianceRate * 1000.0) / 10.0)
                 .stepMetrics(ComplianceSummaryDto.StepMetrics.builder()
                         .totalSteps(toLong(sm[8])).completed(toLong(sm[0]))
                         .onTime(toLong(sm[6])).late(toLong(sm[7])).early(toLong(sm[5]))
@@ -70,35 +100,67 @@ public class ComplianceSummaryService {
                 .build();
     }
 
-    @Cacheable(value = "analytics", key = "'compliance-' + #protocolDefinitionId + '-' + (#facilityId ?: 'all')")
-    public ComplianceSummaryDto getProtocolComplianceSummary(UUID protocolDefinitionId, String facilityId) {
+    @Cacheable(value = "analytics", key = "'compliance-' + #protocolDefinitionId + '-' + (#facilityId ?: 'all') + '-' + (#snapshotDate ?: 'today')")
+    public ComplianceSummaryDto getProtocolComplianceSummary(UUID protocolDefinitionId, String facilityId,
+                                                              LocalDate snapshotDate) {
         ProtocolDefinition pd = protocolDefinitionRepository.findById(protocolDefinitionId)
                 .orElseThrow(() -> new EntityNotFoundException(
                         "Protocol definition not found: " + protocolDefinitionId));
 
         boolean hasFacility = facilityId != null && !facilityId.isEmpty();
 
-        // Always 2 aggregate queries — no per-instance loop regardless of facility filter
-        Object[] sm = hasFacility
-                ? stepInstanceRepository.aggregateStepMetricsByProtocolAndFacility(protocolDefinitionId, facilityId)
-                : stepInstanceRepository.aggregateStepMetrics(protocolDefinitionId);
-        Object[] dm = hasFacility
-                ? deviationRepository.aggregateDeviationMetricsByProtocolAndFacility(protocolDefinitionId, facilityId)
-                : deviationRepository.aggregateDeviationMetrics(protocolDefinitionId);
+        if (!hasFacility) {
+            // No facility filter — use pre-aggregated MV. Replaces 3 base-table queries:
+            // aggregateStepMetrics, aggregateDeviationMetrics, findByProtocolDefinitionId (statusBreakdown)
+            // snapshotDate: null = today's snapshot; past date = historical snapshot for that day
+            Object[] kpis = dailyKpiRepository.getComplianceKpisByProtocol(protocolDefinitionId, snapshotDate);
+            long totalEnrollments = toLong(kpis[9]);
+            if (totalEnrollments == 0) {
+                return buildEmptySummary(pd);
+            }
+            // Status breakdown comes from MV columns — no separate load needed
+            Map<String, Long> statusBreakdown = new LinkedHashMap<>();
+            statusBreakdown.put("active",    toLong(kpis[15]));
+            statusBreakdown.put("completed", toLong(kpis[16]));
+            statusBreakdown.put("withdrawn", toLong(kpis[17]));
+            statusBreakdown.put("expired",   toLong(kpis[18]));
+
+            long compliantPatients = toLong(kpis[10]);
+            return ComplianceSummaryDto.builder()
+                    .protocolDefinitionId(protocolDefinitionId)
+                    .protocolCanonical(pd.getUrl() + "|" + pd.getVersion())
+                    .totalEnrollments(totalEnrollments)
+                    .compliantPatients(compliantPatients)
+                    .statusBreakdown(statusBreakdown)
+                    .complianceRate(Math.round((double) compliantPatients / totalEnrollments * 1000.0) / 10.0)
+                    .stepMetrics(ComplianceSummaryDto.StepMetrics.builder()
+                            .totalSteps(toLong(kpis[8])).completed(toLong(kpis[0]))
+                            .onTime(toLong(kpis[6])).late(toLong(kpis[7])).early(toLong(kpis[5]))
+                            .overdue(toLong(kpis[1])).missed(toLong(kpis[2])).due(toLong(kpis[3])).pending(toLong(kpis[4]))
+                            .build())
+                    .deviationCount(toLong(kpis[11]))
+                    .deviationBreakdown(Map.of(
+                            "overdue",        toLong(kpis[12]),
+                            "missed",         toLong(kpis[13]),
+                            "orderViolation", toLong(kpis[14])))
+                    .build();
+        }
+
+        // facilityId provided — mv_daily_compliance_kpis has no facility dimension, fall back to base tables
+        Object[] sm = stepInstanceRepository.aggregateStepMetricsByProtocolAndFacility(protocolDefinitionId, facilityId);
+        Object[] dm = deviationRepository.aggregateDeviationMetricsByProtocolAndFacility(protocolDefinitionId, facilityId);
 
         long totalEnrollments = toLong(sm[9]);
         if (totalEnrollments == 0) {
             return buildEmptySummary(pd);
         }
 
-        // Load instances only for statusBreakdown (group by ACTIVE/COMPLETED/etc)
-        List<ProtocolInstance> instances = protocolInstanceRepository.findByProtocolDefinitionId(protocolDefinitionId);
-        if (hasFacility) {
-            Set<UUID> facilityInstanceIds = getFacilityInstanceIds(facilityId);
-            instances = instances.stream()
-                    .filter(pi -> facilityInstanceIds.contains(pi.getId()))
-                    .collect(Collectors.toList());
-        }
+        // Status breakdown still needs the instance list for the facility-filtered case
+        Set<UUID> facilityInstanceIds = getFacilityInstanceIds(facilityId);
+        List<ProtocolInstance> instances = protocolInstanceRepository.findByProtocolDefinitionId(protocolDefinitionId)
+                .stream()
+                .filter(pi -> facilityInstanceIds.contains(pi.getId()))
+                .collect(Collectors.toList());
         Map<String, Long> statusBreakdown = instances.stream()
                 .collect(Collectors.groupingBy(pi -> pi.getStatus().name().toLowerCase(), Collectors.counting()));
 
@@ -111,7 +173,7 @@ public class ComplianceSummaryService {
                 .totalEnrollments(totalEnrollments)
                 .compliantPatients(compliantPatients)
                 .statusBreakdown(statusBreakdown)
-                .complianceRate(Math.round(complianceRate * 100.0) / 100.0)
+                .complianceRate(Math.round(complianceRate * 1000.0) / 10.0)
                 .stepMetrics(ComplianceSummaryDto.StepMetrics.builder()
                         .totalSteps(toLong(sm[8])).completed(toLong(sm[0]))
                         .onTime(toLong(sm[6])).late(toLong(sm[7])).early(toLong(sm[5]))
@@ -221,7 +283,7 @@ public class ComplianceSummaryService {
             totalCompleted   += pCompleted;
             totalSteps       += pTotal;
 
-            double pRate = pTotal > 0 ? Math.round((double) pCompleted / pTotal * 100.0) / 100.0 : 0;
+            double pRate = pTotal > 0 ? Math.round((double) pCompleted / pTotal * 1000.0) / 10.0 : 0;
             breakdowns.add(FacilitySummaryDto.ProtocolBreakdown.builder()
                     .protocolDefinitionId(protocolDefId)
                     .protocolCanonical(protocolCanonical)
@@ -231,7 +293,7 @@ public class ComplianceSummaryService {
                     .build());
         }
 
-        double overallRate = totalSteps > 0 ? Math.round((double) totalCompleted / totalSteps * 100.0) / 100.0 : 0;
+        double overallRate = totalSteps > 0 ? Math.round((double) totalCompleted / totalSteps * 1000.0) / 10.0 : 0;
 
         return FacilitySummaryDto.builder()
                 .facilityId(facilityId)

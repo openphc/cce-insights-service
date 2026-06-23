@@ -20,6 +20,7 @@ import org.openphc.cce.insights.jooq.tables.DictActionDefinitions;
 import org.openphc.cce.insights.jooq.tables.DictDeliveryAdaptor;
 import org.openphc.cce.insights.jooq.tables.DictPatientFacility;
 import org.openphc.cce.insights.jooq.tables.DictProtocolDefinitions;
+import org.openphc.cce.insights.jooq.tables.FacilityReference;
 import org.openphc.cce.insights.jooq.tables.InboundEventLogs;
 import org.openphc.cce.insights.jooq.tables.InboundEventLogsMv;
 import org.openphc.cce.insights.jooq.tables.InboundEventLogsQueue;
@@ -31,6 +32,18 @@ import org.openphc.cce.insights.jooq.tables.IntelligenceEventLogsMv;
 import org.openphc.cce.insights.jooq.tables.IntelligenceEventLogsQueue;
 import org.openphc.cce.insights.jooq.tables.MvComplianceProcessingQuality;
 import org.openphc.cce.insights.jooq.tables.MvComplianceProcessingQualityMv;
+import org.openphc.cce.insights.jooq.tables.MvDailyAdoptionKpis;
+import org.openphc.cce.insights.jooq.tables.MvDailyAdoptionKpisMv;
+import org.openphc.cce.insights.jooq.tables.MvDailyComplianceKpis;
+import org.openphc.cce.insights.jooq.tables.MvDailyComplianceKpisMv;
+import org.openphc.cce.insights.jooq.tables.MvDailyDeviationKpis;
+import org.openphc.cce.insights.jooq.tables.MvDailyDeviationKpisMv;
+import org.openphc.cce.insights.jooq.tables.MvDailyEventKpis;
+import org.openphc.cce.insights.jooq.tables.MvDailyEventKpisMv;
+import org.openphc.cce.insights.jooq.tables.MvDailyFacilityActivitySummary;
+import org.openphc.cce.insights.jooq.tables.MvDailyFacilityActivitySummaryMv;
+import org.openphc.cce.insights.jooq.tables.MvDailyFacilityKpis;
+import org.openphc.cce.insights.jooq.tables.MvDailyFacilityKpisMv;
 import org.openphc.cce.insights.jooq.tables.MvDeviationByPatient;
 import org.openphc.cce.insights.jooq.tables.MvDeviationByPatientMv;
 import org.openphc.cce.insights.jooq.tables.MvDeviationByProtocol;
@@ -160,6 +173,11 @@ public class Tables {
     public static final DictProtocolDefinitions DICT_PROTOCOL_DEFINITIONS = DictProtocolDefinitions.DICT_PROTOCOL_DEFINITIONS;
 
     /**
+     * The table <code>cce_analytics.facility_reference</code>.
+     */
+    public static final FacilityReference FACILITY_REFERENCE = FacilityReference.FACILITY_REFERENCE;
+
+    /**
      * The table <code>cce_analytics.inbound_event_logs</code>.
      */
     public static final InboundEventLogs INBOUND_EVENT_LOGS = InboundEventLogs.INBOUND_EVENT_LOGS;
@@ -213,6 +231,67 @@ public class Tables {
      * The table <code>cce_analytics.mv_compliance_processing_quality_mv</code>.
      */
     public static final MvComplianceProcessingQualityMv MV_COMPLIANCE_PROCESSING_QUALITY_MV = MvComplianceProcessingQualityMv.MV_COMPLIANCE_PROCESSING_QUALITY_MV;
+
+    /**
+     * The table <code>cce_analytics.mv_daily_adoption_kpis</code>.
+     */
+    public static final MvDailyAdoptionKpis MV_DAILY_ADOPTION_KPIS = MvDailyAdoptionKpis.MV_DAILY_ADOPTION_KPIS;
+
+    /**
+     * The table <code>cce_analytics.mv_daily_adoption_kpis_mv</code>.
+     */
+    public static final MvDailyAdoptionKpisMv MV_DAILY_ADOPTION_KPIS_MV = MvDailyAdoptionKpisMv.MV_DAILY_ADOPTION_KPIS_MV;
+
+    /**
+     * The table <code>cce_analytics.mv_daily_compliance_kpis</code>.
+     */
+    public static final MvDailyComplianceKpis MV_DAILY_COMPLIANCE_KPIS = MvDailyComplianceKpis.MV_DAILY_COMPLIANCE_KPIS;
+
+    /**
+     * The table <code>cce_analytics.mv_daily_compliance_kpis_mv</code>.
+     */
+    public static final MvDailyComplianceKpisMv MV_DAILY_COMPLIANCE_KPIS_MV = MvDailyComplianceKpisMv.MV_DAILY_COMPLIANCE_KPIS_MV;
+
+    /**
+     * The table <code>cce_analytics.mv_daily_deviation_kpis</code>.
+     */
+    public static final MvDailyDeviationKpis MV_DAILY_DEVIATION_KPIS = MvDailyDeviationKpis.MV_DAILY_DEVIATION_KPIS;
+
+    /**
+     * The table <code>cce_analytics.mv_daily_deviation_kpis_mv</code>.
+     */
+    public static final MvDailyDeviationKpisMv MV_DAILY_DEVIATION_KPIS_MV = MvDailyDeviationKpisMv.MV_DAILY_DEVIATION_KPIS_MV;
+
+    /**
+     * The table <code>cce_analytics.mv_daily_event_kpis</code>.
+     */
+    public static final MvDailyEventKpis MV_DAILY_EVENT_KPIS = MvDailyEventKpis.MV_DAILY_EVENT_KPIS;
+
+    /**
+     * The table <code>cce_analytics.mv_daily_event_kpis_mv</code>.
+     */
+    public static final MvDailyEventKpisMv MV_DAILY_EVENT_KPIS_MV = MvDailyEventKpisMv.MV_DAILY_EVENT_KPIS_MV;
+
+    /**
+     * The table <code>cce_analytics.mv_daily_facility_activity_summary</code>.
+     */
+    public static final MvDailyFacilityActivitySummary MV_DAILY_FACILITY_ACTIVITY_SUMMARY = MvDailyFacilityActivitySummary.MV_DAILY_FACILITY_ACTIVITY_SUMMARY;
+
+    /**
+     * The table
+     * <code>cce_analytics.mv_daily_facility_activity_summary_mv</code>.
+     */
+    public static final MvDailyFacilityActivitySummaryMv MV_DAILY_FACILITY_ACTIVITY_SUMMARY_MV = MvDailyFacilityActivitySummaryMv.MV_DAILY_FACILITY_ACTIVITY_SUMMARY_MV;
+
+    /**
+     * The table <code>cce_analytics.mv_daily_facility_kpis</code>.
+     */
+    public static final MvDailyFacilityKpis MV_DAILY_FACILITY_KPIS = MvDailyFacilityKpis.MV_DAILY_FACILITY_KPIS;
+
+    /**
+     * The table <code>cce_analytics.mv_daily_facility_kpis_mv</code>.
+     */
+    public static final MvDailyFacilityKpisMv MV_DAILY_FACILITY_KPIS_MV = MvDailyFacilityKpisMv.MV_DAILY_FACILITY_KPIS_MV;
 
     /**
      * The table <code>cce_analytics.mv_deviation_by_patient</code>.

@@ -10,6 +10,7 @@ import org.openphc.cce.insights.web.dto.PatientComplianceDto;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -34,7 +35,10 @@ public class ComplianceSummaryController {
             @RequestParam(required = false) String facilityId,
             @RequestParam(required = false) OffsetDateTime startDate,
             @RequestParam(required = false) OffsetDateTime endDate) {
-        ComplianceSummaryDto summary = complianceSummaryService.getProtocolComplianceSummary(protocolDefinitionId, facilityId);
+        // Use endDate's calendar date as the snapshot day; null falls back to today's snapshot.
+        LocalDate snapshotDate = endDate != null ? endDate.toLocalDate() : null;
+        ComplianceSummaryDto summary = complianceSummaryService.getProtocolComplianceSummary(
+                protocolDefinitionId, facilityId, snapshotDate);
         return ResponseEntity.ok(ApiResponse.ok(summary));
     }
 

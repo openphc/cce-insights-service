@@ -1,6 +1,7 @@
 package org.openphc.cce.insights.service;
 
 import lombok.RequiredArgsConstructor;
+import org.openphc.cce.insights.domain.repository.DailyKpiRepository;
 import org.openphc.cce.insights.domain.repository.DeviationRepository;
 import org.openphc.cce.insights.domain.repository.InboundEventRepository;
 import org.openphc.cce.insights.domain.repository.ProtocolInstanceRepository;
@@ -23,6 +24,7 @@ public class DashboardService {
     private final InboundEventRepository inboundEventRepository;
     private final ProtocolInstanceRepository protocolInstanceRepository;
     private final DeviationRepository deviationRepository;
+    private final DailyKpiRepository dailyKpiRepository;
     private final FacilityRankingService facilityRankingService;
     private final PractitionerRankingService practitionerRankingService;
     private final DeviationAnalyticsService deviationAnalyticsService;
@@ -65,9 +67,9 @@ public class DashboardService {
 
         // Top 3 and Bottom 3 facilities by compliance rate
         List<FacilityRankingDto> topFacilities = facilityRankingService.getRankings(
-                startDate, endDate, "complianceRate", "desc", 3);
+                null, startDate, endDate, "complianceRate", "desc", 3);
         List<FacilityRankingDto> bottomFacilities = facilityRankingService.getRankings(
-                startDate, endDate, "complianceRate", "asc", 3);
+                null, startDate, endDate, "complianceRate", "asc", 3);
 
         // Enrich facility rankings with HIE patient counts
         enrichFacilitiesWithHIE(topFacilities, facilityHIEPatients);
@@ -88,7 +90,7 @@ public class DashboardService {
 
     @Cacheable(value = "metrics", key = "'dashboard-compliance-summary'")
     public DashboardComplianceSummaryDto getComplianceSummary() {
-        // Patient compliance
+        // Patient compliance — still from base tables (individual row-level data)
         long totalPatients = protocolInstanceRepository.findDistinctPatientIds().size();
         long patientsWithDeviations = deviationRepository.countDistinctPatientsWithDeviations();
         long compliantPatients = totalPatients - patientsWithDeviations;
@@ -96,33 +98,25 @@ public class DashboardService {
                 ? Math.round((double) compliantPatients / totalPatients * 1000.0) / 10.0
                 : 0.0;
 
-        // Facility compliance — get all facilities (large limit)
-        List<FacilityRankingDto> allFacilities = facilityRankingService.getRankings(
-                null, null, "complianceRate", "desc", 1000);
-        long totalFacilities = allFacilities.size();
-        long facilityAbove90 = allFacilities.stream()
-                .filter(f -> f.getComplianceRate() > 90.0)
-                .count();
-        long facilityBetween75And90 = allFacilities.stream()
-                .filter(f -> f.getComplianceRate() >= 75.0 && f.getComplianceRate() <= 90.0)
-                .count();
-        long facilityBelow75 = allFacilities.stream()
-                .filter(f -> f.getComplianceRate() < 75.0)
-                .count();
+        // Facility activity — from mv_daily_facility_activity_summary (single MV row).
+        // Replaces the old compliance-tier buckets (>90 / 75-90 / <75).
+        // [0] total_in_scope, [1] active_facilities, [2] inactive_facilities, [3] active_facility_rate_pct
+        Object[] activityRow = dailyKpiRepository.getFacilityActivitySummary();
+        long totalInScope     = ((Number) activityRow[0]).longValue();
+        long activeFacilities = ((Number) activityRow[1]).longValue();
+        long inactiveFacilities = ((Number) activityRow[2]).longValue();
+        double activeFacilityRate = ((Number) activityRow[3]).doubleValue();
 
-        // Practitioner compliance — get all practitioners (large limit)
+        // Practitioner compliance — still from FacilityRankingService (tier breakdown kept for practitioners)
         List<PractitionerRankingDto> allPractitioners = practitionerRankingService.getRankings(
                 "complianceRate", "desc", 1000, null, null, null);
         long totalPractitioners = allPractitioners.size();
         long practitionerAbove90 = allPractitioners.stream()
-                .filter(p -> p.getComplianceRate() > 90.0)
-                .count();
+                .filter(p -> p.getComplianceRate() > 90.0).count();
         long practitionerBetween75And90 = allPractitioners.stream()
-                .filter(p -> p.getComplianceRate() >= 75.0 && p.getComplianceRate() <= 90.0)
-                .count();
+                .filter(p -> p.getComplianceRate() >= 75.0 && p.getComplianceRate() <= 90.0).count();
         long practitionerBelow75 = allPractitioners.stream()
-                .filter(p -> p.getComplianceRate() < 75.0)
-                .count();
+                .filter(p -> p.getComplianceRate() < 75.0).count();
 
         return DashboardComplianceSummaryDto.builder()
                 .patients(DashboardComplianceSummaryDto.PatientComplianceDto.builder()
@@ -132,10 +126,10 @@ public class DashboardService {
                         .complianceRate(patientComplianceRate)
                         .build())
                 .facilities(DashboardComplianceSummaryDto.FacilityComplianceDto.builder()
-                        .trackedFacilities(totalFacilities)
-                        .above90(facilityAbove90)
-                        .between75And90(facilityBetween75And90)
-                        .below75(facilityBelow75)
+                        .trackedFacilities(totalInScope)
+                        .activeFacilities(activeFacilities)
+                        .inactiveFacilities(inactiveFacilities)
+                        .activeFacilityRate(activeFacilityRate)
                         .build())
                 .practitioners(DashboardComplianceSummaryDto.PractitionerComplianceDto.builder()
                         .trackedPractitioners(totalPractitioners)

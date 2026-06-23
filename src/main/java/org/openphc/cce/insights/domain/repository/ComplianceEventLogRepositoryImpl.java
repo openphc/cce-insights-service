@@ -142,6 +142,23 @@ public class ComplianceEventLogRepositoryImpl
     }
 
     @Override
+    public List<String> findFacilityIdsByProtocol(UUID protocolDefinitionId) {
+        var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
+        String fid = "iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName();
+        String pid = "iel." + INBOUND_EVENT_LOGS.PATIENT_ID.getName();
+        return dsl.selectDistinct(DSL.field(fid))
+                  .from(iel)
+                  .where(DSL.condition(
+                          pid + " IN (SELECT DISTINCT " + PROTOCOL_INSTANCES.PATIENT_ID.getName() +
+                          " FROM " + PROTOCOL_INSTANCES.getName() + " FINAL" +
+                          " WHERE " + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() +
+                          " = toUUID(?))",
+                          protocolDefinitionId.toString()))
+                  .and(DSL.field(fid).ne(""))
+                  .fetch(0, String.class);
+    }
+
+    @Override
     @Cacheable(value = "analytics", key = "'facility-names'")
     public List<Object[]> findFacilityNames() {
         // Single-pass scan: one read of inbound_event_logs with anyIf() per resource type.
@@ -313,8 +330,26 @@ public class ComplianceEventLogRepositoryImpl
         String src = str(source);
         String rt  = str(resourceType);
         String periodExpr = dateTruncExpr(interval, "cel." + COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName());
+        String celReceivedAt = "cel." + COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName();
+        String ielReceivedAt = "iel." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName();
+        String startStr = dtStart(startDate);
+        String endStr   = dtEnd(endDate);
         var cel = finalAs(COMPLIANCE_EVENT_LOGS, "cel");
         var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
+
+        // Build optional filters conditionally — avoids "? = '' OR col = ?" which
+        // prevents ClickHouse from using the primary key index when a filter IS set.
+        var baseWhere = DSL.field("cel." + COMPLIANCE_EVENT_LOGS.PROCESSING_STATUS.getName()).ne("DUPLICATE")
+                .and(DSL.condition(celReceivedAt + " >= parseDateTime64BestEffort(?)", startStr))
+                .and(DSL.condition(celReceivedAt + " <= parseDateTime64BestEffort(?)", endStr))
+                // Mirror date range onto iel so ClickHouse can skip irrelevant parts
+                // in inbound_event_logs rather than scanning the full table for the join.
+                .and(DSL.condition(ielReceivedAt + " >= parseDateTime64BestEffort(?)", startStr))
+                .and(DSL.condition(ielReceivedAt + " <= parseDateTime64BestEffort(?)", endStr));
+        if (!fid.isEmpty()) baseWhere = baseWhere.and(DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()).eq(fid));
+        if (!src.isEmpty()) baseWhere = baseWhere.and(DSL.field("iel." + INBOUND_EVENT_LOGS.SOURCE.getName()).eq(src));
+        if (!rt.isEmpty())  baseWhere = baseWhere.and(DSL.field("iel." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName()).eq(rt));
+
         return dsl.select(
                     DSL.field(DSL.sql(periodExpr)).as("period"),
                     DSL.field("iel." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName()),
@@ -323,16 +358,7 @@ public class ComplianceEventLogRepositoryImpl
                   .join(iel).on(DSL.condition(
                           "iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName() +
                           " = cel." + COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
-                  .where(DSL.field("cel." + COMPLIANCE_EVENT_LOGS.PROCESSING_STATUS.getName()).ne("DUPLICATE"))
-                  .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?", fid, fid))
-                  .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.SOURCE.getName() + " = ?", src, src))
-                  .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName() + " = ?", rt, rt))
-                  .and(DSL.condition(
-                          "cel." + COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
-                          dtStart(startDate)))
-                  .and(DSL.condition(
-                          "cel." + COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
-                          dtEnd(endDate)))
+                  .where(baseWhere)
                   .groupBy(
                           DSL.field(DSL.sql("period")),
                           DSL.field("iel." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName()))

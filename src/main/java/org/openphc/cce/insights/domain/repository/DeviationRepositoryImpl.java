@@ -147,10 +147,12 @@ public class DeviationRepositoryImpl
 
     @Override
     public List<Object[]> findFilteredDeviations(String deviationType, String facilityId,
+                                                  UUID protocolDefinitionId,
                                                   OffsetDateTime startDate, OffsetDateTime endDate,
                                                   int lim) {
         String dtype = str(deviationType);
         String fid   = str(facilityId);
+        String pid   = uuid(protocolDefinitionId);
         var d  = finalAs(DEVIATIONS, "d");
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
         var si = finalAs(STEP_INSTANCES, "si");
@@ -177,6 +179,9 @@ public class DeviationRepositoryImpl
                           "? = '' OR d." + DEVIATIONS.DEVIATION_TYPE.getName() + " = ?", dtype, dtype))
                   .and(DSL.condition("? = '' OR pf.facility_id = ?", fid, fid))
                   .and(DSL.condition(
+                          "toUUIDOrNull(?) IS NULL OR pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUIDOrNull(?)",
+                          pid, pid))
+                  .and(DSL.condition(
                           "d." + DEVIATIONS.DETECTED_AT.getName() + " >= parseDateTime64BestEffort(?)",
                           dtStart(startDate)))
                   .and(DSL.condition(
@@ -196,9 +201,9 @@ public class DeviationRepositoryImpl
     @Override
     public List<Object[]> findDeviationTrends(String interval, OffsetDateTime startDate,
                                                OffsetDateTime endDate, String facilityId,
-                                               String actionId) {
+                                               UUID protocolDefinitionId) {
         String fid = str(facilityId);
-        String aid = str(actionId);
+        String pid = uuid(protocolDefinitionId);
         String periodExpr = dateTruncExpr(interval, "d." + DEVIATIONS.DETECTED_AT.getName());
         var d  = finalAs(DEVIATIONS, "d");
         var si = finalAs(STEP_INSTANCES, "si");
@@ -224,7 +229,8 @@ public class DeviationRepositoryImpl
                           dtEnd(endDate)))
                   .and(DSL.condition("? = '' OR pf.facility_id = ?", fid, fid))
                   .and(DSL.condition(
-                          "? = '' OR si." + STEP_INSTANCES.ACTION_ID.getName() + " = ?", aid, aid))
+                          "toUUIDOrNull(?) IS NULL OR pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUIDOrNull(?)",
+                          pid, pid))
                   .groupBy(
                           DSL.field(DSL.sql("period")),
                           DSL.field("d." + DEVIATIONS.DEVIATION_TYPE.getName()))

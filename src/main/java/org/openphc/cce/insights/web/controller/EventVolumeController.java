@@ -16,6 +16,11 @@ public class EventVolumeController {
 
     private final EventVolumeService eventVolumeService;
 
+    @GetMapping("/kpis")
+    public ResponseEntity<ApiResponse<EventKpiDto>> getEventKpis() {
+        return ResponseEntity.ok(ApiResponse.ok(eventVolumeService.getEventKpis()));
+    }
+
     @GetMapping("/summary")
     public ResponseEntity<ApiResponse<EventVolumeSummaryDto>> getSummary(
             @RequestParam(required = false) String facilityId,

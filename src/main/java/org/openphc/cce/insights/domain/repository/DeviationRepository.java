@@ -16,10 +16,12 @@ public interface DeviationRepository extends ReadOnlyRepository<Deviation, UUID>
     Page<Deviation> findByDeviationType(DeviationType type, Pageable pageable);
 
     List<Object[]> findFilteredDeviations(String deviationType, String facilityId,
+                                          UUID protocolDefinitionId,
                                           OffsetDateTime startDate, OffsetDateTime endDate, int lim);
 
     List<Object[]> findDeviationTrends(String interval, OffsetDateTime startDate,
-                                       OffsetDateTime endDate, String facilityId, String actionId);
+                                       OffsetDateTime endDate, String facilityId,
+                                       UUID protocolDefinitionId);
 
     List<Object[]> findDeviationsByAction(UUID protocolDefId, OffsetDateTime startDate, OffsetDateTime endDate);
 

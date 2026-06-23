@@ -14,6 +14,8 @@ public interface ComplianceEventLogRepository extends ReadOnlyRepository<Complia
 
     List<String> findDistinctFacilityIds();
 
+    List<String> findFacilityIdsByProtocol(UUID protocolDefinitionId);
+
     List<Object[]> findFacilityNames();
 
     List<String> findDistinctPractitioners();
