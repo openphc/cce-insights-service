@@ -44,7 +44,7 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
                   .where(DSL.sql("snapshot_date = today()"))
                   .limit(1)
                   .fetchOne();
-        if (row == null) return new Object[]{totalInScope, 0L, totalInScope, 0.0};
+        if (row == null || totalInScope == 0) return new Object[]{totalInScope, 0L, totalInScope, 0.0};
         return new Object[]{
             totalInScope,
             row.get(0, Long.class),
@@ -75,8 +75,8 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
             )
             .fetchOne(0, Long.class);
 
-        long active = activeFacilities == null ? 0L : activeFacilities;
-        long inactive = totalInScope - active;
+        long active = totalInScope == 0 ? 0L : (activeFacilities == null ? 0L : activeFacilities);
+        long inactive = Math.max(0L, totalInScope - active);
         double rate = totalInScope > 0 ? Math.round((double) active / totalInScope * 1000.0) / 10.0 : 0.0;
 
         return new Object[]{totalInScope, active, inactive, rate};
