@@ -30,10 +30,10 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
 
     @Override
     public Object[] getFacilityActivitySummary() {
-        // total_in_scope always from facility_reference (live count, not MV snapshot).
+        // total_in_scope always from facility (live count, not MV snapshot).
         long totalInScope = toLong(
             dsl.selectCount()
-               .from(DSL.table(DSL.sql("facility_reference" + finalClause())))
+               .from(DSL.table(DSL.sql("facility" + finalClause())))
                .fetchOne(0, Long.class));
 
         var row = dsl.select(
@@ -55,13 +55,13 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
 
     // ── mv_daily_facility_activity_summary (date range) ─────────────────────
     // "Active" = had event_count > 0 on at least one day in the range.
-    // total_in_scope always comes from facility_reference (programme list).
+    // total_in_scope always comes from facility (programme list).
 
     @Override
     public Object[] getFacilityActivitySummaryByDateRange(LocalDate startDate, LocalDate endDate) {
         long totalInScope = toLong(
             dsl.selectCount()
-               .from(DSL.table(DSL.sql("facility_reference" + finalClause())))
+               .from(DSL.table(DSL.sql("facility" + finalClause())))
                .fetchOne(0, Long.class));
 
         Long activeFacilities = dsl.selectCount()
@@ -137,7 +137,7 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
                   });
     }
 
-    // ── facility_reference ───────────────────────────────────────────────────
+    // ── facility ─────────────────────────────────────────────────────────────
 
     @Override
     public List<Object[]> getFacilityReference() {
@@ -146,7 +146,7 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
                     DSL.field("facility_id",               String.class),
                     DSL.field("facility_name",              String.class),
                     DSL.field("expected_patients_per_day",  Long.class))
-                  .from(DSL.table(DSL.sql("facility_reference" + finalClause())))
+                  .from(DSL.table(DSL.sql("facility" + finalClause())))
                   .orderBy(DSL.field("facility_name"))
                   .fetch()
                   .map(r -> new Object[]{
@@ -274,7 +274,7 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
         // period_rate    = total_actual / total_expected × 100.
         // count() after FINAL = distinct days with MV data (not full calendar range).
         // Group by (facility_id, facility_name) only — max(expected_patients_per_day) collapses
-        // historical 0-value rows that appear when facility_reference was updated after MV population.
+        // historical 0-value rows that appear when facility was updated after MV population.
         // countIf(expected_patients_per_day > 0) counts only days with a valid baseline.
         return dsl.select(
                     DSL.field("facility_id",              String.class),

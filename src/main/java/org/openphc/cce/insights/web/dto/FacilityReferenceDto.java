@@ -3,7 +3,7 @@ package org.openphc.cce.insights.web.dto;
 import lombok.Builder;
 import lombok.Data;
 
-/** Maps facility_reference — the agreed facility list managed by programme staff. */
+/** Maps facility — the agreed facility list managed by programme staff. */
 @Data
 @Builder
 public class FacilityReferenceDto {

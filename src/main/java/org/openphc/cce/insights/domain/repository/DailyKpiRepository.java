@@ -6,7 +6,7 @@ import java.util.UUID;
 
 /**
  * Read-only access to the six refreshable daily KPI materialized views
- * (schema/07-daily-summary-aggregates.sql) and the facility_reference
+ * (schema/07-daily-summary-aggregates.sql) and the facility
  * static table (schema/08-reference-tables.sql).
  *
  * jOOQ-generated classes do not yet exist for these tables — all queries
@@ -45,7 +45,7 @@ public interface DailyKpiRepository {
     List<Object[]> getAdoptionKpis();
 
     /**
-     * facility_reference FINAL — one row per facility_id, ordered by facility_name.
+     * facility FINAL — one row per facility_id, ordered by facility_name.
      * Returns: [facility_id(String), facility_name(String), expected_patients_per_day(long)]
      */
     List<Object[]> getFacilityReference();

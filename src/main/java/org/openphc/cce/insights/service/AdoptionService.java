@@ -54,7 +54,7 @@ public class AdoptionService {
     }
 
     /**
-     * Returns the full facility_reference list for admin screens.
+     * Returns the full facility list for admin screens.
      * Sourced directly from the static reference table (FINAL for dedup).
      */
     @Cacheable(value = "lookups", key = "'facility-reference'")

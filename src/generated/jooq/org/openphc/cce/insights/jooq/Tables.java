@@ -20,9 +20,9 @@ import org.openphc.cce.insights.jooq.tables.DictActionDefinitions;
 import org.openphc.cce.insights.jooq.tables.DictDeliveryAdaptor;
 import org.openphc.cce.insights.jooq.tables.DictPatientFacility;
 import org.openphc.cce.insights.jooq.tables.DictProtocolDefinitions;
-import org.openphc.cce.insights.jooq.tables.FacilityReference;
-import org.openphc.cce.insights.jooq.tables.FacilityReferenceMv;
-import org.openphc.cce.insights.jooq.tables.FacilityReferenceQueue;
+import org.openphc.cce.insights.jooq.tables.Facility;
+import org.openphc.cce.insights.jooq.tables.FacilityMv;
+import org.openphc.cce.insights.jooq.tables.FacilityQueue;
 import org.openphc.cce.insights.jooq.tables.InboundEventLogs;
 import org.openphc.cce.insights.jooq.tables.InboundEventLogsMv;
 import org.openphc.cce.insights.jooq.tables.InboundEventLogsQueue;
@@ -175,19 +175,19 @@ public class Tables {
     public static final DictProtocolDefinitions DICT_PROTOCOL_DEFINITIONS = DictProtocolDefinitions.DICT_PROTOCOL_DEFINITIONS;
 
     /**
-     * The table <code>cce_analytics.facility_reference</code>.
+     * The table <code>cce_analytics.facility</code>.
      */
-    public static final FacilityReference FACILITY_REFERENCE = FacilityReference.FACILITY_REFERENCE;
+    public static final Facility FACILITY = Facility.FACILITY;
 
     /**
-     * The table <code>cce_analytics.facility_reference_mv</code>.
+     * The table <code>cce_analytics.facility_mv</code>.
      */
-    public static final FacilityReferenceMv FACILITY_REFERENCE_MV = FacilityReferenceMv.FACILITY_REFERENCE_MV;
+    public static final FacilityMv FACILITY_MV = FacilityMv.FACILITY_MV;
 
     /**
-     * The table <code>cce_analytics.facility_reference_queue</code>.
+     * The table <code>cce_analytics.facility_queue</code>.
      */
-    public static final FacilityReferenceQueue FACILITY_REFERENCE_QUEUE = FacilityReferenceQueue.FACILITY_REFERENCE_QUEUE;
+    public static final FacilityQueue FACILITY_QUEUE = FacilityQueue.FACILITY_QUEUE;
 
     /**
      * The table <code>cce_analytics.inbound_event_logs</code>.

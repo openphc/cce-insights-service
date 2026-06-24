@@ -9,7 +9,7 @@ import lombok.Data;
 public class AdoptionKpiDto {
     private String facilityId;
     private String facilityName;
-    /** Validated baseline from facility_reference (set by programme staff). */
+    /** Validated baseline from facility (set by programme staff). */
     private long expectedPatientsPerDay;
     /** Unique patients with HIE events today. */
     private long actualPatients;

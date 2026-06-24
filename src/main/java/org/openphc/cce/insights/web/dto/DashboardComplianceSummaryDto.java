@@ -23,7 +23,7 @@ public class DashboardComplianceSummaryDto {
     @Data
     @Builder
     public static class FacilityComplianceDto {
-        private long trackedFacilities;     // total_in_scope from facility_reference
+        private long trackedFacilities;     // total_in_scope from facility
         private long activeFacilities;      // transmitted ≥1 HIE event today
         private long inactiveFacilities;    // in scope but no events today
         private double activeFacilityRate;  // active / total_in_scope × 100
