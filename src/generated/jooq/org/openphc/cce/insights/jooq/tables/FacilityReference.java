@@ -5,6 +5,7 @@ package org.openphc.cce.insights.jooq.tables;
 
 
 import java.util.Collection;
+import java.util.UUID;
 
 import org.jooq.Condition;
 import org.jooq.Field;
@@ -21,6 +22,7 @@ import org.jooq.TableField;
 import org.jooq.TableOptions;
 import org.jooq.UniqueKey;
 import org.jooq.impl.DSL;
+import org.jooq.impl.SQLDataType;
 import org.jooq.impl.TableImpl;
 import org.openphc.cce.insights.jooq.CceAnalytics;
 import org.openphc.cce.insights.jooq.Keys;
@@ -48,6 +50,11 @@ public class FacilityReference extends TableImpl<Record> {
     }
 
     /**
+     * The column <code>cce_analytics.facility_reference.id</code>.
+     */
+    public final TableField<Record, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "");
+
+    /**
      * The column <code>cce_analytics.facility_reference.facility_id</code>.
      */
     public final TableField<Record, Object> FACILITY_ID = createField(DSL.name("facility_id"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
@@ -64,9 +71,24 @@ public class FacilityReference extends TableImpl<Record> {
     public final TableField<Record, Object> EXPECTED_PATIENTS_PER_DAY = createField(DSL.name("expected_patients_per_day"), org.jooq.impl.SQLDataType.OTHER.nullable(false).defaultValue(DSL.field(DSL.raw("'0'"), org.jooq.impl.SQLDataType.OTHER)), this, "");
 
     /**
+     * The column <code>cce_analytics.facility_reference.created_at</code>.
+     */
+    public final TableField<Record, Object> CREATED_AT = createField(DSL.name("created_at"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
+
+    /**
      * The column <code>cce_analytics.facility_reference.updated_at</code>.
      */
-    public final TableField<Record, Object> UPDATED_AT = createField(DSL.name("updated_at"), org.jooq.impl.SQLDataType.OTHER.nullable(false).defaultValue(DSL.field(DSL.raw("'now64(3)'"), org.jooq.impl.SQLDataType.OTHER)), this, "");
+    public final TableField<Record, Object> UPDATED_AT = createField(DSL.name("updated_at"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
+
+    /**
+     * The column <code>cce_analytics.facility_reference._version</code>.
+     */
+    public final TableField<Record, Object> _VERSION = createField(DSL.name("_version"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
+
+    /**
+     * The column <code>cce_analytics.facility_reference._is_deleted</code>.
+     */
+    public final TableField<Record, Object> _IS_DELETED = createField(DSL.name("_is_deleted"), org.jooq.impl.SQLDataType.OTHER.nullable(false).defaultValue(DSL.field(DSL.raw("'0'"), org.jooq.impl.SQLDataType.OTHER)), this, "");
 
     private FacilityReference(Name alias, Table<Record> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);

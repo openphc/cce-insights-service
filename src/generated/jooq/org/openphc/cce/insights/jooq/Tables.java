@@ -21,6 +21,8 @@ import org.openphc.cce.insights.jooq.tables.DictDeliveryAdaptor;
 import org.openphc.cce.insights.jooq.tables.DictPatientFacility;
 import org.openphc.cce.insights.jooq.tables.DictProtocolDefinitions;
 import org.openphc.cce.insights.jooq.tables.FacilityReference;
+import org.openphc.cce.insights.jooq.tables.FacilityReferenceMv;
+import org.openphc.cce.insights.jooq.tables.FacilityReferenceQueue;
 import org.openphc.cce.insights.jooq.tables.InboundEventLogs;
 import org.openphc.cce.insights.jooq.tables.InboundEventLogsMv;
 import org.openphc.cce.insights.jooq.tables.InboundEventLogsQueue;
@@ -176,6 +178,16 @@ public class Tables {
      * The table <code>cce_analytics.facility_reference</code>.
      */
     public static final FacilityReference FACILITY_REFERENCE = FacilityReference.FACILITY_REFERENCE;
+
+    /**
+     * The table <code>cce_analytics.facility_reference_mv</code>.
+     */
+    public static final FacilityReferenceMv FACILITY_REFERENCE_MV = FacilityReferenceMv.FACILITY_REFERENCE_MV;
+
+    /**
+     * The table <code>cce_analytics.facility_reference_queue</code>.
+     */
+    public static final FacilityReferenceQueue FACILITY_REFERENCE_QUEUE = FacilityReferenceQueue.FACILITY_REFERENCE_QUEUE;
 
     /**
      * The table <code>cce_analytics.inbound_event_logs</code>.

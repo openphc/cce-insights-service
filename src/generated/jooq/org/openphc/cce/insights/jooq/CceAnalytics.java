@@ -27,6 +27,8 @@ import org.openphc.cce.insights.jooq.tables.DictDeliveryAdaptor;
 import org.openphc.cce.insights.jooq.tables.DictPatientFacility;
 import org.openphc.cce.insights.jooq.tables.DictProtocolDefinitions;
 import org.openphc.cce.insights.jooq.tables.FacilityReference;
+import org.openphc.cce.insights.jooq.tables.FacilityReferenceMv;
+import org.openphc.cce.insights.jooq.tables.FacilityReferenceQueue;
 import org.openphc.cce.insights.jooq.tables.InboundEventLogs;
 import org.openphc.cce.insights.jooq.tables.InboundEventLogsMv;
 import org.openphc.cce.insights.jooq.tables.InboundEventLogsQueue;
@@ -189,6 +191,16 @@ public class CceAnalytics extends SchemaImpl {
      * The table <code>cce_analytics.facility_reference</code>.
      */
     public final FacilityReference FACILITY_REFERENCE = FacilityReference.FACILITY_REFERENCE;
+
+    /**
+     * The table <code>cce_analytics.facility_reference_mv</code>.
+     */
+    public final FacilityReferenceMv FACILITY_REFERENCE_MV = FacilityReferenceMv.FACILITY_REFERENCE_MV;
+
+    /**
+     * The table <code>cce_analytics.facility_reference_queue</code>.
+     */
+    public final FacilityReferenceQueue FACILITY_REFERENCE_QUEUE = FacilityReferenceQueue.FACILITY_REFERENCE_QUEUE;
 
     /**
      * The table <code>cce_analytics.inbound_event_logs</code>.
@@ -539,6 +551,8 @@ public class CceAnalytics extends SchemaImpl {
             DictPatientFacility.DICT_PATIENT_FACILITY,
             DictProtocolDefinitions.DICT_PROTOCOL_DEFINITIONS,
             FacilityReference.FACILITY_REFERENCE,
+            FacilityReferenceMv.FACILITY_REFERENCE_MV,
+            FacilityReferenceQueue.FACILITY_REFERENCE_QUEUE,
             InboundEventLogs.INBOUND_EVENT_LOGS,
             InboundEventLogsMv.INBOUND_EVENT_LOGS_MV,
             InboundEventLogsQueue.INBOUND_EVENT_LOGS_QUEUE,
