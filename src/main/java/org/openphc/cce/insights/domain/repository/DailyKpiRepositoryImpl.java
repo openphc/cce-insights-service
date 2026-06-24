@@ -30,10 +30,10 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
 
     @Override
     public Object[] getFacilityActivitySummary() {
-        // total_in_scope always from facility_reference (live count, not MV snapshot).
+        // total_in_scope always from facility (live count, not MV snapshot).
         long totalInScope = toLong(
             dsl.selectCount()
-               .from(DSL.table(DSL.sql("facility_reference" + finalClause())))
+               .from(DSL.table(DSL.sql("facility" + finalClause())))
                .fetchOne(0, Long.class));
 
         var row = dsl.select(
@@ -55,13 +55,13 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
 
     // ── mv_daily_facility_activity_summary (date range) ─────────────────────
     // "Active" = had event_count > 0 on at least one day in the range.
-    // total_in_scope always comes from facility_reference (programme list).
+    // total_in_scope always comes from facility (programme list).
 
     @Override
     public Object[] getFacilityActivitySummaryByDateRange(LocalDate startDate, LocalDate endDate) {
         long totalInScope = toLong(
             dsl.selectCount()
-               .from(DSL.table(DSL.sql("facility_reference" + finalClause())))
+               .from(DSL.table(DSL.sql("facility" + finalClause())))
                .fetchOne(0, Long.class));
 
         Long activeFacilities = dsl.selectCount()
@@ -116,13 +116,16 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
         return dsl.select(
                     DSL.field("facility_id",               String.class),
                     DSL.field("facility_name",              String.class),
-                    DSL.field("expected_patients_per_day",  Long.class),
-                    DSL.field("actual_patients",            Long.class),
-                    DSL.field("adoption_rate_pct",          Double.class),
-                    DSL.field("reporting_gap",              Long.class))
+                    DSL.field(DSL.sql("max(expected_patients_per_day)"), Long.class),
+                    DSL.sum(DSL.field("actual_patients", Long.class)),
+                    DSL.field(DSL.sql("if(max(expected_patients_per_day) = 0, toFloat64(100.0)," +
+                        " max(adoption_rate_pct))"), Double.class),
+                    DSL.field(DSL.sql("if(max(expected_patients_per_day) = 0, toInt64(0)," +
+                        " max(reporting_gap))"), Long.class))
                   .from(DSL.table(DSL.sql("mv_daily_adoption_kpis" + finalClause())))
                   .where(DSL.sql("snapshot_date = today()"))
-                  .orderBy(DSL.field("reporting_gap").desc())
+                  .groupBy(DSL.field("facility_id"), DSL.field("facility_name"))
+                  .orderBy(DSL.field(DSL.sql("max(reporting_gap)")).desc())
                   .fetch()
                   .map(r -> new Object[]{
                       r.get(0, String.class),
@@ -134,7 +137,7 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
                   });
     }
 
-    // ── facility_reference ───────────────────────────────────────────────────
+    // ── facility ─────────────────────────────────────────────────────────────
 
     @Override
     public List<Object[]> getFacilityReference() {
@@ -143,7 +146,7 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
                     DSL.field("facility_id",               String.class),
                     DSL.field("facility_name",              String.class),
                     DSL.field("expected_patients_per_day",  Long.class))
-                  .from(DSL.table(DSL.sql("facility_reference" + finalClause())))
+                  .from(DSL.table(DSL.sql("facility" + finalClause())))
                   .orderBy(DSL.field("facility_name"))
                   .fetch()
                   .map(r -> new Object[]{
@@ -270,24 +273,30 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
         // total_expected = expected_patients_per_day × count(distinct snapshot_date),
         // period_rate    = total_actual / total_expected × 100.
         // count() after FINAL = distinct days with MV data (not full calendar range).
+        // Group by (facility_id, facility_name) only — max(expected_patients_per_day) collapses
+        // historical 0-value rows that appear when facility was updated after MV population.
+        // countIf(expected_patients_per_day > 0) counts only days with a valid baseline.
         return dsl.select(
                     DSL.field("facility_id",              String.class),
                     DSL.field("facility_name",             String.class),
-                    DSL.field("expected_patients_per_day", Long.class),
+                    DSL.field(DSL.sql("max(expected_patients_per_day)"), Long.class),
                     DSL.sum(DSL.field("actual_patients",  Long.class)),
                     DSL.field(DSL.sql(
-                        "toFloat32(round(sum(actual_patients) / nullIf(" +
-                        "  expected_patients_per_day * count(), 0) * 100, 1))")),
+                        "toFloat32(round(if(max(expected_patients_per_day) = 0, 100.0," +
+                        "  sum(actual_patients) / nullIf(max(expected_patients_per_day) *" +
+                        "  countIf(expected_patients_per_day > 0), 0) * 100), 1))")),
                     DSL.field(DSL.sql(
-                        "toInt64(expected_patients_per_day * count() - sum(actual_patients))")))
+                        "toInt64(if(max(expected_patients_per_day) = 0, 0," +
+                        "  max(expected_patients_per_day) * countIf(expected_patients_per_day > 0)" +
+                        "  - sum(actual_patients)))")))
                   .from(DSL.table(DSL.sql("mv_daily_adoption_kpis" + finalClause())))
                   .where(DSL.field("snapshot_date", LocalDate.class).between(startDate).and(endDate))
                   .groupBy(
                       DSL.field("facility_id"),
-                      DSL.field("facility_name"),
-                      DSL.field("expected_patients_per_day"))
+                      DSL.field("facility_name"))
                   .orderBy(DSL.field(DSL.sql(
-                      "expected_patients_per_day * count() - sum(actual_patients)")).desc())
+                      "max(expected_patients_per_day) * countIf(expected_patients_per_day > 0)" +
+                      " - sum(actual_patients)")).desc())
                   .fetch()
                   .map(r -> new Object[]{
                       r.get(0, String.class),

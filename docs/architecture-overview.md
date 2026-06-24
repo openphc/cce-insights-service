@@ -157,7 +157,7 @@ src/
     │   ├── IntelligenceDeliveryRepositoryImpl.java
     │   ├── ReceiverAdaptorRepositoryImpl.java
     │   ├── DestinationAdaptorMappingRepositoryImpl.java
-    │   └── DailyKpiRepositoryImpl.java  # raw DSL queries against schema/07 MVs + facility_reference
+    │   └── DailyKpiRepositoryImpl.java  # raw DSL queries against schema/07 MVs + facility
     ├── health/
     │   └── DatabaseHealthIndicator.java
     ├── service/                         # Business logic / aggregation
@@ -205,7 +205,7 @@ dsl.select(DSL.field(STEP_INSTANCES.STATE.getName()))
 | `mv_patient_facility_latest` | AggregatingMV | Latest facility per patient (used in step_instances joins) |
 | `mv_practitioner_summary` | AggregatingMV | Pre-aggregated practitioner analytics |
 | `mv_facility_summary` | AggregatingMV | Pre-aggregated facility summaries |
-| `facility_reference` | ReplacingMergeTree | Static in-scope facility list + expected daily patient throughput (schema/08) — denominator for facility activity and adoption metrics |
+| `facility` | ReplacingMergeTree | Static in-scope facility list + expected daily patient throughput (schema/08) — denominator for facility activity and adoption metrics |
 | `mv_daily_compliance_kpis` | ReplacingMergeTree | Daily compliance KPI snapshots per protocol (schema/07, APPEND-mode refresh) |
 | `mv_daily_facility_kpis` | ReplacingMergeTree | Daily facility compliance + event count snapshots (schema/07) |
 | `mv_daily_facility_activity_summary` | ReplacingMergeTree | Daily global facility activity cards: total_in_scope, active, inactive, rate (schema/07) |
@@ -213,7 +213,7 @@ dsl.select(DSL.field(STEP_INSTANCES.STATE.getName()))
 | `mv_daily_deviation_kpis` | ReplacingMergeTree | Daily deviation header cards per protocol (schema/07) |
 | `mv_daily_event_kpis` | ReplacingMergeTree | Daily event pipeline summary: totals, rates, pipeline loss (schema/07) |
 
-> **FINAL clause:** ClickHouse `ReplacingMergeTree` tables may have duplicate rows until background merges complete. The `FINAL` modifier forces deduplication at query time. All queries against `mv_daily_*` tables and `facility_reference` must use `FINAL` — these are always queried with explicit `FINAL` in `DailyKpiRepositoryImpl`.
+> **FINAL clause:** ClickHouse `ReplacingMergeTree` tables may have duplicate rows until background merges complete. The `FINAL` modifier forces deduplication at query time. All queries against `mv_daily_*` tables and `facility` must use `FINAL` — these are always queried with explicit `FINAL` in `DailyKpiRepositoryImpl`.
 
 ### 4.3 Key Query Patterns
 
@@ -368,7 +368,7 @@ materialized views (schema/03, schema/06, schema/07) rather than scanning base t
 |---|---|---|
 | Compliance / facility / deviation header cards | `mv_daily_*` (schema/07) | 30-min refresh, snapshot_date filter |
 | Protocol timelines, drill-downs | base tables + schema/06 rollups | Live, FINAL |
-| Facility adoption / activity | `mv_daily_facility_activity_summary`, `mv_daily_adoption_kpis` | Requires `facility_reference` seeded |
+| Facility adoption / activity | `mv_daily_facility_activity_summary`, `mv_daily_adoption_kpis` | Requires `facility` seeded |
 | Event volume, ingestion, trends | `mv_event_volume_hourly`, `compliance_event_logs`, `inbound_event_logs` | Live or hourly MVs |
 
 ---

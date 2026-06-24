@@ -13,7 +13,7 @@ import org.openphc.cce.insights.jooq.tables.ActionDefinitions;
 import org.openphc.cce.insights.jooq.tables.ComplianceEventLogs;
 import org.openphc.cce.insights.jooq.tables.DestinationAdaptorMapping;
 import org.openphc.cce.insights.jooq.tables.Deviations;
-import org.openphc.cce.insights.jooq.tables.FacilityReference;
+import org.openphc.cce.insights.jooq.tables.Facility;
 import org.openphc.cce.insights.jooq.tables.InboundEventLogs;
 import org.openphc.cce.insights.jooq.tables.IntelligenceDeliveries;
 import org.openphc.cce.insights.jooq.tables.IntelligenceEventLogs;
@@ -59,7 +59,7 @@ public class Keys {
     public static final UniqueKey<Record> PK_COMPLIANCE_EVENT_LOGS = Internal.createUniqueKey(ComplianceEventLogs.COMPLIANCE_EVENT_LOGS, DSL.name("PK_compliance_event_logs"), new TableField[] { ComplianceEventLogs.COMPLIANCE_EVENT_LOGS.ID }, true);
     public static final UniqueKey<Record> PK_DESTINATION_ADAPTOR_MAPPING = Internal.createUniqueKey(DestinationAdaptorMapping.DESTINATION_ADAPTOR_MAPPING, DSL.name("PK_destination_adaptor_mapping"), new TableField[] { DestinationAdaptorMapping.DESTINATION_ADAPTOR_MAPPING.ID }, true);
     public static final UniqueKey<Record> PK_DEVIATIONS = Internal.createUniqueKey(Deviations.DEVIATIONS, DSL.name("PK_deviations"), new TableField[] { Deviations.DEVIATIONS.ID }, true);
-    public static final UniqueKey<Record> PK_FACILITY_REFERENCE = Internal.createUniqueKey(FacilityReference.FACILITY_REFERENCE, DSL.name("PK_facility_reference"), new TableField[] { FacilityReference.FACILITY_REFERENCE.FACILITY_ID }, true);
+    public static final UniqueKey<Record> PK_FACILITY = Internal.createUniqueKey(Facility.FACILITY, DSL.name("PK_facility"), new TableField[] { Facility.FACILITY.ID }, true);
     public static final UniqueKey<Record> PK_INBOUND_EVENT_LOGS = Internal.createUniqueKey(InboundEventLogs.INBOUND_EVENT_LOGS, DSL.name("PK_inbound_event_logs"), new TableField[] { InboundEventLogs.INBOUND_EVENT_LOGS.ID }, true);
     public static final UniqueKey<Record> PK_INTELLIGENCE_DELIVERIES = Internal.createUniqueKey(IntelligenceDeliveries.INTELLIGENCE_DELIVERIES, DSL.name("PK_intelligence_deliveries"), new TableField[] { IntelligenceDeliveries.INTELLIGENCE_DELIVERIES.ID }, true);
     public static final UniqueKey<Record> PK_INTELLIGENCE_EVENT_LOGS = Internal.createUniqueKey(IntelligenceEventLogs.INTELLIGENCE_EVENT_LOGS, DSL.name("PK_intelligence_event_logs"), new TableField[] { IntelligenceEventLogs.INTELLIGENCE_EVENT_LOGS.ID }, true);

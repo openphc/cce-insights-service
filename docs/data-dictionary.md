@@ -162,20 +162,25 @@ Destination routing configuration for intelligence delivery.
 | `created_at` | `TIMESTAMPTZ` | No | Record creation |
 | `updated_at` | `TIMESTAMPTZ` | No | Last update |
 
-### 1.10 `facility_reference` (schema/08 — static reference table)
+### 1.10 `facility` (schema/01 — CDC-sourced from compliance service)
 
-Manually managed list of in-scope facilities. The agreed list defines the denominator for facility
-activity metrics (active/inactive count) and the expected throughput baseline for e-Buzima adoption.
-Engine: `ReplacingMergeTree(updated_at)` ORDER BY `(facility_id)` — insert a new row with the same
-`facility_id` and a newer timestamp to "update". Delete the row to remove a facility from scope.
-Always read with `FINAL` to see the deduplicated view.
+Facility roster managed by the compliance service (`FacilityService.upsertFacility()`). Defines the
+denominator for facility activity metrics and the e-Buzima adoption baseline. Populated via Debezium
+CDC: `PostgreSQL → Kafka (cce.public.facility) → ClickHouse`.
+Engine: `ReplacingMergeTree(_version, _is_deleted)` ORDER BY `(id)` — dedup uses Debezium LSN as
+version; deleted facilities are physically removed on background merge (`clean_deleted_rows = Always`).
+Always read with `FINAL` to see the deduplicated, delete-purged view.
 
 | Column | Type | Description |
 |--------|------|-------------|
-| `facility_id` | `String` | FOSA facility ID — unique key (ReplacingMergeTree dedup) |
-| `facility_name` | `String` | Human-readable facility name |
-| `expected_patients_per_day` | `UInt32` | Agreed daily patient throughput baseline for adoption calculation |
-| `updated_at` | `DateTime64(3)` | Version timestamp — highest wins on dedup |
+| `id` | `UUID` | PostgreSQL primary key — ReplacingMergeTree ORDER BY key |
+| `facility_id` | `String` | HIE-assigned facility identifier — UNIQUE in source |
+| `facility_name` | `String` | Display name from FHIR Reference.display |
+| `expected_patients_per_day` | `UInt32` | Daily patient throughput baseline for adoption calculation; 0 = not configured |
+| `created_at` | `DateTime64(6)` | Row creation timestamp from compliance service |
+| `updated_at` | `DateTime64(6)` | Last update timestamp — reflects compliance service update |
+| `_version` | `UInt64` | Debezium source.lsn — monotonic version for ReplacingMergeTree dedup |
+| `_is_deleted` | `UInt8` | 1 when source row was DELETEd in PostgreSQL |
 
 ### 1.11 Daily KPI Materialized Views (schema/07)
 
@@ -213,19 +218,19 @@ Always filter with `FINAL` and `WHERE snapshot_date = today()` for the current d
 | Column | Description |
 |--------|-------------|
 | `snapshot_date` | Calendar day |
-| `total_in_scope` | Total facilities in `facility_reference` |
+| `total_in_scope` | Total facilities in `facility` |
 | `active_facilities` | Facilities with at least one HIE event on this day |
 | `inactive_facilities` | In-scope facilities with no events on this day |
 | `active_facility_rate_pct` | `active_facilities / total_in_scope × 100` |
 
-**`mv_daily_adoption_kpis`** — one row per `(snapshot_date, facility_id)`, joined with `facility_reference`
+**`mv_daily_adoption_kpis`** — one row per `(snapshot_date, facility_id)`, joined with `facility`
 
 | Column | Description |
 |--------|-------------|
 | `snapshot_date` | Calendar day |
 | `facility_id` | FOSA facility ID |
-| `facility_name` | From `facility_reference` |
-| `expected_patients_per_day` | From `facility_reference` |
+| `facility_name` | From `facility` |
+| `expected_patients_per_day` | From `facility` |
 | `actual_patients` | Distinct patients with a compliance event at this facility on this day |
 | `adoption_rate_pct` | `actual_patients / expected_patients_per_day × 100` |
 | `reporting_gap` | `expected_patients_per_day − actual_patients` |
@@ -498,7 +503,7 @@ percentage = category_count / total_patients_at_facility * 100
 ### 3.13a Facility Activity Formulas (mv_daily_facility_activity_summary)
 
 ```
-total_in_scope       = COUNT(*) FROM facility_reference FINAL
+total_in_scope       = COUNT(*) FROM facility FINAL
 
 active_facilities    = COUNT(facility_id) FROM mv_daily_facility_kpis FINAL
                        WHERE snapshot_date = today() AND event_count > 0
@@ -509,7 +514,7 @@ inactive_facilities  = total_in_scope − active_facilities
 active_facility_rate = active_facilities / total_in_scope × 100
 ```
 
-> The denominator (`total_in_scope`) comes from `facility_reference`, not from observed event data.
+> The denominator (`total_in_scope`) comes from `facility`, not from observed event data.
 > This ensures facilities that transmitted no events today are counted as inactive (not omitted).
 
 ### 3.13b e-Buzima Adoption Formulas (mv_daily_adoption_kpis)
