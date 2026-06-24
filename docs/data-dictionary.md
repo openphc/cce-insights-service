@@ -99,10 +99,10 @@ Request audit log & rejection tracking. Owned by the **Collector Service** — e
 | `id` | `UUID` | Yes | PK (UUIDv7, time-ordered) |
 | `cloudevents_id` | `VARCHAR` | Yes | CloudEvents `id` — used for pipeline loss detection (JOIN to `event_log`) |
 | `source` | `VARCHAR` | Yes | CloudEvents source — group-by key for source metrics |
-| `type` | `VARCHAR` | Yes | CloudEvents type — used for source comparison matching |
+| `type` | `VARCHAR` | Yes | CloudEvents type |
 | `spec_version` | `VARCHAR` | No | Always "1.0" |
-| `subject` | `VARCHAR` | Yes | Patient UPID — used for source comparison matching |
-| `event_time` | `TIMESTAMPTZ` | Yes | Source-provided event time — used for time-window matching |
+| `subject` | `VARCHAR` | Yes | Patient UPID |
+| `event_time` | `TIMESTAMPTZ` | Yes | Source-provided event time |
 | `data_content_type` | `VARCHAR` | No | MIME type of data payload |
 | `facility_id` | `VARCHAR` | Yes | Facility FOSA ID — filter key |
 | `correlation_id` | `VARCHAR` | No | Distributed tracing ID |

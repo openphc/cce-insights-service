@@ -42,16 +42,6 @@ public interface InboundEventRepository extends ReadOnlyRepository<InboundEvent,
 
     long countAccepted(String facilityId, OffsetDateTime startDate, OffsetDateTime endDate);
 
-    List<Object[]> findOverlappingEvents(String sourceA, String sourceB, long windowSeconds,
-                                          String facilityId, OffsetDateTime startDate, OffsetDateTime endDate);
-
-    List<Object[]> findUniqueToSource(String source, String otherSource, long windowSeconds,
-                                       String facilityId, OffsetDateTime startDate, OffsetDateTime endDate);
-
-    List<Object[]> findOverlappingEventSamples(String sourceA, String sourceB, long windowSeconds,
-                                                String facilityId, OffsetDateTime startDate,
-                                                OffsetDateTime endDate, int limit);
-
     List<Object[]> findEventTrends(String interval, String facilityId, String source,
                                     OffsetDateTime startDate, OffsetDateTime endDate);
 

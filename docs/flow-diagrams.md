@@ -140,50 +140,25 @@ sequenceDiagram
 
 ## 7. Event Volume Analytics Flow
 
-### 7.1 Event Volume by Resource Type / Facility / Source
+### 7.1 Event Volume by Resource Type / Facility
 
 ```mermaid
 flowchart TD
-    A[GET /v1/insights/events/by-resource-type<br/>or /by-facility or /by-source] --> B[Parse query params:<br/>facilityId, source, startDate, endDate]
+    A[GET /v1/insights/events/by-resource-type<br/>or /by-facility] --> B[Parse query params:<br/>facilityId, source, startDate, endDate]
     B --> C[Query event_log table<br/>WHERE processing_status != DUPLICATE]
 
     C --> D{Group-by dimension?}
     D -- by-resource-type --> E["GROUP BY data->>'resourceType'"]
     D -- by-facility --> F[GROUP BY facility_id]
-    D -- by-source --> G[GROUP BY source]
 
-    E --> H[Calculate COUNT + percentage]
-    F --> I[Calculate COUNT per facility<br/>+ resource type sub-groups]
-    G --> J[Calculate COUNT per source<br/>+ resource type sub-groups]
+    E --> G[Calculate COUNT + percentage]
+    F --> H[Calculate COUNT per facility<br/>+ resource type sub-groups]
 
-    H --> K[Return EventVolumeSummary]
-    I --> K
-    J --> K
+    G --> I[Return grouped counts]
+    H --> I
 ```
 
-### 7.2 Event Volume by Practitioner (JSONB Extraction)
-
-```mermaid
-sequenceDiagram
-    participant Controller as EventVolumeController
-    participant Service as EventVolumeService
-    participant DB as PostgreSQL
-
-    Controller->>Service: getEventsByPractitioner(facilityId, resourceType, dateRange)
-
-    Service->>DB: SELECT COALESCE(<br/>  data->'participant'->0->'individual'->>'reference',<br/>  data->'performer'->0->>'reference',<br/>  data->'asserter'->>'reference',<br/>  data->'requester'->>'reference',<br/>  data->'performer'->0->'actor'->>'reference'<br/>) AS practitioner_ref,<br/>COUNT(*) ...<br/>GROUP BY practitioner_ref
-
-    Note right of DB: JSONB path varies<br/>by FHIR resource type.<br/>COALESCE tries all paths.
-
-    DB-->>Service: practitioner_ref, resource_type, count rows
-
-    Service->>Service: Filter NULL practitioner_ref<br/>Extract display name from JSONB<br/>Build DTOs
-
-    Service-->>Controller: PractitionerEventCountDto[]
-    Controller-->>Controller: Wrap in pagination envelope
-```
-
-### 7.3 Event Volume Trends
+### 7.2 Event Volume Trends
 
 ```mermaid
 flowchart TD
@@ -202,7 +177,7 @@ flowchart TD
     I --> J[Return EventVolumeTrendsResponse]
 ```
 
-### 7.4 Event Volume Summary (Composite)
+### 7.3 Event Volume Summary (Composite)
 
 ```mermaid
 flowchart TD
@@ -371,33 +346,9 @@ flowchart TD
     J --> K[Return resolution rate response]
 ```
 
-## 11. Event Processing Quality Flow
+## 11. Patient Risk Analytics Flow
 
-```mermaid
-flowchart TD
-    A[GET /v1/insights/events/processing-quality] --> B[Parse params:<br/>source, facilityId, dateRange]
-    B --> C[Query event_log<br/>WHERE event_time in range]
-    C --> D[GROUP BY source,<br/>processing_status]
-
-    D --> E[MATCHED count]
-    D --> F[ZERO_MATCH count]
-    D --> G[DUPLICATE count]
-
-    E --> H["Calculate percentages<br/>per source"]
-    F --> H
-    G --> H
-
-    H --> I{High ZERO_MATCH rate?}
-    I -- "> 20%" --> J["⚠ Signals misconfigured<br/>emitters or gaps in protocols"]
-    I -- "≤ 20%" --> K[Normal]
-
-    J --> L[Return processing quality response]
-    K --> L
-```
-
-## 12. Patient Risk Analytics Flow
-
-### 12.1 At-Risk Hotspots
+### 11.1 At-Risk Hotspots
 
 ```mermaid
 sequenceDiagram
@@ -420,7 +371,7 @@ sequenceDiagram
     Service-->>Controller: AtRiskHotspotDto[]
 ```
 
-### 12.2 Repeat Deviations
+### 11.2 Repeat Deviations
 
 ```mermaid
 flowchart TD
@@ -445,7 +396,7 @@ flowchart TD
     M --> N[Return response]
 ```
 
-## 13. Patient Events & Deviations Flow
+## 12. Patient Events & Deviations Flow
 
 ### 13.1 Patient Events
 
@@ -480,41 +431,9 @@ flowchart TD
     F --> G[Return deviation list with<br/>protocol context]
 ```
 
-## 14. Source Comparison Flow
+## 14. Ingestion Analytics Flow
 
-```mermaid
-sequenceDiagram
-    participant Client
-    participant Controller as EventVolumeController
-    participant Service as EventVolumeService
-    participant InboundRepo as InboundEventRepository
-    participant DB as PostgreSQL
-
-    Client->>Controller: GET /v1/insights/events/source-comparison?sourceA=ehr-a&sourceB=ehr-b&windowSeconds=300
-    Controller->>Service: compareSourceSystems(sourceA, sourceB, windowSeconds, ...)
-
-    Service->>InboundRepo: findOverlappingEvents(sourceA, sourceB, window)
-    InboundRepo->>DB: SELECT subject, resource_type, COUNT(*)<br/>FROM inbound_event a JOIN inbound_event b<br/>ON a.subject = b.subject<br/>AND ABS(time_diff) <= windowSeconds
-    DB-->>InboundRepo: overlap rows
-
-    Service->>InboundRepo: findUniqueToSource(sourceA, sourceB, window)
-    InboundRepo->>DB: SELECT resource_type, COUNT(*)<br/>WHERE source = sourceA<br/>AND NOT EXISTS matching in sourceB
-    DB-->>InboundRepo: unique-to-A rows
-
-    Service->>InboundRepo: findUniqueToSource(sourceB, sourceA, window)
-    DB-->>InboundRepo: unique-to-B rows
-
-    Service->>InboundRepo: findOverlappingEventSamples(limit)
-    DB-->>InboundRepo: sample overlap pairs
-
-    Service->>Service: Calculate overlap %,<br/>unique counts, build summary
-    Service-->>Controller: SourceComparisonDto
-    Controller-->>Client: 200 OK { data: ... }
-```
-
-## 15. Ingestion Analytics Flow
-
-### 15.1 Ingestion Funnel
+### 14.1 Ingestion Funnel
 
 ```mermaid
 flowchart TD
@@ -538,7 +457,7 @@ flowchart TD
     K --> L[Return response]
 ```
 
-### 15.2 Rejection Analytics
+### 14.2 Rejection Analytics
 
 ```mermaid
 flowchart TD
@@ -556,7 +475,7 @@ flowchart TD
     H --> I[Return response]
 ```
 
-### 15.3 Source Data Quality
+### 14.3 Source Data Quality
 
 ```mermaid
 flowchart TD
@@ -576,7 +495,7 @@ flowchart TD
     I --> J[Return response]
 ```
 
-### 15.4 Pipeline Loss
+### 14.4 Pipeline Loss
 
 ```mermaid
 sequenceDiagram
@@ -602,7 +521,7 @@ sequenceDiagram
     Controller-->>Controller: Wrap in ApiResponse
 ```
 
-## 16. Lookup Endpoints Flow
+## 15. Lookup Endpoints Flow
 
 ```mermaid
 flowchart TD
@@ -627,7 +546,7 @@ flowchart TD
     L --> J
 ```
 
-## 17. Caching Flow (3-Tier Caffeine)
+## 16. Caching Flow (3-Tier Caffeine)
 
 ```mermaid
 flowchart TD
@@ -654,7 +573,7 @@ flowchart TD
     end
 ```
 
-## 18. Protocol Action Order Flow
+## 17. Protocol Action Order Flow
 
 ```mermaid
 sequenceDiagram
@@ -677,7 +596,7 @@ sequenceDiagram
     Controller-->>Controller: Wrap in ApiResponse
 ```
 
-## 19. Intelligence Delivery Summary Flow
+## 18. Intelligence Delivery Summary Flow
 
 ```mermaid
 flowchart TD
@@ -695,7 +614,7 @@ flowchart TD
     H --> I[Return response]
 ```
 
-## 20. Dashboard Overview Flow
+## 19. Dashboard Overview Flow
 
 ```mermaid
 flowchart TD

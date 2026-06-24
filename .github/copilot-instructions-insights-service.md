@@ -59,9 +59,6 @@ All endpoints prefixed with `/v1/insights/`. All require the `dashboard:read` OA
 | GET | `/v1/insights/events/trends` | Event volume over time (daily/weekly/monthly) with resource type breakdown |
 | GET | `/v1/insights/events/by-resource-type` | Event counts grouped by FHIR resourceType |
 | GET | `/v1/insights/events/by-facility` | Event counts grouped by facility with resource type breakdown |
-| GET | `/v1/insights/events/by-practitioner` | Event counts grouped by practitioner (extracted from FHIR data JSONB) |
-| GET | `/v1/insights/events/by-source` | Event counts grouped by source system |
-| GET | `/v1/insights/events/source-comparison` | Compare two source systems (overlap, unique, samples) |
 
 ### Protocol Analytics
 
@@ -84,12 +81,6 @@ All endpoints prefixed with `/v1/insights/`. All require the `dashboard:read` OA
 |--------|------|-------------|
 | GET | `/v1/insights/deviations/by-action` | Most deviated-from protocol steps grouped by actionId |
 | GET | `/v1/insights/deviations/resolution-rate` | OVERDUE→COMPLETED (resolved) vs OVERDUE→MISSED (escalated) ratio |
-
-### Event Processing & Integration Health
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/v1/insights/events/processing-quality` | MATCHED/ZERO_MATCH/DUPLICATE ratios per source system |
 
 ### Patient Risk Analytics
 
@@ -159,7 +150,7 @@ All endpoints prefixed with `/v1/insights/`. All require the `dashboard:read` OA
 | `deviation` | Compliance Service | Read-only | Deviation records, trends |
 | `protocol_definition` | Compliance Service | Read-only | Protocol metadata (name, version) |
 | `event_log` | Compliance Service | Read-only | Patient event timeline, facility ID source |
-| `inbound_event` | Collector Service | Read-only | Ingestion pipeline, source comparison, source event counts |
+| `inbound_event` | Collector Service | Read-only | Ingestion pipeline, source event counts |
 
 ### Key Aggregation Queries
 
@@ -173,7 +164,6 @@ All endpoints prefixed with `/v1/insights/`. All require the `dashboard:read` OA
 - **Deviation trends:** COUNT deviations grouped by `deviation_type`, `detected_at` (date-truncated)
 - **Deviations by action:** COUNT deviations grouped by `step_instance.action_id`
 - **Resolution rate:** Track `OVERDUE` deviations → `step_instance.state` (COMPLETED = resolved, MISSED = escalated)
-- **Processing quality:** COUNT `event_log` grouped by `source`, `processing_status`
 - **At-risk hotspots:** Classify patients per facility as on_track/at_risk/non_compliant using correlated subqueries on `step_instance.state`
 - **Repeat deviations:** COUNT deviations per `patient_id` with `HAVING COUNT(*) >= :minDeviations`
 - **Patient timeline:** JOIN `event_log` + `step_instance` ordered by `event_time`
@@ -181,7 +171,6 @@ All endpoints prefixed with `/v1/insights/`. All require the `dashboard:read` OA
 - **Rejection breakdown:** COUNT `inbound_event` WHERE `status = 'REJECTED'` grouped by `rejection_reason`, `source`
 - **Source data quality:** Per-source acceptance/rejection/duplicate rates from `inbound_event`
 - **Pipeline loss:** Compare accepted `inbound_event` count vs matched `event_log` count
-- **Source comparison:** Compare two source systems — overlap, unique-to-each, with sample records
 - **Paginated deviations list:** All deviations with date range filter, full pagination support
 
 ## Build & Run

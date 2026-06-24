@@ -25,17 +25,10 @@ public interface ComplianceEventLogRepository extends ReadOnlyRepository<Complia
 
     List<Object[]> countByFacility(OffsetDateTime startDate, OffsetDateTime endDate);
 
-    List<Object[]> countByPractitioner(String facilityId, OffsetDateTime startDate, OffsetDateTime endDate);
-
-    List<Object[]> countBySource(String facilityId, OffsetDateTime startDate, OffsetDateTime endDate);
-
     List<Object[]> findEventTrends(String interval, String facilityId, String source,
                                    String resourceType, OffsetDateTime startDate, OffsetDateTime endDate);
 
     List<Object[]> countByProcessingStatus(String facilityId, OffsetDateTime startDate, OffsetDateTime endDate);
-
-    List<Object[]> findProcessingQualityBySource(String source, String facilityId,
-                                                  OffsetDateTime startDate, OffsetDateTime endDate);
 
     List<Object[]> findFacilityEventCounts(UUID protocolDefId);
 

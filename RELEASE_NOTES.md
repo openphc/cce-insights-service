@@ -1,5 +1,12 @@
 # Release Notes
 
+## Unreleased
+
+### Removed
+
+- **`GET /v1/insights/events/source-comparison`** — Removed source comparison endpoint, `SourceComparisonDto`, overlap/unique repository queries, and related integration tests.
+- **`GET /v1/insights/events/by-practitioner`**, **`GET /v1/insights/events/by-source`**, **`GET /v1/insights/events/processing-quality`** — Removed practitioner/source/processing-quality event endpoints, services, DTOs, repository queries, and tests.
+
 ## v1.1.0 — Demo Intelligence Release
 
 **Release Date:** June 2025  
@@ -32,7 +39,7 @@ Major feature release adding intelligence analytics, protocol action introspecti
 - **Date range filters** — All analytics endpoints now accept `startDate` and `endDate` query parameters
 - **Facility filter** — Protocol compliance summary endpoints respect `facilityId` filter
 - **Intelligence delivery entities** — Added `IntelligenceDelivery`, `ReceiverAdaptor`, `DestinationAdaptorMapping` entities (9 total, up from 6)
-- **14 controllers** (up from 11) with **37 GET endpoints** (revised from 38 after deduplication)
+- **14 controllers** (up from 11) with **36 GET endpoints**
 - **ActionOrderEntryDto** — Now includes `type` (from `action.type.coding[0].code`) and `title` (from `action.title`) fields extracted from the protocol definition JSONB
 
 ---
@@ -72,7 +79,7 @@ First production release of the **CCE Insights Service** — a read-only analyti
 
 ### Highlights
 
-- **37 REST endpoints** across 14 controllers
+- **33 REST endpoints** across 14 controllers
 - **9 database tables** queried (read-only) from the shared `cce_collector` PostgreSQL database
 - **Zero write operations** — fully read-only JPA entities with `@Immutable` annotations
 - **Caffeine caching** — 3-tier in-memory cache (lookups/analytics/metrics) with configurable TTLs
@@ -82,7 +89,7 @@ First production release of the **CCE Insights Service** — a read-only analyti
 
 ---
 
-### API Endpoints (38 total)
+### API Endpoints (33 total)
 
 #### Compliance Summaries (3 endpoints) — S4
 | # | Endpoint |
@@ -109,16 +116,14 @@ First production release of the **CCE Insights Service** — a read-only analyti
 | 12 | `GET /v1/insights/deviations/by-action` |
 | 13 | `GET /v1/insights/deviations/resolution-rate` |
 
-#### Event Volume & Activity Metrics (7 endpoints) — S7
+#### Event Volume & Activity Metrics (5 endpoints) — S7
 | # | Endpoint |
 |---|----------|
-| 14 | `GET /v1/insights/events/summary` |
-| 15 | `GET /v1/insights/events/trends` |
-| 16 | `GET /v1/insights/events/by-resource-type` |
-| 17 | `GET /v1/insights/events/by-facility` |
-| 18 | `GET /v1/insights/events/by-practitioner` |
-| 19 | `GET /v1/insights/events/by-source` |
-| 20 | `GET /v1/insights/events/source-comparison` |
+| 14 | `GET /v1/insights/events/kpis` |
+| 15 | `GET /v1/insights/events/summary` |
+| 16 | `GET /v1/insights/events/trends` |
+| 17 | `GET /v1/insights/events/by-resource-type` |
+| 18 | `GET /v1/insights/events/by-facility` |
 
 #### Protocol Analytics (4 endpoints) — S8
 | # | Endpoint |
@@ -132,11 +137,6 @@ First production release of the **CCE Insights Service** — a read-only analyti
 | # | Endpoint |
 |---|----------|
 | 25 | `GET /v1/insights/facilities/ranking` |
-
-#### Event Processing Quality (1 endpoint) — S10
-| # | Endpoint |
-|---|----------|
-| 26 | `GET /v1/insights/events/processing-quality` |
 
 #### Patient Risk Analytics (2 endpoints) — S10
 | # | Endpoint |

@@ -81,7 +81,7 @@ graph TB
 
 > **Event Volume Analytics:** In addition to compliance-focused analytics, the Insights Service provides event volume metrics — counts of clinical events grouped by FHIR `resourceType`, facility, practitioner, and source system. These metrics are derived from the `event_log` table (immutable log of all inbound CloudEvents maintained by the Compliance Service). Practitioner information is extracted from the `event_log.data` JSONB column using resource-type-specific paths.
 
-> **Ingestion Analytics:** The Insights Service also queries the `inbound_event` table (owned by the Collector Service) to provide ingestion pipeline metrics — acceptance/rejection funnels, rejection reason analysis, source data quality scores, and pipeline loss tracking. Source comparison and source-level event counts are also powered by `inbound_event` to capture ALL received events, not just compliance-matched ones.
+> **Ingestion Analytics:** The Insights Service also queries the `inbound_event` table (owned by the Collector Service) to provide ingestion pipeline metrics — acceptance/rejection funnels, rejection reason analysis, source data quality scores, and pipeline loss tracking. Source-level event counts are also powered by `inbound_event` to capture ALL received events, not just compliance-matched ones.
 
 ---
 
@@ -615,14 +615,4 @@ GROUP BY ie.source;
 
 SELECT el.source, COUNT(*) AS matched FROM event_log el WHERE el.processing_status = 'MATCHED'
 GROUP BY el.source;
-```
-
-**Source Comparison (overlapping events):**
-```sql
-SELECT a.subject, COUNT(*) FROM inbound_event a
-JOIN inbound_event b ON a.subject = b.subject
-  AND a.type = b.type
-  AND ABS(EXTRACT(EPOCH FROM (a.event_time - b.event_time))) <= :windowSeconds
-WHERE a.source = :sourceA AND b.source = :sourceB
-GROUP BY a.subject;
 ```

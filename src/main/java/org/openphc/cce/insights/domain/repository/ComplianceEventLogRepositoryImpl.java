@@ -257,72 +257,6 @@ public class ComplianceEventLogRepositoryImpl
     }
 
     @Override
-    public List<Object[]> countByPractitioner(String facilityId,
-                                               OffsetDateTime startDate, OffsetDateTime endDate) {
-        String fid = str(facilityId);
-        var cel = finalAs(COMPLIANCE_EVENT_LOGS, "cel");
-        var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
-        return dsl.select(
-                    DSL.field("iel." + INBOUND_EVENT_LOGS.PRACTITIONER_REF.getName()),
-                    DSL.field("iel." + INBOUND_EVENT_LOGS.PRACTITIONER_DISPLAY.getName()),
-                    DSL.field("iel." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName()),
-                    DSL.field("count()", Long.class).as("cnt"))
-                  .from(cel)
-                  .join(iel).on(DSL.condition(
-                          "iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName() +
-                          " = cel." + COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
-                  .where(DSL.field("cel." + COMPLIANCE_EVENT_LOGS.PROCESSING_STATUS.getName()).ne("DUPLICATE"))
-                  .and(DSL.field("iel." + INBOUND_EVENT_LOGS.PRACTITIONER_REF.getName()).ne(""))
-                  .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?", fid, fid))
-                  .and(DSL.condition(
-                          "cel." + COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
-                          dtStart(startDate)))
-                  .and(DSL.condition(
-                          "cel." + COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
-                          dtEnd(endDate)))
-                  .groupBy(
-                          DSL.field("iel." + INBOUND_EVENT_LOGS.PRACTITIONER_REF.getName()),
-                          DSL.field("iel." + INBOUND_EVENT_LOGS.PRACTITIONER_DISPLAY.getName()),
-                          DSL.field("iel." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName()))
-                  .orderBy(DSL.field("cnt").desc())
-                  .fetch()
-                  .map(r -> new Object[]{
-                          r.get(0, String.class), r.get(1, String.class),
-                          r.get(2, String.class), r.get(3, Long.class)});
-    }
-
-    @Override
-    public List<Object[]> countBySource(String facilityId,
-                                         OffsetDateTime startDate, OffsetDateTime endDate) {
-        String fid = str(facilityId);
-        var cel = finalAs(COMPLIANCE_EVENT_LOGS, "cel");
-        var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
-        return dsl.select(
-                    DSL.field("iel." + INBOUND_EVENT_LOGS.SOURCE.getName()),
-                    DSL.field("iel." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName()),
-                    DSL.field("count()", Long.class).as("cnt"))
-                  .from(cel)
-                  .join(iel).on(DSL.condition(
-                          "iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName() +
-                          " = cel." + COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
-                  .where(DSL.field("cel." + COMPLIANCE_EVENT_LOGS.PROCESSING_STATUS.getName()).ne("DUPLICATE"))
-                  .and(DSL.field("iel." + INBOUND_EVENT_LOGS.SOURCE.getName()).ne(""))
-                  .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?", fid, fid))
-                  .and(DSL.condition(
-                          "cel." + COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
-                          dtStart(startDate)))
-                  .and(DSL.condition(
-                          "cel." + COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
-                          dtEnd(endDate)))
-                  .groupBy(
-                          DSL.field("iel." + INBOUND_EVENT_LOGS.SOURCE.getName()),
-                          DSL.field("iel." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName()))
-                  .orderBy(DSL.field("cnt").desc())
-                  .fetch()
-                  .map(r -> new Object[]{r.get(0, String.class), r.get(1, String.class), r.get(2, Long.class)});
-    }
-
-    @Override
     public List<Object[]> findEventTrends(String interval, String facilityId, String source,
                                            String resourceType,
                                            OffsetDateTime startDate, OffsetDateTime endDate) {
@@ -390,39 +324,6 @@ public class ComplianceEventLogRepositoryImpl
                   .groupBy(DSL.field("cel." + COMPLIANCE_EVENT_LOGS.PROCESSING_STATUS.getName()))
                   .fetch()
                   .map(r -> new Object[]{r.get(0, String.class), r.get(1, Long.class)});
-    }
-
-    @Override
-    public List<Object[]> findProcessingQualityBySource(String source, String facilityId,
-                                                          OffsetDateTime startDate,
-                                                          OffsetDateTime endDate) {
-        String src = str(source);
-        String fid = str(facilityId);
-        var cel = finalAs(COMPLIANCE_EVENT_LOGS, "cel");
-        var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
-        return dsl.select(
-                    DSL.field("iel." + INBOUND_EVENT_LOGS.SOURCE.getName()),
-                    DSL.field("cel." + COMPLIANCE_EVENT_LOGS.PROCESSING_STATUS.getName()),
-                    DSL.field("count()", Long.class).as("cnt"))
-                  .from(cel)
-                  .join(iel).on(DSL.condition(
-                          "iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName() +
-                          " = cel." + COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
-                  .where(DSL.field("iel." + INBOUND_EVENT_LOGS.SOURCE.getName()).ne(""))
-                  .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.SOURCE.getName() + " = ?", src, src))
-                  .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?", fid, fid))
-                  .and(DSL.condition(
-                          "cel." + COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
-                          dtStart(startDate)))
-                  .and(DSL.condition(
-                          "cel." + COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
-                          dtEnd(endDate)))
-                  .groupBy(
-                          DSL.field("iel." + INBOUND_EVENT_LOGS.SOURCE.getName()),
-                          DSL.field("cel." + COMPLIANCE_EVENT_LOGS.PROCESSING_STATUS.getName()))
-                  .orderBy(DSL.field("cnt").desc())
-                  .fetch()
-                  .map(r -> new Object[]{r.get(0, String.class), r.get(1, String.class), r.get(2, Long.class)});
     }
 
     @Override
