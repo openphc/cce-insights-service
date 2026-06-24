@@ -66,12 +66,15 @@ public class ComplianceSummaryController {
         }
         var result = complianceSummaryService.getProtocolPatients(
                 protocolDefinitionId, status, patientId, limit, offset);
-        String nextCursor = result.size() == limit ? String.valueOf(offset + limit) : null;
+        long totalCount = result.totalCount();
+        boolean hasMore = offset + result.patients().size() < totalCount;
+        String nextCursor = hasMore ? String.valueOf(offset + limit) : null;
         var pagination = PaginationDto.builder()
                 .limit(limit)
                 .nextCursor(nextCursor)
-                .hasMore(result.size() == limit)
+                .hasMore(hasMore)
+                .totalCount(totalCount)
                 .build();
-        return ResponseEntity.ok(ApiResponse.page(result, pagination));
+        return ResponseEntity.ok(ApiResponse.page(result.patients(), pagination));
     }
 }

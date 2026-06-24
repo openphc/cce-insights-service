@@ -12,6 +12,7 @@ import org.openphc.cce.insights.web.dto.ComplianceSummaryDto;
 import java.time.LocalDate;
 import org.openphc.cce.insights.web.dto.FacilitySummaryDto;
 import org.openphc.cce.insights.web.dto.PatientComplianceDto;
+import org.openphc.cce.insights.web.dto.ProtocolPatientsPage;
 import org.springframework.stereotype.Service;
 import org.springframework.cache.annotation.Cacheable;
 
@@ -188,35 +189,65 @@ public class ComplianceSummaryService {
     }
 
     @Cacheable(value = "analytics", key = "'protocol-patients-' + #protocolDefinitionId + '-' + #statusFilter + '-' + #patientIdFilter + '-' + #limit + '-' + #offset")
-    public List<PatientComplianceDto> getProtocolPatients(UUID protocolDefinitionId, String statusFilter, String patientIdFilter, int limit, int offset) {
+    public ProtocolPatientsPage getProtocolPatients(UUID protocolDefinitionId, String statusFilter, String patientIdFilter, int limit, int offset) {
         protocolDefinitionRepository.findById(protocolDefinitionId)
                 .orElseThrow(() -> new EntityNotFoundException(
                         "Protocol definition not found: " + protocolDefinitionId));
 
-        Pageable pageable = PageRequest.of(offset / Math.max(limit, 1), limit, Sort.by(Sort.Direction.DESC, "enrolledAt"));
+        int pageSize = Math.max(limit, 1);
+
+        if (statusFilter != null && !statusFilter.isEmpty()) {
+            List<ProtocolInstance> instances = loadInstancesForPatientFilter(protocolDefinitionId, patientIdFilter);
+            instances.sort(Comparator.comparing(ProtocolInstance::getEnrolledAt,
+                    Comparator.nullsLast(Comparator.reverseOrder())));
+
+            List<PatientComplianceDto> matching = buildPatientComplianceDtos(instances, statusFilter);
+            long total = matching.size();
+            int from = Math.min(offset, matching.size());
+            int to = Math.min(offset + pageSize, matching.size());
+            return new ProtocolPatientsPage(matching.subList(from, to), total);
+        }
+
+        Pageable pageable = PageRequest.of(offset / pageSize, pageSize, Sort.by(Sort.Direction.DESC, "enrolledAt"));
         Page<ProtocolInstance> page;
         if (patientIdFilter != null && !patientIdFilter.isEmpty()) {
-            page = protocolInstanceRepository.findByProtocolDefinitionIdAndPatientIdContaining(protocolDefinitionId, patientIdFilter, pageable);
-        } else if (statusFilter != null && !statusFilter.isEmpty()) {
-            // Fetch all sorted, then filter in-memory (status is computed, not a DB column)
-            page = protocolInstanceRepository.findByProtocolDefinitionId(protocolDefinitionId, pageable);
+            page = protocolInstanceRepository.findByProtocolDefinitionIdAndPatientIdContaining(
+                    protocolDefinitionId, patientIdFilter, pageable);
         } else {
             page = protocolInstanceRepository.findByProtocolDefinitionId(protocolDefinitionId, pageable);
         }
 
-        // Batch-load steps and deviation counts for the whole page in 2 queries
-        List<UUID> pageIds = page.getContent().stream().map(ProtocolInstance::getId).collect(Collectors.toList());
+        return new ProtocolPatientsPage(buildPatientComplianceDtos(page.getContent(), null), page.getTotalElements());
+    }
+
+    private List<ProtocolInstance> loadInstancesForPatientFilter(UUID protocolDefinitionId, String patientIdFilter) {
+        if (patientIdFilter != null && !patientIdFilter.isEmpty()) {
+            String pattern = patientIdFilter.toLowerCase();
+            return protocolInstanceRepository.findByProtocolDefinitionId(protocolDefinitionId).stream()
+                    .filter(pi -> pi.getPatientId() != null
+                            && pi.getPatientId().toLowerCase().contains(pattern))
+                    .collect(Collectors.toList());
+        }
+        return protocolInstanceRepository.findByProtocolDefinitionId(protocolDefinitionId);
+    }
+
+    private List<PatientComplianceDto> buildPatientComplianceDtos(List<ProtocolInstance> instances, String statusFilter) {
+        if (instances.isEmpty()) {
+            return List.of();
+        }
+
+        List<UUID> instanceIds = instances.stream().map(ProtocolInstance::getId).collect(Collectors.toList());
         Map<UUID, List<StepInstance>> stepsByInstance = stepInstanceRepository
-                .findByProtocolInstanceIdIn(pageIds)
+                .findByProtocolInstanceIdIn(instanceIds)
                 .stream()
                 .collect(Collectors.groupingBy(StepInstance::getProtocolInstanceId));
         Map<UUID, Long> devCountByInstance = deviationRepository
-                .countDeviationsByProtocolInstanceIdIn(pageIds)
+                .countDeviationsByProtocolInstanceIdIn(instanceIds)
                 .stream()
                 .collect(Collectors.toMap(r -> (UUID) r[0], r -> (Long) r[1]));
 
         List<PatientComplianceDto> results = new ArrayList<>();
-        for (ProtocolInstance pi : page.getContent()) {
+        for (ProtocolInstance pi : instances) {
             List<StepInstance> steps = stepsByInstance.getOrDefault(pi.getId(), List.of());
             long completedCount = steps.stream()
                     .filter(s -> s.getState() == StepState.COMPLETED || s.getState() == StepState.SKIPPED)

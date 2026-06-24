@@ -70,28 +70,30 @@ class ComplianceSummaryControllerIT extends AbstractIntegrationTest {
     @Test
     void getProtocolPatients_returnsAllPatients() throws Exception {
         when(complianceSummaryService.getProtocolPatients(eq(PROTOCOL_ID), isNull(), isNull(), eq(20), eq(0)))
-                .thenReturn(List.of(
+                .thenReturn(new ProtocolPatientsPage(List.of(
                         PatientComplianceDto.builder().patientId("p1").complianceCategory("on_track").build(),
                         PatientComplianceDto.builder().patientId("p2").complianceCategory("at_risk").build(),
-                        PatientComplianceDto.builder().patientId("p3").complianceCategory("non_compliant").build()));
+                        PatientComplianceDto.builder().patientId("p3").complianceCategory("non_compliant").build()), 3));
 
         mockMvc.perform(get("/v1/insights/protocols/550e8400-e29b-41d4-a716-446655440000/patients"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").isArray())
-                .andExpect(jsonPath("$.data.length()").value(3));
+                .andExpect(jsonPath("$.data.length()").value(3))
+                .andExpect(jsonPath("$.pagination.totalCount").value(3));
     }
 
     @Test
     void getProtocolPatients_filteredByStatus() throws Exception {
         when(complianceSummaryService.getProtocolPatients(eq(PROTOCOL_ID), eq("at_risk"), isNull(), eq(20), eq(0)))
-                .thenReturn(List.of(
-                        PatientComplianceDto.builder().patientId("p2").complianceCategory("at_risk").build()));
+                .thenReturn(new ProtocolPatientsPage(List.of(
+                        PatientComplianceDto.builder().patientId("p2").complianceCategory("at_risk").build()), 1));
 
         mockMvc.perform(get("/v1/insights/protocols/550e8400-e29b-41d4-a716-446655440000/patients")
                         .param("status", "at_risk"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data.length()").value(1))
-                .andExpect(jsonPath("$.data[0].complianceCategory").value("at_risk"));
+                .andExpect(jsonPath("$.data[0].complianceCategory").value("at_risk"))
+                .andExpect(jsonPath("$.pagination.totalCount").value(1));
     }
 }

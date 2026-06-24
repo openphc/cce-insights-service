@@ -11,4 +11,5 @@ public class PaginationDto {
     private int limit;
     private String nextCursor;
     private boolean hasMore;
+    private Long totalCount;
 }
