@@ -18,13 +18,14 @@ public class FacilityRankingService {
 
     /**
      * Returns facility rankings from mv_daily_facility_kpis.
+     * Metrics are cumulative across all protocols per facility.
      *
      * When startDate/endDate span a historical range (endDate before today):
      *   compliance data = argMax per facility (latest state in range)
      *   event_count     = SUM across all days in range
      * When endDate is today or no dates given: reads today's snapshot.
      */
-    @Cacheable(value = "analytics", key = "'rankings-' + #protocolDefinitionId + '-' + #sortBy + '-' + #order + '-' + #limit + '-' + #startDate + '-' + #endDate")
+    @Cacheable(value = "analytics", key = "'rankings-' + #sortBy + '-' + #order + '-' + #limit + '-' + #startDate + '-' + #endDate")
     public List<FacilityRankingDto> getRankings(UUID protocolDefinitionId,
                                                  OffsetDateTime startDate, OffsetDateTime endDate,
                                                  String sortBy, String order, int limit) {
@@ -32,18 +33,10 @@ public class FacilityRankingService {
         LocalDate end   = endDate   != null ? endDate.toLocalDate()   : today;
         LocalDate start = startDate != null ? startDate.toLocalDate() : end;
 
-        // Use date-range query when a historical range is given; today's snapshot otherwise.
-        List<Object[]> kpis;
-        if (protocolDefinitionId != null) {
-            kpis = end.isBefore(today)
-                    ? dailyKpiRepository.getFacilityKpisByProtocolAndDateRange(
-                            protocolDefinitionId, start, end)
-                    : dailyKpiRepository.getFacilityKpisByProtocol(protocolDefinitionId);
-        } else {
-            kpis = end.isBefore(today)
-                    ? dailyKpiRepository.getFacilityKpisByDateRange(start, end)
-                    : dailyKpiRepository.getFacilityKpis();
-        }
+        // Cumulative across all protocols — GROUP BY facility_id in the MV query.
+        List<Object[]> kpis = end.isBefore(today)
+                ? dailyKpiRepository.getFacilityKpisByDateRange(start, end)
+                : dailyKpiRepository.getFacilityKpis();
 
         Map<String, String> facilityNameMap = new LinkedHashMap<>();
         for (Object[] row : dailyKpiRepository.getFacilityReference()) {

@@ -129,37 +129,6 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
                   });
     }
 
-    @Override
-    public List<Object[]> getFacilityKpisByProtocol(UUID protocolDefinitionId) {
-        var facilityIds = dsl.select(DSL.field("facility_id"))
-                             .from(DSL.table(DSL.sql("facility" + finalClause())))
-                             .where(DSL.field("_is_deleted").eq(0));
-        return dsl.select(
-                    DSL.field("facility_id",               String.class),
-                    DSL.field("tracked_patients",          Long.class),
-                    DSL.field("compliant_patients",        Long.class),
-                    DSL.field("non_compliant_patients",    Long.class),
-                    DSL.field("compliance_rate_pct",       Double.class),
-                    DSL.field("total_deviations",          Long.class),
-                    DSL.field("event_count",               Long.class))
-                  .from(DSL.table(DSL.sql("mv_daily_facility_kpis" + finalClause())))
-                  .where(DSL.sql("snapshot_date = today()"))
-                  .and(DSL.condition(
-                          "protocol_definition_id = toUUID(?)", protocolDefinitionId.toString()))
-                  .and(DSL.field("facility_id").in(facilityIds))
-                  .orderBy(DSL.field("compliance_rate_pct").desc())
-                  .fetch()
-                  .map(r -> new Object[]{
-                      r.get(0, String.class),
-                      toLong(r.get(1)),
-                      toLong(r.get(2)),
-                      toLong(r.get(3)),
-                      toDouble(r.get(4)),
-                      toLong(r.get(5)),
-                      toLong(r.get(6))
-                  });
-    }
-
     // ── mv_daily_adoption_kpis ───────────────────────────────────────────────
 
     @Override
@@ -309,40 +278,6 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
                     DSL.sum(DSL.field("event_count", Long.class)))
                   .from(DSL.table(DSL.sql("mv_daily_facility_kpis" + finalClause())))
                   .where(DSL.field("snapshot_date", LocalDate.class).between(startDate).and(endDate))
-                  .and(DSL.field("facility_id").in(facilityIds))
-                  .groupBy(DSL.field("facility_id"))
-                  .orderBy(DSL.field(DSL.sql("argMax(compliance_rate_pct, snapshot_date)")).desc())
-                  .fetch()
-                  .map(r -> new Object[]{
-                      r.get(0, String.class),
-                      toLong(r.get(1)),
-                      toLong(r.get(2)),
-                      toLong(r.get(3)),
-                      toDouble(r.get(4)),
-                      toLong(r.get(5)),
-                      toLong(r.get(6))
-                  });
-    }
-
-    @Override
-    public List<Object[]> getFacilityKpisByProtocolAndDateRange(UUID protocolDefinitionId,
-                                                                 LocalDate startDate,
-                                                                 LocalDate endDate) {
-        var facilityIds = dsl.select(DSL.field("facility_id"))
-                             .from(DSL.table(DSL.sql("facility" + finalClause())))
-                             .where(DSL.field("_is_deleted").eq(0));
-        return dsl.select(
-                    DSL.field("facility_id", String.class),
-                    DSL.field(DSL.sql("argMax(tracked_patients,       snapshot_date)"), Long.class),
-                    DSL.field(DSL.sql("argMax(compliant_patients,     snapshot_date)"), Long.class),
-                    DSL.field(DSL.sql("argMax(non_compliant_patients, snapshot_date)"), Long.class),
-                    DSL.field(DSL.sql("argMax(compliance_rate_pct,    snapshot_date)"), Double.class),
-                    DSL.field(DSL.sql("argMax(total_deviations,       snapshot_date)"), Long.class),
-                    DSL.sum(DSL.field("event_count", Long.class)))
-                  .from(DSL.table(DSL.sql("mv_daily_facility_kpis" + finalClause())))
-                  .where(DSL.field("snapshot_date", LocalDate.class).between(startDate).and(endDate))
-                  .and(DSL.condition(
-                          "protocol_definition_id = toUUID(?)", protocolDefinitionId.toString()))
                   .and(DSL.field("facility_id").in(facilityIds))
                   .groupBy(DSL.field("facility_id"))
                   .orderBy(DSL.field(DSL.sql("argMax(compliance_rate_pct, snapshot_date)")).desc())
