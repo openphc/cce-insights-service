@@ -1,8 +1,9 @@
 package org.openphc.cce.insights.service;
 
 import lombok.RequiredArgsConstructor;
-import org.openphc.cce.insights.domain.repository.DeviationRepository;
 import org.openphc.cce.insights.domain.repository.ComplianceEventLogRepository;
+import org.openphc.cce.insights.domain.repository.DailyKpiRepository;
+import org.openphc.cce.insights.domain.repository.DeviationRepository;
 import org.openphc.cce.insights.domain.repository.StepInstanceRepository;
 import org.openphc.cce.insights.web.dto.PractitionerRankingDto;
 import org.springframework.cache.annotation.Cacheable;
@@ -17,6 +18,7 @@ import java.util.stream.Collectors;
 public class PractitionerRankingService {
 
     private final ComplianceEventLogRepository complianceEventLogRepository;
+    private final DailyKpiRepository dailyKpiRepository;
     private final StepInstanceRepository stepInstanceRepository;
     private final DeviationRepository deviationRepository;
 
@@ -28,9 +30,9 @@ public class PractitionerRankingService {
         // Practitioner summary: ref, display, facilityId, totalEvents, totalPatients
         List<Object[]> summaryRows = complianceEventLogRepository.findPractitionerSummaryFiltered(startDate, endDate, facilityId);
 
-        // Build facility name lookup
+        // Build facility name lookup from canonical facility table
         Map<String, String> facilityNameMap = new LinkedHashMap<>();
-        for (Object[] row : complianceEventLogRepository.findFacilityNames()) {
+        for (Object[] row : dailyKpiRepository.getFacilityReference()) {
             facilityNameMap.put((String) row[0], (String) row[1]);
         }
 

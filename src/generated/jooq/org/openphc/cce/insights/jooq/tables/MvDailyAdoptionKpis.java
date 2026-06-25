@@ -69,12 +69,6 @@ public class MvDailyAdoptionKpis extends TableImpl<Record> {
 
     /**
      * The column
-     * <code>cce_analytics.mv_daily_adoption_kpis.facility_name</code>.
-     */
-    public final TableField<Record, Object> FACILITY_NAME = createField(DSL.name("facility_name"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
-
-    /**
-     * The column
      * <code>cce_analytics.mv_daily_adoption_kpis.expected_patients_per_day</code>.
      */
     public final TableField<Record, Object> EXPECTED_PATIENTS_PER_DAY = createField(DSL.name("expected_patients_per_day"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");

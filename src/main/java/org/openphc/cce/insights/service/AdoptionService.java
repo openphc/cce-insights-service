@@ -47,7 +47,7 @@ public class AdoptionService {
             long expectedFromRef = ((Number) ref[2]).longValue();
             Object[] row = adoptionById.get(facilityId);
             if (row != null) {
-                result.add(toAdoptionDto(row));
+                result.add(toAdoptionDto(row, facilityName));
             } else {
                 result.add(emptyAdoptionDto(facilityId, facilityName, expectedFromRef));
             }
@@ -57,14 +57,16 @@ public class AdoptionService {
         return result;
     }
 
-    private static AdoptionKpiDto toAdoptionDto(Object[] row) {
+    private static AdoptionKpiDto toAdoptionDto(Object[] row, String facilityName) {
+        // row[0]=facility_id, [1]=expected_patients_per_day, [2]=actual_patients,
+        // [3]=adoption_rate_pct, [4]=reporting_gap  (facility_name resolved from facility table)
         return AdoptionKpiDto.builder()
                 .facilityId((String) row[0])
-                .facilityName((String) row[1])
-                .expectedPatientsPerDay(((Number) row[2]).longValue())
-                .actualPatients(((Number) row[3]).longValue())
-                .adoptionRate(((Number) row[4]).doubleValue())
-                .reportingGap(((Number) row[5]).longValue())
+                .facilityName(facilityName)
+                .expectedPatientsPerDay(((Number) row[1]).longValue())
+                .actualPatients(((Number) row[2]).longValue())
+                .adoptionRate(((Number) row[3]).doubleValue())
+                .reportingGap(((Number) row[4]).longValue())
                 .build();
     }
 
