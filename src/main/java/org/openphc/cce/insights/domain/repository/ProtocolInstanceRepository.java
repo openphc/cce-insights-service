@@ -13,6 +13,9 @@ public interface ProtocolInstanceRepository extends ReadOnlyRepository<ProtocolI
 
     List<String> findDistinctPatientIds();
 
+    /** Distinct patients with an enrollment in [startDate, endDate]. Pass null for open bounds. */
+    long countDistinctPatientsEnrolledBetween(OffsetDateTime startDate, OffsetDateTime endDate);
+
     List<ProtocolInstance> findByPatientId(String patientId);
 
     List<ProtocolInstance> findByProtocolDefinitionId(UUID protocolDefinitionId);
@@ -31,4 +34,11 @@ public interface ProtocolInstanceRepository extends ReadOnlyRepository<ProtocolI
     Page<ProtocolInstance> findByProtocolDefinitionIdAndPatientIdContaining(UUID protocolDefId,
                                                                              String patientId,
                                                                              Pageable pageable);
+
+    /**
+     * Distinct enrolled patients per facility via mv_patient_facility_latest.
+     * Returns rows of [facility_id(String), tracked_patients(long), non_compliant_patients(long)].
+     * When dates are provided, tracked = enrolled in range; non-compliant = deviation in range.
+     */
+    List<Object[]> countPatientComplianceByFacility(OffsetDateTime startDate, OffsetDateTime endDate);
 }

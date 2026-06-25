@@ -38,6 +38,9 @@ public interface DeviationRepository extends ReadOnlyRepository<Deviation, UUID>
 
     long countDistinctPatientsWithDeviations();
 
+    /** Distinct patients with at least one deviation detected within [startDate, endDate]. */
+    long countDistinctPatientsWithDeviationsBetween(OffsetDateTime startDate, OffsetDateTime endDate);
+
     // Batch load full Deviation objects for a set of protocol instances
     List<Deviation> findByProtocolInstanceIdIn(List<UUID> ids);
 

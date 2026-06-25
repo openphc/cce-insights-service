@@ -435,6 +435,38 @@ public class DeviationRepositoryImpl
     }
 
     @Override
+    public long countDistinctPatientsWithDeviationsBetween(OffsetDateTime startDate,
+                                                            OffsetDateTime endDate) {
+        var d  = finalAs(DEVIATIONS, "d");
+        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        String detectedAt = "d." + DEVIATIONS.DETECTED_AT.getName();
+        String enrolledAt = "pi." + PROTOCOL_INSTANCES.ENROLLED_AT.getName();
+
+        var where = DSL.trueCondition();
+        if (startDate != null) {
+            where = where.and(DSL.condition(
+                    detectedAt + " >= parseDateTime64BestEffort(?)", startDate.toString()));
+            where = where.and(DSL.condition(
+                    enrolledAt + " >= parseDateTime64BestEffort(?)", startDate.toString()));
+        }
+        if (endDate != null) {
+            where = where.and(DSL.condition(
+                    detectedAt + " <= parseDateTime64BestEffort(?)", endDate.toString()));
+            where = where.and(DSL.condition(
+                    enrolledAt + " <= parseDateTime64BestEffort(?)", endDate.toString()));
+        }
+
+        Long r = dsl.select(
+                        DSL.field("uniq(pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName() + ")", Long.class))
+                    .from(d)
+                    .join(pi).on(DSL.condition(
+                            "d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                    .where(where)
+                    .fetchOne(0, Long.class);
+        return r != null ? r : 0L;
+    }
+
+    @Override
     public Object[] aggregateDeviationMetrics(UUID protocolDefinitionId) {
         var d  = finalAs(DEVIATIONS, "d");
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");

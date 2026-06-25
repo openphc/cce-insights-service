@@ -15,6 +15,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
+import static org.openphc.cce.insights.jooq.Tables.DEVIATIONS;
 import static org.openphc.cce.insights.jooq.Tables.PROTOCOL_INSTANCES;
 
 @Repository
@@ -69,6 +70,17 @@ public class ProtocolInstanceRepositoryImpl
                   .from(pi)
                   .orderBy(DSL.field("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
                   .fetch(0, String.class);
+    }
+
+    @Override
+    public long countDistinctPatientsEnrolledBetween(OffsetDateTime startDate, OffsetDateTime endDate) {
+        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        Long count = dsl.select(
+                        DSL.field("uniq(pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName() + ")", Long.class))
+                    .from(pi)
+                    .where(enrollmentBetween(startDate, endDate))
+                    .fetchOne(0, Long.class);
+        return count != null ? count : 0L;
     }
 
     @Override
@@ -201,5 +213,62 @@ public class ProtocolInstanceRepositoryImpl
                 .where(condition)
                 .fetchOne(0, Long.class);
         return new PageImpl<>(content, pageable, total);
+    }
+
+    @Override
+    public List<Object[]> countPatientComplianceByFacility(OffsetDateTime startDate,
+                                                            OffsetDateTime endDate) {
+        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        var pf = DSL.table(DSL.sql("mv_patient_facility_latest" + finalClause())).as("pf");
+        var d  = finalAs(DEVIATIONS, "d");
+        String zeroUuid = "toUUID('00000000-0000-0000-0000-000000000000')";
+        String detectedAt = "d." + DEVIATIONS.DETECTED_AT.getName();
+
+        String nonCompliantExpr = (startDate != null || endDate != null)
+                ? "uniqIf(pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName() + ", d.id != " + zeroUuid
+                    + (startDate != null ? " AND " + detectedAt + " >= parseDateTime64BestEffort('"
+                        + startDate + "')" : "")
+                    + (endDate != null ? " AND " + detectedAt + " <= parseDateTime64BestEffort('"
+                        + endDate + "')" : "")
+                    + ")"
+                : "uniqIf(pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName() + ", d.id != " + zeroUuid + ")";
+
+        return dsl.select(
+                    DSL.field("pf.facility_id", String.class),
+                    DSL.field("uniq(pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName() + ")", Long.class),
+                    DSL.field(DSL.sql(nonCompliantExpr), Long.class))
+                  .from(pi)
+                  .join(pf).on(DSL.condition(
+                          "pf.patient_id = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
+                  .leftJoin(d).on(DSL.condition(
+                          "d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                  .where(DSL.field("pf.facility_id").ne(""))
+                  .and(enrollmentBetween(startDate, endDate))
+                  .groupBy(DSL.field("pf.facility_id"))
+                  .orderBy(DSL.field("pf.facility_id"))
+                  .fetch()
+                  .map(r -> new Object[]{
+                          r.get(0, String.class),
+                          toLong(r.get(1)),
+                          toLong(r.get(2))
+                  });
+    }
+
+    private org.jooq.Condition enrollmentBetween(OffsetDateTime startDate, OffsetDateTime endDate) {
+        String enrolledAt = "pi." + PROTOCOL_INSTANCES.ENROLLED_AT.getName();
+        org.jooq.Condition condition = DSL.trueCondition();
+        if (startDate != null) {
+            condition = condition.and(DSL.condition(
+                    enrolledAt + " >= parseDateTime64BestEffort(?)", startDate.toString()));
+        }
+        if (endDate != null) {
+            condition = condition.and(DSL.condition(
+                    enrolledAt + " <= parseDateTime64BestEffort(?)", endDate.toString()));
+        }
+        return condition;
+    }
+
+    private static long toLong(Object v) {
+        return v == null ? 0L : ((Number) v).longValue();
     }
 }
