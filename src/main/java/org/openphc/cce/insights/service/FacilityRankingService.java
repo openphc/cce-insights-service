@@ -17,13 +17,9 @@ public class FacilityRankingService {
     private final DailyKpiRepository dailyKpiRepository;
 
     /**
-     * Returns facility rankings from mv_daily_facility_kpis.
-     * Metrics are cumulative across all protocols per facility.
-     *
-     * When startDate/endDate span a historical range (endDate before today):
-     *   compliance data = argMax per facility (latest state in range)
-     *   event_count     = SUM across all days in range
-     * When endDate is today or no dates given: reads today's snapshot.
+     * Returns facility rankings for all in-scope facilities from the reference table.
+     * Metrics are cumulative across all protocols per facility (from mv_daily_facility_kpis).
+     * Facilities without KPI rows appear with zero metrics.
      */
     @Cacheable(value = "analytics", key = "'rankings-' + #sortBy + '-' + #order + '-' + #limit + '-' + #startDate + '-' + #endDate")
     public List<FacilityRankingDto> getRankings(UUID protocolDefinitionId,
@@ -33,32 +29,25 @@ public class FacilityRankingService {
         LocalDate end   = endDate   != null ? endDate.toLocalDate()   : today;
         LocalDate start = startDate != null ? startDate.toLocalDate() : end;
 
-        // Cumulative across all protocols — GROUP BY facility_id in the MV query.
         List<Object[]> kpis = end.isBefore(today)
                 ? dailyKpiRepository.getFacilityKpisByDateRange(start, end)
                 : dailyKpiRepository.getFacilityKpis();
 
-        Map<String, String> facilityNameMap = new LinkedHashMap<>();
-        for (Object[] row : dailyKpiRepository.getFacilityReference()) {
-            facilityNameMap.put((String) row[0], (String) row[1]);
+        Map<String, Object[]> kpiByFacilityId = new LinkedHashMap<>();
+        for (Object[] row : kpis) {
+            kpiByFacilityId.put((String) row[0], row);
         }
 
-        // mv_daily_facility_kpis columns:
-        // [0] facility_id, [1] tracked_patients, [2] compliant_patients,
-        // [3] non_compliant_patients, [4] compliance_rate_pct, [5] total_deviations, [6] event_count
+        // Anchor to the facility reference list so every in-scope facility appears,
+        // even when it has no row in mv_daily_facility_kpis yet.
         List<FacilityRankingDto> rankings = new ArrayList<>();
-        for (Object[] row : kpis) {
-            String facilityId = (String) row[0];
-            rankings.add(FacilityRankingDto.builder()
-                    .facilityId(facilityId)
-                    .facilityName(facilityNameMap.getOrDefault(facilityId, facilityId))
-                    .totalEnrollments(((Number) row[1]).longValue())
-                    .compliantPatients(((Number) row[2]).longValue())
-                    .nonCompliantPatients(((Number) row[3]).longValue())
-                    .complianceRate(((Number) row[4]).doubleValue())
-                    .activeDeviations(((Number) row[5]).longValue())
-                    .totalEvents(((Number) row[6]).longValue())
-                    .build());
+        for (Object[] ref : dailyKpiRepository.getFacilityReference()) {
+            String facilityId = (String) ref[0];
+            String facilityName = (String) ref[1];
+            Object[] row = kpiByFacilityId.get(facilityId);
+            rankings.add(row != null
+                    ? toRankingDto(facilityId, facilityName, row)
+                    : emptyRankingDto(facilityId, facilityName));
         }
 
         Comparator<FacilityRankingDto> comparator = switch (sortBy != null ? sortBy : "complianceRate") {
@@ -88,5 +77,31 @@ public class FacilityRankingService {
                     .build());
         }
         return ranked;
+    }
+
+    private static FacilityRankingDto toRankingDto(String facilityId, String facilityName, Object[] row) {
+        return FacilityRankingDto.builder()
+                .facilityId(facilityId)
+                .facilityName(facilityName)
+                .totalEnrollments(((Number) row[1]).longValue())
+                .compliantPatients(((Number) row[2]).longValue())
+                .nonCompliantPatients(((Number) row[3]).longValue())
+                .complianceRate(((Number) row[4]).doubleValue())
+                .activeDeviations(((Number) row[5]).longValue())
+                .totalEvents(((Number) row[6]).longValue())
+                .build();
+    }
+
+    private static FacilityRankingDto emptyRankingDto(String facilityId, String facilityName) {
+        return FacilityRankingDto.builder()
+                .facilityId(facilityId)
+                .facilityName(facilityName)
+                .totalEnrollments(0)
+                .compliantPatients(0)
+                .nonCompliantPatients(0)
+                .complianceRate(0.0)
+                .activeDeviations(0)
+                .totalEvents(0)
+                .build();
     }
 }

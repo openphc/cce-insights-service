@@ -171,6 +171,7 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
                     DSL.field("facility_name",              String.class),
                     DSL.field("expected_patients_per_day",  Long.class))
                   .from(DSL.table(DSL.sql("facility" + finalClause())))
+                  .where(DSL.field("_is_deleted").eq(0))
                   .orderBy(DSL.field("facility_name"))
                   .fetch()
                   .map(r -> new Object[]{
