@@ -24,8 +24,12 @@ public class ComplianceSummaryController {
 
     @GetMapping("/protocols/compliance-summary")
     public ResponseEntity<ApiResponse<ComplianceSummaryDto>> getAllProtocolsComplianceSummary(
-            @RequestParam(required = false) String facilityId) {
-        ComplianceSummaryDto summary = complianceSummaryService.getAllProtocolsComplianceSummary(facilityId);
+            @RequestParam(required = false) String facilityId,
+            @RequestParam(required = false) OffsetDateTime startDate,
+            @RequestParam(required = false) OffsetDateTime endDate) {
+        LocalDate snapshotDate = resolveSnapshotDate(startDate, endDate);
+        ComplianceSummaryDto summary = complianceSummaryService.getAllProtocolsComplianceSummary(
+                facilityId, snapshotDate);
         return ResponseEntity.ok(ApiResponse.ok(summary));
     }
 
@@ -35,11 +39,17 @@ public class ComplianceSummaryController {
             @RequestParam(required = false) String facilityId,
             @RequestParam(required = false) OffsetDateTime startDate,
             @RequestParam(required = false) OffsetDateTime endDate) {
-        // Use endDate's calendar date as the snapshot day; null falls back to today's snapshot.
-        LocalDate snapshotDate = endDate != null ? endDate.toLocalDate() : null;
+        LocalDate snapshotDate = resolveSnapshotDate(startDate, endDate);
         ComplianceSummaryDto summary = complianceSummaryService.getProtocolComplianceSummary(
                 protocolDefinitionId, facilityId, snapshotDate);
         return ResponseEntity.ok(ApiResponse.ok(summary));
+    }
+
+    /** End of selected period; null = today's snapshot. */
+    private static LocalDate resolveSnapshotDate(OffsetDateTime startDate, OffsetDateTime endDate) {
+        if (endDate != null) return endDate.toLocalDate();
+        if (startDate != null) return startDate.toLocalDate();
+        return null;
     }
 
     @GetMapping("/facilities/{facilityId}/compliance-summary")

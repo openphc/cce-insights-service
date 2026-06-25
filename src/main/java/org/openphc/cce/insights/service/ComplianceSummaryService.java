@@ -35,13 +35,13 @@ public class ComplianceSummaryService {
     private final ComplianceEventLogRepository complianceEventLogRepository;
     private final DailyKpiRepository dailyKpiRepository;
 
-    @Cacheable(value = "analytics", key = "'compliance-all-' + (#facilityId ?: 'all')")
-    public ComplianceSummaryDto getAllProtocolsComplianceSummary(String facilityId) {
+    @Cacheable(value = "analytics", key = "'compliance-all-' + (#facilityId ?: 'all') + '-' + (#snapshotDate ?: 'today')")
+    public ComplianceSummaryDto getAllProtocolsComplianceSummary(String facilityId, LocalDate snapshotDate) {
         boolean hasFacility = facilityId != null && !facilityId.isEmpty();
 
         if (!hasFacility) {
             // No facility filter — use pre-aggregated MV (replaces 2 full base-table scans)
-            Object[] kpis = dailyKpiRepository.getComplianceKpisAll(null); // null = today's snapshot
+            Object[] kpis = dailyKpiRepository.getComplianceKpisAll(snapshotDate);
             long totalEnrollments = toLong(kpis[9]);
             if (totalEnrollments == 0) {
                 return ComplianceSummaryDto.builder()

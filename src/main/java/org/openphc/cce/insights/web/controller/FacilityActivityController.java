@@ -30,8 +30,10 @@ public class FacilityActivityController {
     public ResponseEntity<ApiResponse<FacilityActivitySummaryDto>> getActivitySummary(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
-        FacilityActivitySummaryDto dto = (startDate != null && endDate != null)
-                ? facilityActivityService.getActivitySummaryByDateRange(startDate, endDate)
+        FacilityActivitySummaryDto dto = (startDate != null || endDate != null)
+                ? facilityActivityService.getActivitySummaryByDateRange(
+                        startDate != null ? startDate : LocalDate.now(),
+                        endDate   != null ? endDate   : LocalDate.now())
                 : facilityActivityService.getActivitySummary();
         return ResponseEntity.ok(ApiResponse.ok(dto));
     }

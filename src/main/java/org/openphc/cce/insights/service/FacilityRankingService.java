@@ -19,6 +19,7 @@ public class FacilityRankingService {
     /**
      * Returns facility rankings for all in-scope facilities from the reference table.
      * Metrics are cumulative across all protocols per facility (from mv_daily_facility_kpis).
+     * When a date range is supplied, metrics are aggregated over that period (same as adoption KPIs).
      * Facilities without KPI rows appear with zero metrics.
      */
     @Cacheable(value = "analytics", key = "'rankings-' + #sortBy + '-' + #order + '-' + #limit + '-' + #startDate + '-' + #endDate")
@@ -29,7 +30,9 @@ public class FacilityRankingService {
         LocalDate end   = endDate   != null ? endDate.toLocalDate()   : today;
         LocalDate start = startDate != null ? startDate.toLocalDate() : end;
 
-        List<Object[]> kpis = end.isBefore(today)
+        // Match adoption: when a date range is supplied, aggregate over [start, end]
+        // instead of falling back to today's snapshot.
+        List<Object[]> kpis = (startDate != null || endDate != null)
                 ? dailyKpiRepository.getFacilityKpisByDateRange(start, end)
                 : dailyKpiRepository.getFacilityKpis();
 

@@ -74,8 +74,10 @@ public interface DailyKpiRepository {
     /**
      * mv_daily_facility_kpis — date-range-aware version.
      * Returns one row per facility aggregated over [startDate, endDate]:
-     *   compliance data = latest snapshot in the range (argMax over snapshot_date)
-     *   event_count     = summed daily events over the range
+     *   tracked/compliant/non_compliant = SUM of daily totals (protocols collapsed per day)
+     *   compliance_rate_pct             = recomputed from those period totals
+     *   total_deviations                = latest snapshot in the range (argMax)
+     *   event_count                     = SUM of daily events over the range
      * Same column indices as {@link #getFacilityKpis()}.
      */
     List<Object[]> getFacilityKpisByDateRange(LocalDate startDate, LocalDate endDate);
@@ -104,6 +106,12 @@ public interface DailyKpiRepository {
      *          [2] missed_count, [3] order_violation_count
      */
     Object[] getDeviationKpis(UUID protocolDefinitionId);
+
+    /**
+     * mv_daily_deviation_kpis — aggregated over [startDate, endDate].
+     * Returns same indices as {@link #getDeviationKpis(UUID)}.
+     */
+    Object[] getDeviationKpisByDateRange(UUID protocolDefinitionId, LocalDate startDate, LocalDate endDate);
 
     /** @deprecated use {@link #getDeviationKpis(UUID)} with null */
     @Deprecated

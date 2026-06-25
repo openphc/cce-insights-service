@@ -38,9 +38,15 @@ public class DeviationAnalyticsService {
                 .build()).collect(Collectors.toList());
     }
 
-    @Cacheable(value = "analytics", key = "'deviation-kpis-' + (#protocolDefinitionId ?: 'all')")
-    public DeviationKpiDto getDeviationKpis(UUID protocolDefinitionId) {
-        Object[] row = dailyKpiRepository.getDeviationKpis(protocolDefinitionId);
+    @Cacheable(value = "analytics", key = "'deviation-kpis-' + (#protocolDefinitionId ?: 'all') + '-' + (#startDate ?: 'today') + '-' + (#endDate ?: 'today')")
+    public DeviationKpiDto getDeviationKpis(UUID protocolDefinitionId,
+                                             OffsetDateTime startDate, OffsetDateTime endDate) {
+        Object[] row = (startDate != null || endDate != null)
+                ? dailyKpiRepository.getDeviationKpisByDateRange(
+                        protocolDefinitionId,
+                        startDate != null ? startDate.toLocalDate() : endDate.toLocalDate(),
+                        endDate   != null ? endDate.toLocalDate()   : startDate.toLocalDate())
+                : dailyKpiRepository.getDeviationKpis(protocolDefinitionId);
         return DeviationKpiDto.builder()
                 .totalDeviations(((Number) row[0]).longValue())
                 .overdueCount(((Number) row[1]).longValue())
