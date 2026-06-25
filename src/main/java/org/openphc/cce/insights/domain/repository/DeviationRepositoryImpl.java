@@ -442,7 +442,7 @@ public class DeviationRepositoryImpl
         String detectedAt = "d." + DEVIATIONS.DETECTED_AT.getName();
         String enrolledAt = "pi." + PROTOCOL_INSTANCES.ENROLLED_AT.getName();
 
-        var where = DSL.trueCondition();
+        org.jooq.Condition where = DSL.trueCondition();
         if (startDate != null) {
             where = where.and(DSL.condition(
                     detectedAt + " >= parseDateTime64BestEffort(?)", startDate.toString()));
