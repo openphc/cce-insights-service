@@ -154,3 +154,11 @@ jooq {
 }
 
 sourceSets.main.java.srcDir 'src/generated/jooq'
+
+// Paketo buildpacks: this service does not use Spring Cloud Bindings.
+// Disabling avoids a Maven Central download that can fail in CI during bootBuildImage.
+tasks.named('bootBuildImage') {
+    environment = [
+        'BP_SPRING_CLOUD_BINDINGS_DISABLED': 'true',
+    ]
+}
