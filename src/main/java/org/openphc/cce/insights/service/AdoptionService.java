@@ -8,7 +8,7 @@ import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -18,39 +18,66 @@ public class AdoptionService {
     private final DailyKpiRepository dailyKpiRepository;
 
     /**
-     * Returns today's per-facility e-Buzima adoption KPIs from mv_daily_adoption_kpis.
-     * Sorted by reporting_gap DESC (worst under-reporters first).
+     * Returns per-facility e-Buzima adoption KPIs for all in-scope facilities.
+     * Facilities without mv_daily_adoption_kpis rows appear with zero actual patients.
      */
     @Cacheable(value = "analytics", key = "'adoption-kpis'")
     public List<AdoptionKpiDto> getAdoptionKpis() {
-        return mapAdoptionRows(dailyKpiRepository.getAdoptionKpis());
+        return mergeWithReference(dailyKpiRepository.getAdoptionKpis());
     }
 
     /**
-     * Returns adoption KPIs aggregated over a reporting period per schema/07 formula:
-     *   total_actual   = SUM(actual_patients across days)
-     *   total_expected = expected_patients_per_day × days_in_period
-     *   period_rate    = total_actual / total_expected × 100
-     *   reporting_gap  = total_expected − total_actual
+     * Returns adoption KPIs aggregated over a reporting period for all in-scope facilities.
      */
     @Cacheable(value = "analytics", key = "'adoption-kpis-range-' + #startDate + '-' + #endDate")
     public List<AdoptionKpiDto> getAdoptionKpisByDateRange(LocalDate startDate, LocalDate endDate) {
-        // [0] facility_id, [1] facility_name, [2] expected_patients_per_day,
-        // [3] total_actual, [4] adoption_rate_pct (period), [5] reporting_gap (period)
-        return mapAdoptionRows(dailyKpiRepository.getAdoptionKpisByDateRange(startDate, endDate));
+        return mergeWithReference(dailyKpiRepository.getAdoptionKpisByDateRange(startDate, endDate));
     }
 
-    private List<AdoptionKpiDto> mapAdoptionRows(List<Object[]> rows) {
-        return rows.stream()
-                .map(row -> AdoptionKpiDto.builder()
-                        .facilityId((String) row[0])
-                        .facilityName((String) row[1])
-                        .expectedPatientsPerDay(((Number) row[2]).longValue())
-                        .actualPatients(((Number) row[3]).longValue())
-                        .adoptionRate(((Number) row[4]).doubleValue())
-                        .reportingGap(((Number) row[5]).longValue())
-                        .build())
-                .collect(Collectors.toList());
+    private List<AdoptionKpiDto> mergeWithReference(List<Object[]> adoptionRows) {
+        Map<String, Object[]> adoptionById = new LinkedHashMap<>();
+        for (Object[] row : adoptionRows) {
+            adoptionById.put((String) row[0], row);
+        }
+
+        List<AdoptionKpiDto> result = new ArrayList<>();
+        for (Object[] ref : dailyKpiRepository.getFacilityReference()) {
+            String facilityId = (String) ref[0];
+            String facilityName = (String) ref[1];
+            long expectedFromRef = ((Number) ref[2]).longValue();
+            Object[] row = adoptionById.get(facilityId);
+            if (row != null) {
+                result.add(toAdoptionDto(row));
+            } else {
+                result.add(emptyAdoptionDto(facilityId, facilityName, expectedFromRef));
+            }
+        }
+
+        result.sort(Comparator.comparingLong(AdoptionKpiDto::getReportingGap).reversed());
+        return result;
+    }
+
+    private static AdoptionKpiDto toAdoptionDto(Object[] row) {
+        return AdoptionKpiDto.builder()
+                .facilityId((String) row[0])
+                .facilityName((String) row[1])
+                .expectedPatientsPerDay(((Number) row[2]).longValue())
+                .actualPatients(((Number) row[3]).longValue())
+                .adoptionRate(((Number) row[4]).doubleValue())
+                .reportingGap(((Number) row[5]).longValue())
+                .build();
+    }
+
+    /** Matches mv_daily_adoption_kpis behaviour when expected baseline is zero. */
+    private static AdoptionKpiDto emptyAdoptionDto(String facilityId, String facilityName, long expected) {
+        return AdoptionKpiDto.builder()
+                .facilityId(facilityId)
+                .facilityName(facilityName)
+                .expectedPatientsPerDay(expected)
+                .actualPatients(0)
+                .adoptionRate(expected == 0 ? 100.0 : 0.0)
+                .reportingGap(expected == 0 ? 0 : expected)
+                .build();
     }
 
     /**
@@ -59,7 +86,6 @@ public class AdoptionService {
      */
     @Cacheable(value = "lookups", key = "'facility-reference'")
     public List<FacilityReferenceDto> getFacilityReference() {
-        // [0] facility_id, [1] facility_name, [2] expected_patients_per_day
         return dailyKpiRepository.getFacilityReference().stream()
                 .map(row -> FacilityReferenceDto.builder()
                         .facilityId((String) row[0])
