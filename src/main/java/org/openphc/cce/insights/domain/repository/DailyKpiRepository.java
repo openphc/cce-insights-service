@@ -37,6 +37,12 @@ public interface DailyKpiRepository {
     List<Object[]> getFacilityKpis();
 
     /**
+     * mv_daily_facility_kpis — one row per facility for a single protocol (today's snapshot).
+     * Same column indices as {@link #getFacilityKpis()}.
+     */
+    List<Object[]> getFacilityKpisByProtocol(UUID protocolDefinitionId);
+
+    /**
      * mv_daily_adoption_kpis — one row per facility_id, ordered by reporting_gap DESC.
      * Returns: [facility_id(String), facility_name(String),
      *           expected_patients_per_day(long), actual_patients(long),
@@ -79,6 +85,14 @@ public interface DailyKpiRepository {
      * Same column indices as {@link #getFacilityKpis()}.
      */
     List<Object[]> getFacilityKpisByDateRange(LocalDate startDate, LocalDate endDate);
+
+    /**
+     * mv_daily_facility_kpis — date-range-aware, filtered to one protocol.
+     * Same column indices as {@link #getFacilityKpis()}.
+     */
+    List<Object[]> getFacilityKpisByProtocolAndDateRange(UUID protocolDefinitionId,
+                                                          LocalDate startDate,
+                                                          LocalDate endDate);
 
     /**
      * mv_daily_adoption_kpis — multi-day aggregation for a reporting period.

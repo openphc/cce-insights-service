@@ -1,10 +1,7 @@
 package org.openphc.cce.insights.service;
 
 import lombok.RequiredArgsConstructor;
-import org.openphc.cce.insights.domain.repository.ComplianceEventLogRepository;
 import org.openphc.cce.insights.domain.repository.DailyKpiRepository;
-import java.util.Set;
-import java.util.stream.Collectors;
 import org.openphc.cce.insights.web.dto.FacilityRankingDto;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
@@ -18,7 +15,6 @@ import java.util.*;
 public class FacilityRankingService {
 
     private final DailyKpiRepository dailyKpiRepository;
-    private final ComplianceEventLogRepository complianceEventLogRepository;
 
     /**
      * Returns facility rankings from mv_daily_facility_kpis.
@@ -37,12 +33,20 @@ public class FacilityRankingService {
         LocalDate start = startDate != null ? startDate.toLocalDate() : end;
 
         // Use date-range query when a historical range is given; today's snapshot otherwise.
-        List<Object[]> kpis = end.isBefore(today)
-                ? dailyKpiRepository.getFacilityKpisByDateRange(start, end)
-                : dailyKpiRepository.getFacilityKpis();
+        List<Object[]> kpis;
+        if (protocolDefinitionId != null) {
+            kpis = end.isBefore(today)
+                    ? dailyKpiRepository.getFacilityKpisByProtocolAndDateRange(
+                            protocolDefinitionId, start, end)
+                    : dailyKpiRepository.getFacilityKpisByProtocol(protocolDefinitionId);
+        } else {
+            kpis = end.isBefore(today)
+                    ? dailyKpiRepository.getFacilityKpisByDateRange(start, end)
+                    : dailyKpiRepository.getFacilityKpis();
+        }
 
         Map<String, String> facilityNameMap = new LinkedHashMap<>();
-        for (Object[] row : complianceEventLogRepository.findFacilityNames()) {
+        for (Object[] row : dailyKpiRepository.getFacilityReference()) {
             facilityNameMap.put((String) row[0], (String) row[1]);
         }
 
@@ -62,13 +66,6 @@ public class FacilityRankingService {
                     .activeDeviations(((Number) row[5]).longValue())
                     .totalEvents(((Number) row[6]).longValue())
                     .build());
-        }
-
-        // Filter to only facilities that have patients enrolled in the given protocol
-        if (protocolDefinitionId != null) {
-            Set<String> allowedFacilities = new HashSet<>(
-                    complianceEventLogRepository.findFacilityIdsByProtocol(protocolDefinitionId));
-            rankings.removeIf(r -> !allowedFacilities.contains(r.getFacilityId()));
         }
 
         Comparator<FacilityRankingDto> comparator = switch (sortBy != null ? sortBy : "complianceRate") {
