@@ -7,7 +7,6 @@ import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
-import java.time.OffsetDateTime;
 import java.util.*;
 
 @Service
@@ -24,11 +23,11 @@ public class FacilityRankingService {
      */
     @Cacheable(value = "analytics", key = "'rankings-' + #sortBy + '-' + #order + '-' + #limit + '-' + #startDate + '-' + #endDate")
     public List<FacilityRankingDto> getRankings(UUID protocolDefinitionId,
-                                                 OffsetDateTime startDate, OffsetDateTime endDate,
+                                                 LocalDate startDate, LocalDate endDate,
                                                  String sortBy, String order, int limit) {
         LocalDate today = LocalDate.now();
-        LocalDate end   = endDate   != null ? endDate.toLocalDate()   : today;
-        LocalDate start = startDate != null ? startDate.toLocalDate() : end;
+        LocalDate end   = endDate   != null ? endDate   : today;
+        LocalDate start = startDate != null ? startDate : end;
 
         // Match adoption: when a date range is supplied, aggregate over [start, end]
         // instead of falling back to today's snapshot.

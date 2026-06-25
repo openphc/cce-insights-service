@@ -4,10 +4,11 @@ import lombok.RequiredArgsConstructor;
 import org.openphc.cce.insights.service.FacilityRankingService;
 import org.openphc.cce.insights.web.dto.ApiResponse;
 import org.openphc.cce.insights.web.dto.FacilityRankingDto;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.OffsetDateTime;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -23,8 +24,8 @@ public class FacilityRankingController {
             @RequestParam(required = false) UUID protocolDefinitionId,
             @RequestParam(defaultValue = "complianceRate") String rankBy,
             @RequestParam(defaultValue = "desc") String order,
-            @RequestParam(required = false) OffsetDateTime startDate,
-            @RequestParam(required = false) OffsetDateTime endDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestParam(defaultValue = "50") int limit,
             @RequestParam(required = false) String cursor) {
         List<FacilityRankingDto> rankings = facilityRankingService.getRankings(

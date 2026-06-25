@@ -67,9 +67,15 @@ public class DashboardService {
 
         // Top 3 and Bottom 3 facilities by compliance rate
         List<FacilityRankingDto> topFacilities = facilityRankingService.getRankings(
-                null, startDate, endDate, "complianceRate", "desc", 3);
+                null,
+                startDate != null ? startDate.toLocalDate() : null,
+                endDate != null ? endDate.toLocalDate() : null,
+                "complianceRate", "desc", 3);
         List<FacilityRankingDto> bottomFacilities = facilityRankingService.getRankings(
-                null, startDate, endDate, "complianceRate", "asc", 3);
+                null,
+                startDate != null ? startDate.toLocalDate() : null,
+                endDate != null ? endDate.toLocalDate() : null,
+                "complianceRate", "asc", 3);
 
         // Enrich facility rankings with HIE patient counts
         enrichFacilitiesWithHIE(topFacilities, facilityHIEPatients);
