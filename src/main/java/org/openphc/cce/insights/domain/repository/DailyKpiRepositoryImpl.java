@@ -266,11 +266,11 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
     public List<Object[]> getFacilityKpisByDateRange(LocalDate startDate, LocalDate endDate) {
         // MV stores one row per (facility_id, protocol_definition_id, snapshot_date).
         // Step 1: collapse protocols into daily per-facility totals.
-        // Step 2: aggregate over the reporting period — same pattern as adoption KPIs:
-        //   tracked/compliant/non_compliant = SUM of daily totals across the range,
-        //   compliance rate                 = recomputed from those period totals,
-        //   deviations                      = state at latest snapshot in range,
-        //   event_count                     = SUM of daily events across the range.
+        // Step 2: aggregate over the reporting period:
+        //   tracked/compliant/non_compliant/deviations = values at the latest snapshot in range
+        //     (stock metrics — must NOT be summed across days, unlike adoption actual_patients)
+        //   compliance_rate = recomputed from those end-of-period values
+        //   event_count     = SUM of daily events across the range
         var facilityIds = dsl.select(DSL.field("facility_id"))
                              .from(DSL.table(DSL.sql("facility" + finalClause())))
                              .where(DSL.field("_is_deleted").eq(0));
@@ -290,13 +290,14 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
                   .asTable("daily");
 
         String complianceExpr =
-            "toFloat64(round(sum(daily_compliant) / nullIf(sum(daily_tracked), 0) * 100, 1))";
+            "toFloat64(round(argMax(daily_compliant, snapshot_date) /" +
+            " nullIf(argMax(daily_tracked, snapshot_date), 0) * 100, 1))";
 
         return dsl.select(
                     DSL.field(DSL.name("daily", "facility_id"), String.class),
-                    DSL.sum(DSL.field(DSL.name("daily", "daily_tracked"), Long.class)),
-                    DSL.sum(DSL.field(DSL.name("daily", "daily_compliant"), Long.class)),
-                    DSL.sum(DSL.field(DSL.name("daily", "daily_non_compliant"), Long.class)),
+                    DSL.field(DSL.sql("argMax(daily_tracked, snapshot_date)"), Long.class),
+                    DSL.field(DSL.sql("argMax(daily_compliant, snapshot_date)"), Long.class),
+                    DSL.field(DSL.sql("argMax(daily_non_compliant, snapshot_date)"), Long.class),
                     DSL.field(DSL.sql(complianceExpr)),
                     DSL.field(DSL.sql("argMax(daily_deviations, snapshot_date)"), Long.class),
                     DSL.sum(DSL.field(DSL.name("daily", "daily_events"), Long.class)))

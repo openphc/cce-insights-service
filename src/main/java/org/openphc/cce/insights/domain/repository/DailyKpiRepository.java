@@ -74,8 +74,8 @@ public interface DailyKpiRepository {
     /**
      * mv_daily_facility_kpis — date-range-aware version.
      * Returns one row per facility aggregated over [startDate, endDate]:
-     *   tracked/compliant/non_compliant = SUM of daily totals (protocols collapsed per day)
-     *   compliance_rate_pct             = recomputed from those period totals
+     *   tracked/compliant/non_compliant = latest snapshot in the range (argMax), after collapsing protocols per day
+     *   compliance_rate_pct             = recomputed from those end-of-period values
      *   total_deviations                = latest snapshot in the range (argMax)
      *   event_count                     = SUM of daily events over the range
      * Same column indices as {@link #getFacilityKpis()}.

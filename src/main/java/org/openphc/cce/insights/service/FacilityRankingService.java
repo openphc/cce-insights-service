@@ -18,7 +18,8 @@ public class FacilityRankingService {
     /**
      * Returns facility rankings for all in-scope facilities from the reference table.
      * Metrics are cumulative across all protocols per facility (from mv_daily_facility_kpis).
-     * When a date range is supplied, metrics are aggregated over that period (same as adoption KPIs).
+     * When a date range is supplied, compliance metrics use the latest snapshot in that range;
+     * event counts are summed over the range.
      * Facilities without KPI rows appear with zero metrics.
      */
     @Cacheable(value = "analytics", key = "'rankings-' + #sortBy + '-' + #order + '-' + #limit + '-' + #startDate + '-' + #endDate")
