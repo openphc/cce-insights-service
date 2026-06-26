@@ -68,14 +68,16 @@ public class ComplianceSummaryController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String facilityId,
             @RequestParam(required = false) String patientId,
-            @RequestParam(defaultValue = "20") int limit,
+            @RequestParam(required = false) OffsetDateTime startDate,
+            @RequestParam(required = false) OffsetDateTime endDate,
+            @RequestParam(defaultValue = "15") int limit,
             @RequestParam(required = false) String cursor) {
         int offset = 0;
         if (cursor != null && !cursor.isEmpty()) {
             try { offset = Integer.parseInt(cursor); } catch (NumberFormatException ignored) {}
         }
         var result = complianceSummaryService.getProtocolPatients(
-                protocolDefinitionId, status, patientId, limit, offset);
+                protocolDefinitionId, status, patientId, startDate, endDate, limit, offset);
         long totalCount = result.totalCount();
         boolean hasMore = offset + result.patients().size() < totalCount;
         String nextCursor = hasMore ? String.valueOf(offset + limit) : null;

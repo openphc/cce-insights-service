@@ -106,6 +106,22 @@ public class ProtocolInstanceRepositoryImpl
     }
 
     @Override
+    public List<ProtocolInstance> findByProtocolDefinitionIdAndEnrolledBetween(UUID protocolDefinitionId,
+                                                                                OffsetDateTime startDate,
+                                                                                OffsetDateTime endDate) {
+        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        return dsl.select(DSL.asterisk())
+                  .from(pi)
+                  .where(DSL.condition(
+                          "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
+                          protocolDefinitionId.toString()))
+                  .and(enrollmentBetween(startDate, endDate))
+                  .orderBy(DSL.field("pi." + PROTOCOL_INSTANCES.ENROLLED_AT.getName()).desc())
+                  .fetch()
+                  .map(this::toProtocolInstance);
+    }
+
+    @Override
     public Page<ProtocolInstance> findByProtocolDefinitionId(UUID protocolDefinitionId, Pageable pageable) {
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
         var condition = DSL.condition(

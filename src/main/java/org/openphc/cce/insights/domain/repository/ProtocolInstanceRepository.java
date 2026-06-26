@@ -20,6 +20,11 @@ public interface ProtocolInstanceRepository extends ReadOnlyRepository<ProtocolI
 
     List<ProtocolInstance> findByProtocolDefinitionId(UUID protocolDefinitionId);
 
+    /** All enrollments for a protocol with optional enrollment date bounds. */
+    List<ProtocolInstance> findByProtocolDefinitionIdAndEnrolledBetween(UUID protocolDefinitionId,
+                                                                        OffsetDateTime startDate,
+                                                                        OffsetDateTime endDate);
+
     Page<ProtocolInstance> findByProtocolDefinitionId(UUID protocolDefinitionId, Pageable pageable);
 
     List<Object[]> countByProtocolDefinitionIdGroupByStatus(UUID protocolDefId);

@@ -10,16 +10,12 @@ import org.openphc.cce.insights.domain.repository.*;
 import org.openphc.cce.insights.web.dto.ComplianceSummaryDto;
 
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import org.openphc.cce.insights.web.dto.FacilitySummaryDto;
 import org.openphc.cce.insights.web.dto.PatientComplianceDto;
 import org.openphc.cce.insights.web.dto.ProtocolPatientsPage;
 import org.springframework.stereotype.Service;
 import org.springframework.cache.annotation.Cacheable;
-
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -188,47 +184,58 @@ public class ComplianceSummaryService {
                 .build();
     }
 
-    @Cacheable(value = "analytics", key = "'protocol-patients-' + #protocolDefinitionId + '-' + #statusFilter + '-' + #patientIdFilter + '-' + #limit + '-' + #offset")
-    public ProtocolPatientsPage getProtocolPatients(UUID protocolDefinitionId, String statusFilter, String patientIdFilter, int limit, int offset) {
+    @Cacheable(value = "analytics", key = "'protocol-patients-' + #protocolDefinitionId + '-' + #statusFilter + '-' + #patientIdFilter + '-' + #startDate + '-' + #endDate + '-' + #limit + '-' + #offset")
+    public ProtocolPatientsPage getProtocolPatients(UUID protocolDefinitionId, String statusFilter,
+                                                    String patientIdFilter,
+                                                    OffsetDateTime startDate, OffsetDateTime endDate,
+                                                    int limit, int offset) {
         protocolDefinitionRepository.findById(protocolDefinitionId)
                 .orElseThrow(() -> new EntityNotFoundException(
                         "Protocol definition not found: " + protocolDefinitionId));
 
         int pageSize = Math.max(limit, 1);
+        List<ProtocolInstance> instances = latestInstancePerPatient(
+                loadInstancesForPatientFilter(protocolDefinitionId, patientIdFilter, startDate, endDate));
+        instances.sort(Comparator.comparing(ProtocolInstance::getEnrolledAt,
+                Comparator.nullsLast(Comparator.reverseOrder())));
 
-        if (statusFilter != null && !statusFilter.isEmpty()) {
-            List<ProtocolInstance> instances = loadInstancesForPatientFilter(protocolDefinitionId, patientIdFilter);
-            instances.sort(Comparator.comparing(ProtocolInstance::getEnrolledAt,
-                    Comparator.nullsLast(Comparator.reverseOrder())));
-
-            List<PatientComplianceDto> matching = buildPatientComplianceDtos(instances, statusFilter);
-            long total = matching.size();
-            int from = Math.min(offset, matching.size());
-            int to = Math.min(offset + pageSize, matching.size());
-            return new ProtocolPatientsPage(matching.subList(from, to), total);
-        }
-
-        Pageable pageable = PageRequest.of(offset / pageSize, pageSize, Sort.by(Sort.Direction.DESC, "enrolledAt"));
-        Page<ProtocolInstance> page;
-        if (patientIdFilter != null && !patientIdFilter.isEmpty()) {
-            page = protocolInstanceRepository.findByProtocolDefinitionIdAndPatientIdContaining(
-                    protocolDefinitionId, patientIdFilter, pageable);
-        } else {
-            page = protocolInstanceRepository.findByProtocolDefinitionId(protocolDefinitionId, pageable);
-        }
-
-        return new ProtocolPatientsPage(buildPatientComplianceDtos(page.getContent(), null), page.getTotalElements());
+        List<PatientComplianceDto> matching = buildPatientComplianceDtos(instances, statusFilter);
+        long total = matching.size();
+        int from = Math.min(offset, matching.size());
+        int to = Math.min(offset + pageSize, matching.size());
+        return new ProtocolPatientsPage(matching.subList(from, to), total);
     }
 
-    private List<ProtocolInstance> loadInstancesForPatientFilter(UUID protocolDefinitionId, String patientIdFilter) {
+    /** One row per patient — keep the most recent enrollment in the filtered set. */
+    private static List<ProtocolInstance> latestInstancePerPatient(List<ProtocolInstance> instances) {
+        Map<String, ProtocolInstance> latest = new LinkedHashMap<>();
+        for (ProtocolInstance pi : instances) {
+            if (pi.getPatientId() == null) continue;
+            latest.merge(pi.getPatientId(), pi, (existing, candidate) -> {
+                if (existing.getEnrolledAt() == null) return candidate;
+                if (candidate.getEnrolledAt() == null) return existing;
+                return existing.getEnrolledAt().isAfter(candidate.getEnrolledAt()) ? existing : candidate;
+            });
+        }
+        return new ArrayList<>(latest.values());
+    }
+
+    private List<ProtocolInstance> loadInstancesForPatientFilter(UUID protocolDefinitionId,
+                                                                  String patientIdFilter,
+                                                                  OffsetDateTime startDate,
+                                                                  OffsetDateTime endDate) {
+        List<ProtocolInstance> instances = (startDate != null || endDate != null)
+                ? protocolInstanceRepository.findByProtocolDefinitionIdAndEnrolledBetween(
+                        protocolDefinitionId, startDate, endDate)
+                : protocolInstanceRepository.findByProtocolDefinitionId(protocolDefinitionId);
         if (patientIdFilter != null && !patientIdFilter.isEmpty()) {
             String pattern = patientIdFilter.toLowerCase();
-            return protocolInstanceRepository.findByProtocolDefinitionId(protocolDefinitionId).stream()
+            return instances.stream()
                     .filter(pi -> pi.getPatientId() != null
                             && pi.getPatientId().toLowerCase().contains(pattern))
                     .collect(Collectors.toList());
         }
-        return protocolInstanceRepository.findByProtocolDefinitionId(protocolDefinitionId);
+        return instances;
     }
 
     private List<PatientComplianceDto> buildPatientComplianceDtos(List<ProtocolInstance> instances, String statusFilter) {
