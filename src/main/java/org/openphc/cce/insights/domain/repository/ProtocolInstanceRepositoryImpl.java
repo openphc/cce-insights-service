@@ -219,7 +219,8 @@ public class ProtocolInstanceRepositoryImpl
     public List<Object[]> countPatientComplianceByFacility(OffsetDateTime startDate,
                                                             OffsetDateTime endDate) {
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
-        var pf = DSL.table(DSL.sql("mv_patient_facility_latest" + finalClause())).as("pf");
+        // alias must come BEFORE FINAL: "table alias FINAL" is valid; "table FINAL alias" is not
+        var pf = DSL.table(DSL.sql("mv_patient_facility_latest pf" + finalClause()));
         var d  = finalAs(DEVIATIONS, "d");
         String zeroUuid = "toUUID('00000000-0000-0000-0000-000000000000')";
         String detectedAt = "d." + DEVIATIONS.DETECTED_AT.getName();

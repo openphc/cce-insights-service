@@ -4,8 +4,9 @@ import lombok.RequiredArgsConstructor;
 import org.openphc.cce.insights.domain.entity.ProtocolInstance;
 import org.openphc.cce.insights.domain.entity.StepInstance;
 import org.openphc.cce.insights.domain.enums.StepState;
-import org.openphc.cce.insights.domain.repository.DeviationRepository;
 import org.openphc.cce.insights.domain.repository.ComplianceEventLogRepository;
+import org.openphc.cce.insights.domain.repository.DailyKpiRepository;
+import org.openphc.cce.insights.domain.repository.DeviationRepository;
 import org.openphc.cce.insights.domain.repository.ProtocolInstanceRepository;
 import org.openphc.cce.insights.domain.repository.StepInstanceRepository;
 import org.openphc.cce.insights.web.dto.AtRiskHotspotDto;
@@ -25,6 +26,7 @@ public class PatientRiskService {
     private final ProtocolInstanceRepository protocolInstanceRepository;
     private final StepInstanceRepository stepInstanceRepository;
     private final ComplianceEventLogRepository complianceEventLogRepository;
+    private final DailyKpiRepository dailyKpiRepository;
 
     @Cacheable(value = "analytics", key = "'risk-hotspots'")
     public List<AtRiskHotspotDto> getAtRiskHotspots(OffsetDateTime startDate, OffsetDateTime endDate) {
@@ -37,9 +39,9 @@ public class PatientRiskService {
             facilityPatients.computeIfAbsent(facilityId, k -> new LinkedHashSet<>()).add(patientId);
         }
 
-        // Build facility name lookup
+        // Build facility name lookup from canonical facility table
         Map<String, String> facilityNameMap = new LinkedHashMap<>();
-        for (Object[] row : complianceEventLogRepository.findFacilityNames()) {
+        for (Object[] row : dailyKpiRepository.getFacilityReference()) {
             facilityNameMap.put((String) row[0], (String) row[1]);
         }
 

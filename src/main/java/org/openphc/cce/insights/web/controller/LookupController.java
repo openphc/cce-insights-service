@@ -3,6 +3,7 @@ package org.openphc.cce.insights.web.controller;
 import lombok.RequiredArgsConstructor;
 import org.openphc.cce.insights.domain.entity.ProtocolDefinition;
 import org.openphc.cce.insights.domain.repository.ComplianceEventLogRepository;
+import org.openphc.cce.insights.domain.repository.DailyKpiRepository;
 import org.openphc.cce.insights.domain.repository.InboundEventRepository;
 import org.openphc.cce.insights.domain.repository.ProtocolDefinitionRepository;
 import org.openphc.cce.insights.domain.repository.ProtocolInstanceRepository;
@@ -29,6 +30,7 @@ public class LookupController {
     private final ProtocolDefinitionRepository protocolDefinitionRepository;
     private final ProtocolInstanceRepository protocolInstanceRepository;
     private final ComplianceEventLogRepository complianceEventLogRepository;
+    private final DailyKpiRepository dailyKpiRepository;
     private final InboundEventRepository inboundEventRepository;
     private final ObjectMapper objectMapper;
 
@@ -66,15 +68,10 @@ public class LookupController {
     @GetMapping("/facilities")
     @Cacheable(value = "lookups", key = "'facilities'")
     public ResponseEntity<ApiResponse<List<Map<String, String>>>> getFacilities() {
-        List<String> facilityIds = complianceEventLogRepository.findDistinctFacilityIds();
-        Map<String, String> nameMap = new LinkedHashMap<>();
-        for (Object[] row : complianceEventLogRepository.findFacilityNames()) {
-            nameMap.put((String) row[0], (String) row[1]);
-        }
-        List<Map<String, String>> result = facilityIds.stream().map(id -> {
+        List<Map<String, String>> result = dailyKpiRepository.getFacilityReference().stream().map(row -> {
             Map<String, String> map = new LinkedHashMap<>();
-            map.put("id", id);
-            map.put("name", nameMap.getOrDefault(id, id));
+            map.put("id", (String) row[0]);
+            map.put("name", (String) row[1]);
             return map;
         }).collect(Collectors.toList());
         return ResponseEntity.ok(ApiResponse.ok(result));
