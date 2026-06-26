@@ -53,20 +53,20 @@ public class AdoptionService {
             }
         }
 
-        result.sort(Comparator.comparingLong(AdoptionKpiDto::getReportingGapPerDay).reversed());
+        result.sort(Comparator.comparingDouble(AdoptionKpiDto::getReportingGapPerDay).reversed());
         return result;
     }
 
     private static AdoptionKpiDto toAdoptionDto(Object[] row, String facilityName) {
-        // row[0]=facility_id, [1]=expected_patients_per_day, [2]=actual_patients,
-        // [3]=adoption_rate_pct, [4]=reporting_gap  (facility_name resolved from facility table)
+        // row[0]=facility_id, [1]=expected_patients_per_day, [2]=actual_visits_per_day,
+        // [3]=adoption_rate_pct, [4]=reporting_gap_per_day (facility_name resolved from facility table)
         return AdoptionKpiDto.builder()
                 .facilityId((String) row[0])
                 .facilityName(facilityName)
                 .expectedVisitsPerDay(((Number) row[1]).longValue())
-                .actualVisitsPerDay(((Number) row[2]).longValue())
+                .actualVisitsPerDay(((Number) row[2]).doubleValue())
                 .adoptionRate(((Number) row[3]).doubleValue())
-                .reportingGapPerDay(((Number) row[4]).longValue())
+                .reportingGapPerDay(((Number) row[4]).doubleValue())
                 .build();
     }
 
@@ -76,9 +76,9 @@ public class AdoptionService {
                 .facilityId(facilityId)
                 .facilityName(facilityName)
                 .expectedVisitsPerDay(expected)
-                .actualVisitsPerDay(0)
+                .actualVisitsPerDay(0.0)
                 .adoptionRate(expected == 0 ? 100.0 : 0.0)
-                .reportingGapPerDay(expected == 0 ? 0 : expected)
+                .reportingGapPerDay(expected == 0 ? 0.0 : (double) expected)
                 .build();
     }
 
