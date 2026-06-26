@@ -199,7 +199,8 @@ public class ComplianceSummaryService {
         instances.sort(Comparator.comparing(ProtocolInstance::getEnrolledAt,
                 Comparator.nullsLast(Comparator.reverseOrder())));
 
-        List<PatientComplianceDto> matching = buildPatientComplianceDtos(instances, statusFilter);
+        List<PatientComplianceDto> matching = buildPatientComplianceDtos(
+                instances, statusFilter, startDate, endDate);
         long total = matching.size();
         int from = Math.min(offset, matching.size());
         int to = Math.min(offset + pageSize, matching.size());
@@ -238,7 +239,10 @@ public class ComplianceSummaryService {
         return instances;
     }
 
-    private List<PatientComplianceDto> buildPatientComplianceDtos(List<ProtocolInstance> instances, String statusFilter) {
+    private List<PatientComplianceDto> buildPatientComplianceDtos(List<ProtocolInstance> instances,
+                                                                   String statusFilter,
+                                                                   OffsetDateTime startDate,
+                                                                   OffsetDateTime endDate) {
         if (instances.isEmpty()) {
             return List.of();
         }
@@ -249,7 +253,7 @@ public class ComplianceSummaryService {
                 .stream()
                 .collect(Collectors.groupingBy(StepInstance::getProtocolInstanceId));
         Map<UUID, Long> devCountByInstance = deviationRepository
-                .countDeviationsByProtocolInstanceIdIn(instanceIds)
+                .countDeviationsByProtocolInstanceIdIn(instanceIds, startDate, endDate)
                 .stream()
                 .collect(Collectors.toMap(r -> (UUID) r[0], r -> (Long) r[1]));
 
@@ -260,13 +264,12 @@ public class ComplianceSummaryService {
                     .filter(s -> s.getState() == StepState.COMPLETED || s.getState() == StepState.SKIPPED)
                     .count();
             double rate = steps.isEmpty() ? 0.0 : (double) completedCount / steps.size();
-            String category = computeCategory(steps);
+            long activeDevs = devCountByInstance.getOrDefault(pi.getId(), 0L);
+            String category = computeCategory(activeDevs);
 
             if (statusFilter != null && !statusFilter.isEmpty() && !statusFilter.equalsIgnoreCase(category)) {
                 continue;
             }
-
-            long activeDevs = devCountByInstance.getOrDefault(pi.getId(), 0L);
 
             results.add(PatientComplianceDto.builder()
                     .patientId(pi.getPatientId())
@@ -342,12 +345,12 @@ public class ComplianceSummaryService {
                 .build();
     }
 
-    private String computeCategory(List<StepInstance> steps) {
-        boolean hasMissed = steps.stream().anyMatch(s -> s.getState() == StepState.MISSED);
-        if (hasMissed) return "non_compliant";
-        boolean hasOverdue = steps.stream().anyMatch(s -> s.getState() == StepState.OVERDUE);
-        if (hasOverdue) return "non_compliant";
-        return "on_track";
+    /**
+     * Matches {@link DashboardService#getComplianceSummary}: a patient is compliant only when
+     * they have no deviation records (optionally scoped to the same date range).
+     */
+    private static String computeCategory(long deviationCount) {
+        return deviationCount > 0 ? "non_compliant" : "on_track";
     }
 
     private ComplianceSummaryDto buildEmptySummary(ProtocolDefinition pd) {

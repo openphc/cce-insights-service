@@ -89,16 +89,28 @@ public class DeviationRepositoryImpl
     }
 
     @Override
-    public List<Object[]> countDeviationsByProtocolInstanceIdIn(List<UUID> ids) {
+    public List<Object[]> countDeviationsByProtocolInstanceIdIn(List<UUID> ids,
+                                                                 OffsetDateTime startDate,
+                                                                 OffsetDateTime endDate) {
         if (ids == null || ids.isEmpty()) return List.of();
         List<String> idStrings = ids.stream().map(UUID::toString).collect(java.util.stream.Collectors.toList());
         var d = finalAs(DEVIATIONS, "d");
+        String detectedAt = "d." + DEVIATIONS.DETECTED_AT.getName();
+        org.jooq.Condition where = DSL.field("d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName()).in(idStrings);
+        if (startDate != null) {
+            where = where.and(DSL.condition(
+                    detectedAt + " >= parseDateTime64BestEffort(?)", startDate.toString()));
+        }
+        if (endDate != null) {
+            where = where.and(DSL.condition(
+                    detectedAt + " <= parseDateTime64BestEffort(?)", endDate.toString()));
+        }
         return dsl.select(
                     DSL.field("d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName()),
                     DSL.field("count()", Long.class).as("cnt")
                 )
                 .from(d)
-                .where(DSL.field("d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName()).in(idStrings))
+                .where(where)
                 .groupBy(DSL.field("d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName()))
                 .fetch()
                 .map(r -> new Object[]{r.get(0, UUID.class), r.get(1, Long.class)});

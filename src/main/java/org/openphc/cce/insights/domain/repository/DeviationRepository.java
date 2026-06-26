@@ -44,8 +44,11 @@ public interface DeviationRepository extends ReadOnlyRepository<Deviation, UUID>
     // Batch load full Deviation objects for a set of protocol instances
     List<Deviation> findByProtocolInstanceIdIn(List<UUID> ids);
 
-    // Batch count — returns [protocolInstanceId, count] per instance; replaces per-instance calls
-    List<Object[]> countDeviationsByProtocolInstanceIdIn(List<UUID> ids);
+    // Batch count — returns [protocolInstanceId, count] per instance; replaces per-instance calls.
+    // When startDate/endDate are set, counts only deviations with detected_at in range (matches dashboard).
+    List<Object[]> countDeviationsByProtocolInstanceIdIn(List<UUID> ids,
+                                                         OffsetDateTime startDate,
+                                                         OffsetDateTime endDate);
 
     // Returns one row per protocol: [protocolDefinitionId, totalDeviations]
     List<Object[]> findDeviationCountsByFacilityGroupedByProtocol(String facilityId);

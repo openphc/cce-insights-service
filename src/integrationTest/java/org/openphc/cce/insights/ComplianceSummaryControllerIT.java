@@ -72,7 +72,7 @@ class ComplianceSummaryControllerIT extends AbstractIntegrationTest {
         when(complianceSummaryService.getProtocolPatients(eq(PROTOCOL_ID), isNull(), isNull(), any(), any(), eq(15), eq(0)))
                 .thenReturn(new ProtocolPatientsPage(List.of(
                         PatientComplianceDto.builder().patientId("p1").complianceCategory("on_track").build(),
-                        PatientComplianceDto.builder().patientId("p2").complianceCategory("at_risk").build(),
+                        PatientComplianceDto.builder().patientId("p2").complianceCategory("on_track").build(),
                         PatientComplianceDto.builder().patientId("p3").complianceCategory("non_compliant").build()), 3));
 
         mockMvc.perform(get("/v1/insights/protocols/550e8400-e29b-41d4-a716-446655440000/patients"))
@@ -84,16 +84,16 @@ class ComplianceSummaryControllerIT extends AbstractIntegrationTest {
 
     @Test
     void getProtocolPatients_filteredByStatus() throws Exception {
-        when(complianceSummaryService.getProtocolPatients(eq(PROTOCOL_ID), eq("at_risk"), isNull(), any(), any(), eq(15), eq(0)))
+        when(complianceSummaryService.getProtocolPatients(eq(PROTOCOL_ID), eq("non_compliant"), isNull(), any(), any(), eq(15), eq(0)))
                 .thenReturn(new ProtocolPatientsPage(List.of(
-                        PatientComplianceDto.builder().patientId("p2").complianceCategory("at_risk").build()), 1));
+                        PatientComplianceDto.builder().patientId("p3").complianceCategory("non_compliant").build()), 1));
 
         mockMvc.perform(get("/v1/insights/protocols/550e8400-e29b-41d4-a716-446655440000/patients")
-                        .param("status", "at_risk"))
+                        .param("status", "non_compliant"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").isArray())
                 .andExpect(jsonPath("$.data.length()").value(1))
-                .andExpect(jsonPath("$.data[0].complianceCategory").value("at_risk"))
+                .andExpect(jsonPath("$.data[0].complianceCategory").value("non_compliant"))
                 .andExpect(jsonPath("$.pagination.totalCount").value(1));
     }
 }

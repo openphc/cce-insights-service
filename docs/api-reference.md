@@ -125,7 +125,7 @@ List patients enrolled in a protocol, filterable by compliance status.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `status` | String | — | Filter: `on_track`, `at_risk`, `non_compliant` |
+| `status` | String | — | Filter: `on_track` (compliant), `non_compliant` |
 | `facilityId` | String | — | Filter by facility |
 | `limit` | Integer | `50` | Page size (max 200) |
 | `cursor` | String | — | Pagination cursor |
@@ -157,12 +157,13 @@ List patients enrolled in a protocol, filterable by compliance status.
 }
 ```
 
-**Compliance Categories:**
+**Compliance Categories** (deviation-based — matches dashboard):
 | Category | Definition |
 |---|---|
-| `on_track` | All steps completed on time or early, no active overdue/missed steps |
-| `at_risk` | Has one or more overdue steps (not yet missed) |
-| `non_compliant` | Has one or more missed steps |
+| `on_track` | No deviation records for the patient in the selected period |
+| `non_compliant` | At least one deviation record (overdue, missed, or order violation) |
+
+> The `complianceRate` field is step completion percentage and is independent of category. The `at_risk` category is no longer returned by this endpoint.
 
 ---
 
