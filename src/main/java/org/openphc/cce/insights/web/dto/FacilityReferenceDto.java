@@ -9,6 +9,6 @@ import lombok.Data;
 public class FacilityReferenceDto {
     private String facilityId;
     private String facilityName;
-    /** Expected number of unique patients per day (adoption baseline). */
-    private long expectedPatientsPerDay;
+    /** Expected number of patient visits per day (adoption baseline). */
+    private long expectedVisitsPerDay;
 }

@@ -19,7 +19,7 @@ public class AdoptionService {
 
     /**
      * Returns per-facility e-Buzima adoption KPIs for all in-scope facilities.
-     * Facilities without mv_daily_adoption_kpis rows appear with zero actual patients.
+     * Facilities without mv_daily_adoption_kpis rows appear with zero actual visits.
      */
     @Cacheable(value = "analytics", key = "'adoption-kpis'")
     public List<AdoptionKpiDto> getAdoptionKpis() {
@@ -53,7 +53,7 @@ public class AdoptionService {
             }
         }
 
-        result.sort(Comparator.comparingLong(AdoptionKpiDto::getReportingGap).reversed());
+        result.sort(Comparator.comparingLong(AdoptionKpiDto::getReportingGapPerDay).reversed());
         return result;
     }
 
@@ -63,10 +63,10 @@ public class AdoptionService {
         return AdoptionKpiDto.builder()
                 .facilityId((String) row[0])
                 .facilityName(facilityName)
-                .expectedPatientsPerDay(((Number) row[1]).longValue())
-                .actualPatients(((Number) row[2]).longValue())
+                .expectedVisitsPerDay(((Number) row[1]).longValue())
+                .actualVisitsPerDay(((Number) row[2]).longValue())
                 .adoptionRate(((Number) row[3]).doubleValue())
-                .reportingGap(((Number) row[4]).longValue())
+                .reportingGapPerDay(((Number) row[4]).longValue())
                 .build();
     }
 
@@ -75,10 +75,10 @@ public class AdoptionService {
         return AdoptionKpiDto.builder()
                 .facilityId(facilityId)
                 .facilityName(facilityName)
-                .expectedPatientsPerDay(expected)
-                .actualPatients(0)
+                .expectedVisitsPerDay(expected)
+                .actualVisitsPerDay(0)
                 .adoptionRate(expected == 0 ? 100.0 : 0.0)
-                .reportingGap(expected == 0 ? 0 : expected)
+                .reportingGapPerDay(expected == 0 ? 0 : expected)
                 .build();
     }
 
@@ -92,7 +92,7 @@ public class AdoptionService {
                 .map(row -> FacilityReferenceDto.builder()
                         .facilityId((String) row[0])
                         .facilityName((String) row[1])
-                        .expectedPatientsPerDay(((Number) row[2]).longValue())
+                        .expectedVisitsPerDay(((Number) row[2]).longValue())
                         .build())
                 .collect(Collectors.toList());
     }

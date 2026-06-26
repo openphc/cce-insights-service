@@ -30,6 +30,7 @@ public class AdoptionController {
      * Without date params → today's snapshot (single-day adoption rate).
      * With startDate + endDate → multi-day aggregation per schema/07 formula:
      *   period_rate = sum(actual_patients) / (expected_per_day × days) × 100
+     *   actualVisitsPerDay / reportingGapPerDay = daily averages over the range
      */
     @GetMapping("/adoption")
     public ResponseEntity<ApiResponse<List<AdoptionKpiDto>>> getAdoptionKpis(
