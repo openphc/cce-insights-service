@@ -46,7 +46,7 @@ public class PatientController {
             @PathVariable String patientId,
             @RequestParam(required = false) OffsetDateTime startDate,
             @RequestParam(required = false) OffsetDateTime endDate) {
-        PatientTimelineDto timeline = patientTimelineService.getTimeline(patientId);
+        PatientTimelineDto timeline = patientTimelineService.getTimeline(patientId, startDate, endDate);
         return ResponseEntity.ok(ApiResponse.ok(timeline));
     }
 

@@ -31,7 +31,7 @@ class PatientRiskControllerIT extends AbstractIntegrationTest {
 
     @Test
     void getAtRiskHotspots_returnsHotspots() throws Exception {
-        when(patientRiskService.getAtRiskHotspots(any(), any()))
+        when(patientRiskService.getAtRiskHotspots(any(), any(), any()))
                 .thenReturn(List.of(AtRiskHotspotDto.builder()
                         .facilityId("fac-1").totalPatients(10)
                         .onTrack(AtRiskHotspotDto.CategoryCount.builder().count(7).percentage(70.0).build())
@@ -46,7 +46,7 @@ class PatientRiskControllerIT extends AbstractIntegrationTest {
 
     @Test
     void getRepeatDeviations_returnsPatientsAboveThreshold() throws Exception {
-        when(patientRiskService.getRepeatDeviationPatients(eq(1), any(), any()))
+        when(patientRiskService.getRepeatDeviationPatients(eq(1), any(), any(), any(), any()))
                 .thenReturn(List.of(RepeatDeviationPatientDto.builder()
                         .patientId("p1").totalDeviations(3).overdueCount(2).missedCount(1).orderViolationCount(0)
                         .affectedProtocols(1).affectedSteps(2).build()));

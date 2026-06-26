@@ -27,7 +27,8 @@ public class PatientTimelineService {
     private final ComplianceEventLogRepository complianceEventLogRepository;
     private final ObjectMapper objectMapper;
 
-    public PatientTimelineDto getTimeline(String patientId) {
+    public PatientTimelineDto getTimeline(String patientId,
+                                          OffsetDateTime startDate, OffsetDateTime endDate) {
         List<ProtocolInstance> instances = protocolInstanceRepository.findByPatientId(patientId);
         List<UUID> instanceIds = instances.stream().map(ProtocolInstance::getId).collect(Collectors.toList());
 
@@ -107,6 +108,21 @@ public class PatientTimelineService {
 
             events.sort(Comparator.comparing(PatientTimelineDto.TimelineEvent::getTimestamp,
                     Comparator.nullsLast(Comparator.naturalOrder())));
+
+            // Apply date filter to the timeline (only — Protocol Journey shows the full
+            // protocol step list regardless of when each step happened, so filtering
+            // there would hide structure rather than narrow time scope).
+            if (startDate != null || endDate != null) {
+                events = events.stream()
+                        .filter(e -> {
+                            OffsetDateTime t = e.getTimestamp();
+                            if (t == null) return true; // never-fired steps stay visible
+                            if (startDate != null && t.isBefore(startDate)) return false;
+                            if (endDate != null && t.isAfter(endDate)) return false;
+                            return true;
+                        })
+                        .collect(Collectors.toList());
+            }
 
             protocols.add(PatientTimelineDto.ProtocolTimeline.builder()
                     .protocolInstanceId(pi.getId().toString())

@@ -106,6 +106,17 @@ public class ProtocolInstanceRepositoryImpl
     }
 
     @Override
+    public List<ProtocolInstance> findEnrolledBetween(OffsetDateTime startDate, OffsetDateTime endDate) {
+        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        return dsl.select(DSL.asterisk())
+                  .from(pi)
+                  .where(enrollmentBetween(startDate, endDate))
+                  .orderBy(DSL.field("pi." + PROTOCOL_INSTANCES.ENROLLED_AT.getName()).desc())
+                  .fetch()
+                  .map(this::toProtocolInstance);
+    }
+
+    @Override
     public List<ProtocolInstance> findByProtocolDefinitionIdAndEnrolledBetween(UUID protocolDefinitionId,
                                                                                 OffsetDateTime startDate,
                                                                                 OffsetDateTime endDate) {
@@ -153,6 +164,34 @@ public class ProtocolInstanceRepositoryImpl
                           "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
                           protocolDefId.toString()))
                   .groupBy(DSL.field("pi." + PROTOCOL_INSTANCES.STATUS.getName()))
+                  .fetch()
+                  .map(r -> new Object[]{r.value1(), r.value2()});
+    }
+
+    @Override
+    public List<Object[]> findEnrollmentTrendsByFacility(UUID protocolDefId, String facilityId, String interval,
+                                                          OffsetDateTime startDate, OffsetDateTime endDate) {
+        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        var pf = DSL.table(DSL.sql("mv_patient_facility_latest pf" + finalClause()));
+        String periodExpr = dateTruncExpr(interval, "pi." + PROTOCOL_INSTANCES.ENROLLED_AT.getName());
+        return dsl.select(
+                    DSL.field(DSL.sql(periodExpr)).as("period"),
+                    DSL.field("count()", Long.class).as("enrollments"))
+                  .from(pi)
+                  .join(pf).on(DSL.condition(
+                          "pf.patient_id = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
+                  .where(DSL.condition(
+                          "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
+                          protocolDefId.toString()))
+                  .and(DSL.field("pf.facility_id").eq(facilityId))
+                  .and(DSL.condition(
+                          "pi." + PROTOCOL_INSTANCES.ENROLLED_AT.getName() + " >= parseDateTime64BestEffort(?)",
+                          dtStart(startDate)))
+                  .and(DSL.condition(
+                          "pi." + PROTOCOL_INSTANCES.ENROLLED_AT.getName() + " <= parseDateTime64BestEffort(?)",
+                          dtEnd(endDate)))
+                  .groupBy(DSL.field(DSL.sql("period")))
+                  .orderBy(DSL.field(DSL.sql("period")))
                   .fetch()
                   .map(r -> new Object[]{r.value1(), r.value2()});
     }

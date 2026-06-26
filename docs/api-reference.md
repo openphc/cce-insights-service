@@ -183,8 +183,8 @@ Full compliance timeline for a patient across all enrolled protocols. Combines e
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `startDate` | ISO 8601 | — | Start of date range |
-| `endDate` | ISO 8601 | — | End of date range |
+| `startDate` | ISO 8601 | — | Filters the `timeline` events array by `timestamp ≥ startDate`. The `journey` (per-protocol-action step list) remains the full set so structure is not hidden when narrowing the range. |
+| `endDate` | ISO 8601 | — | Filters the `timeline` events array by `timestamp ≤ endDate`. |
 
 **Response: `200 OK`**
 
@@ -851,9 +851,9 @@ Per-step completion rates, average time-to-complete, and timeliness distribution
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `facilityId` | String | — | Filter by facility FOSA ID |
-| `startDate` | ISO 8601 | — | Filter step instances created after |
-| `endDate` | ISO 8601 | — | Filter step instances created before |
+| `facilityId` | String | — | Narrow to patients tied to this facility via `mv_patient_facility_latest` |
+| `startDate` | ISO 8601 | — | Narrows the cohort to enrollments enrolled in [start, end] (step rows of those enrollments are reported); step states still reflect current state, not state-in-period |
+| `endDate` | ISO 8601 | — | End of enrollment window |
 
 **Response: `200 OK`**
 
@@ -925,9 +925,9 @@ Drop-off rates at each sequential step — percentage of enrolled patients who c
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `facilityId` | String | — | Filter by facility FOSA ID |
-| `startDate` | ISO 8601 | — | Enrollments after this date |
-| `endDate` | ISO 8601 | — | Enrollments before this date |
+| `facilityId` | String | — | Restricts the cohort to patients at this facility (via `mv_patient_facility_latest`) |
+| `startDate` | ISO 8601 | — | Narrow to enrollments enrolled in [start, end] |
+| `endDate` | ISO 8601 | — | End of enrollment window |
 
 **Response: `200 OK`**
 
@@ -1000,9 +1000,9 @@ Percentage of protocol instances ending in each terminal status. Measures overal
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `facilityId` | String | — | Filter by facility FOSA ID |
-| `startDate` | ISO 8601 | — | Enrollments after this date |
-| `endDate` | ISO 8601 | — | Enrollments before this date |
+| `facilityId` | String | — | Restricts the cohort to patients at this facility (via `mv_patient_facility_latest`) |
+| `startDate` | ISO 8601 | — | Narrow to enrollments enrolled in [start, end] |
+| `endDate` | ISO 8601 | — | End of enrollment window |
 
 **Response: `200 OK`**
 
@@ -1041,7 +1041,7 @@ New protocol enrollments over time, with optional facility breakdown. Tracks pro
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `interval` | String | `weekly` | Aggregation: `daily`, `weekly`, `monthly` |
-| `facilityId` | String | — | Filter by facility FOSA ID |
+| `facilityId` | String | — | When set, restricts to enrollments whose patient is at this facility (via `mv_patient_facility_latest`) |
 | `startDate` | ISO 8601 | 90 days ago | Trend start date |
 | `endDate` | ISO 8601 | now | Trend end date |
 
@@ -1243,9 +1243,9 @@ Concentration of `at_risk` and `non_compliant` patients by facility. Directs fie
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `protocolDefinitionId` | UUID | — | Filter by protocol |
-| `startDate` | ISO 8601 | — | Enrollments after this date |
-| `endDate` | ISO 8601 | — | Enrollments before this date |
+| `protocolDefinitionId` | UUID | — | Restrict to patients enrolled in this protocol |
+| `startDate` | ISO 8601 | — | Restrict the cohort to enrollments enrolled in [start, end] |
+| `endDate` | ISO 8601 | — | End of enrollment window |
 | `limit` | Integer | `50` | Page size (max 200) |
 | `cursor` | String | — | Pagination cursor |
 

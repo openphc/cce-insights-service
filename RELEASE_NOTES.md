@@ -31,18 +31,32 @@ definitions; see `docs/data-dictionary.md` for the canonical formulas.
 - **Global facility filter** — `facilityId` is now applied through
   `/dashboard/compliance-summary`, `/facilities/ranking`,
   `/protocols/{id}/patients`, `/deviations/kpis`, deviation `intelligence-summary`
-  recent-activity windows, `/events/summary`, `/events/by-resource-type`, and
-  `/events/by-facility`.
-- **Date range filter** — `/facilities/{facilityId}/compliance-summary` now respects
-  `startDate` / `endDate` instead of always returning all-time numbers.
-- **Protocol filter** — `/intelligence/summary` and `/practitioners/ranking` now
-  accept `protocolDefinitionId`; protocol-analytics endpoints
+  recent-activity windows, `/events/summary`, `/events/by-resource-type`,
+  `/events/by-facility`, `/facilities/activity-summary` (single-facility tile),
+  `/facilities/adoption`, `/protocols/{id}/outcome-distribution`,
+  `/protocols/{id}/enrollment-trends`, and `/patients/repeat-deviations`.
+- **Date range filter** — `/facilities/{facilityId}/compliance-summary`,
+  `/protocols/{id}/step-analytics`, `/protocols/{id}/completion-funnel`,
+  `/patients/{id}/compliance-timeline`, and `/patients/at-risk-hotspots` now respect
+  `startDate` / `endDate` instead of always returning all-time numbers. Step
+  analytics, completion funnel, and practitioner step-completion narrow to
+  enrollments enrolled in the selected period; patient timeline filters timeline
+  events by `timestamp` within the range (Protocol Journey remains a full step list
+  by design).
+- **Protocol filter** — `/intelligence/summary`, `/practitioners/ranking`,
+  `/patients/at-risk-hotspots`, and `/patients/repeat-deviations` now accept
+  `protocolDefinitionId`; protocol-analytics endpoints
   (`completion-funnel`, `outcome-distribution`) narrow to enrollments in the
   selected period.
 - **Cache keys** — `dev-action`, `dev-resolution`, `step-analytics`, `funnel`,
   `outcome`, `practitioner-rankings`, `compliance-all`, `compliance-{protocol}`,
-  `facility-{id}` cache keys all include date range / facility / protocol where
-  applicable so changing filters no longer returns stale results.
+  `facility-{id}`, `dev-trends`, `enrollment`, `risk-hotspots`, `repeat-deviations`,
+  and `facility-activity-single` cache keys all include date range / facility /
+  protocol where applicable so changing filters no longer returns stale results.
+- **Event Volume header KPIs** — Total Events, Matched Rate, Zero Match Rate, and
+  Duplicates now come from `/events/summary` (date-range aware) instead of the
+  cumulative `/events/kpis` MV. Pipeline Loss intentionally remains cumulative as a
+  pipeline-health indicator and is labelled accordingly in the UI.
 
 ### Naming
 
@@ -51,6 +65,14 @@ definitions; see `docs/data-dictionary.md` for the canonical formulas.
   deviation-based patient compliance shown on the Dashboard.
 - `e-Buzima Adoption` columns renamed to **Expected Visits / Day**, **Actual Visits /
   Day**, **Reporting Gap / Day**, **Adoption Rate** (column order also swapped).
+
+### UI changes
+
+- **Patient Detail → Deviations** card: removed the `skipDateFilter` bypass so it now
+  follows the global date range like every other surface.
+- **Event Volume → By Facility** table: facility ids replaced with names (resolved
+  via `/lookups/facilities`); facilities with zero events are still listed (sorted by
+  Total Events desc); pagination switched to the standard "1-N of M" range control.
 
 ### API Field Renames (breaking)
 

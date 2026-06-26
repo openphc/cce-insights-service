@@ -69,7 +69,7 @@ class ProtocolAnalyticsControllerIT extends AbstractIntegrationTest {
                                 .count(3).percentage(100.0).build()))
                         .build());
 
-        when(protocolAnalyticsService.getEnrollmentTrends(eq(PROTOCOL_ID), eq("monthly"), any(), any()))
+        when(protocolAnalyticsService.getEnrollmentTrends(eq(PROTOCOL_ID), eq("monthly"), any(), any(), any()))
                 .thenReturn(EnrollmentTrendDto.builder()
                         .protocolDefinitionId(PROTOCOL_ID)
                         .interval("monthly")

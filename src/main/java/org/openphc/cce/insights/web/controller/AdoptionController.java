@@ -34,6 +34,7 @@ public class AdoptionController {
      */
     @GetMapping("/adoption")
     public ResponseEntity<ApiResponse<List<AdoptionKpiDto>>> getAdoptionKpis(
+            @RequestParam(required = false) String facilityId,
             @RequestParam(required = false) LocalDate startDate,
             @RequestParam(required = false) LocalDate endDate) {
         List<AdoptionKpiDto> result = (startDate != null || endDate != null)
@@ -41,6 +42,12 @@ public class AdoptionController {
                         startDate != null ? startDate : LocalDate.now(),
                         endDate   != null ? endDate   : LocalDate.now())
                 : adoptionService.getAdoptionKpis();
+        // When a facility is selected globally, narrow to just that facility so the
+        // adoption tile/table reflects the user's filter (consistent with other pages).
+        if (facilityId != null && !facilityId.isEmpty()) {
+            String fid = facilityId;
+            result = result.stream().filter(r -> fid.equals(r.getFacilityId())).toList();
+        }
         return ResponseEntity.ok(ApiResponse.ok(result));
     }
 

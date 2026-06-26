@@ -25,12 +25,19 @@ public interface ProtocolInstanceRepository extends ReadOnlyRepository<ProtocolI
                                                                         OffsetDateTime startDate,
                                                                         OffsetDateTime endDate);
 
+    /** All protocol_instance rows whose enrolled_at falls in the optional bounds. */
+    List<ProtocolInstance> findEnrolledBetween(OffsetDateTime startDate, OffsetDateTime endDate);
+
     Page<ProtocolInstance> findByProtocolDefinitionId(UUID protocolDefinitionId, Pageable pageable);
 
     List<Object[]> countByProtocolDefinitionIdGroupByStatus(UUID protocolDefId);
 
     List<Object[]> findEnrollmentTrends(UUID protocolDefId, String interval,
                                         OffsetDateTime startDate, OffsetDateTime endDate);
+
+    /** Same as {@link #findEnrollmentTrends} narrowed to a specific facility (via mv_patient_facility_latest). */
+    List<Object[]> findEnrollmentTrendsByFacility(UUID protocolDefId, String facilityId, String interval,
+                                                   OffsetDateTime startDate, OffsetDateTime endDate);
 
     Page<ProtocolInstance> findByProtocolDefinitionIdAndStatus(UUID protocolDefId,
                                                                ProtocolInstanceStatus status,

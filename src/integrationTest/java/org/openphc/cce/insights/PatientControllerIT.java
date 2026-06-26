@@ -30,6 +30,8 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -69,7 +71,7 @@ class PatientControllerIT extends AbstractIntegrationTest {
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
 
         // Timeline for patient 1
-        when(patientTimelineService.getTimeline(PATIENT_1))
+        when(patientTimelineService.getTimeline(eq(PATIENT_1), any(), any()))
                 .thenReturn(PatientTimelineDto.builder()
                         .patientId(PATIENT_1)
                         .protocols(List.of(PatientTimelineDto.ProtocolTimeline.builder()

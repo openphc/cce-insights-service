@@ -64,7 +64,8 @@ public class DeviationAnalyticsService {
                 .build();
     }
 
-    @Cacheable(value = "analytics", key = "'dev-trends-' + #interval + '-' + (#protocolDefinitionId ?: 'all') + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all')")
+    @Cacheable(value = "analytics",
+            key = "'dev-trends-' + #interval + '-' + (#protocolDefinitionId ?: 'all') + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all') + '-' + (#facilityId ?: 'all')")
     public DeviationTrendDto getDeviationTrends(String interval, OffsetDateTime startDate,
                                                  OffsetDateTime endDate, String facilityId,
                                                  UUID protocolDefinitionId) {

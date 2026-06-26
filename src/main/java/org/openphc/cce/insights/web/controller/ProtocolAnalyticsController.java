@@ -65,7 +65,7 @@ public class ProtocolAnalyticsController {
             @RequestParam(required = false) OffsetDateTime startDate,
             @RequestParam(required = false) OffsetDateTime endDate) {
         EnrollmentTrendDto trends = protocolAnalyticsService.getEnrollmentTrends(
-                protocolDefinitionId, interval, startDate, endDate);
+                protocolDefinitionId, interval, facilityId, startDate, endDate);
         return ResponseEntity.ok(ApiResponse.ok(trends));
     }
 }

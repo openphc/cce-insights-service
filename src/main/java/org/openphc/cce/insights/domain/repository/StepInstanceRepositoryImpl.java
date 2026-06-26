@@ -296,7 +296,8 @@ public class StepInstanceRepositoryImpl
     }
 
     @Override
-    public List<Object[]> findStepAnalytics(UUID protocolDefId) {
+    public List<Object[]> findStepAnalytics(UUID protocolDefId,
+                                            OffsetDateTime startDate, OffsetDateTime endDate) {
         var stepInstances = finalAs(STEP_INSTANCES, "si");
         var protocolInstances = finalAs(PROTOCOL_INSTANCES, "pi");
         String daysToComplete = "dateDiff('second', si.due_date, si.completed_at) / 86400.0";
@@ -331,13 +332,15 @@ public class StepInstanceRepositoryImpl
                 .where(DSL.condition(
                         "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
                         protocolDefId.toString()))
+                .and(enrolledBetween(startDate, endDate))
                 .groupBy(DSL.field("si." + STEP_INSTANCES.ACTION_ID.getName()))
                 .fetch()
                 .map(StepInstanceRepositoryImpl::toStepAnalyticsRow);
     }
 
     @Override
-    public List<Object[]> findStepAnalyticsByFacility(UUID protocolDefId, String facilityId) {
+    public List<Object[]> findStepAnalyticsByFacility(UUID protocolDefId, String facilityId,
+                                                       OffsetDateTime startDate, OffsetDateTime endDate) {
         var stepInstances = finalAs(STEP_INSTANCES, "si");
         var protocolInstances = finalAs(PROTOCOL_INSTANCES, "pi");
         var patientFacility = MV_PATIENT_FACILITY_LATEST.as("pf");
@@ -376,32 +379,59 @@ public class StepInstanceRepositoryImpl
                         "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
                         protocolDefId.toString()))
                 .and(DSL.field("pf.facility_id").eq(facilityId))
+                .and(enrolledBetween(startDate, endDate))
                 .groupBy(DSL.field("si." + STEP_INSTANCES.ACTION_ID.getName()))
                 .fetch()
                 .map(StepInstanceRepositoryImpl::toStepAnalyticsRow);
     }
 
     @Override
-    public List<Object[]> findCompletionFunnel(UUID protocolDefId) {
+    public List<Object[]> findCompletionFunnel(UUID protocolDefId, String facilityId,
+                                                OffsetDateTime startDate, OffsetDateTime endDate) {
         var stepInstances = finalAs(STEP_INSTANCES, "si");
         var protocolInstances = finalAs(PROTOCOL_INSTANCES, "pi");
+        boolean hasFacility = facilityId != null && !facilityId.isEmpty();
 
-        return dsl.select(
+        var select = dsl.select(
                     DSL.field("si." + STEP_INSTANCES.ACTION_ID.getName())
                        .as(STEP_INSTANCES.ACTION_ID.getName()),
                     uniq("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()).as("reached_count"),
                     uniqIf("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName(),
                             "si." + STEP_INSTANCES.STATE.getName() + " = 'COMPLETED'").as("completed_count")
-                )
-                .from(stepInstances)
+                );
+        var from = select.from(stepInstances)
                 .join(protocolInstances).on(DSL.condition(
-                        "si." + STEP_INSTANCES.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
-                .where(DSL.condition(
+                        "si." + STEP_INSTANCES.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"));
+        var withFacility = hasFacility
+                ? from.join(MV_PATIENT_FACILITY_LATEST.as("pf")).on(DSL.condition(
+                        "pf.patient_id = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
+                : from;
+        var where = withFacility.where(DSL.condition(
                         "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
                         protocolDefId.toString()))
+                .and(enrolledBetween(startDate, endDate));
+        if (hasFacility) {
+            where = where.and(DSL.field("pf.facility_id").eq(facilityId));
+        }
+        return where
                 .groupBy(DSL.field("si." + STEP_INSTANCES.ACTION_ID.getName()))
                 .fetch()
                 .map(StepInstanceRepositoryImpl::toFunnelRow);
+    }
+
+    /** Optional enrollment-date guard: matches the same predicate used in protocol_instance repo. */
+    private static org.jooq.Condition enrolledBetween(OffsetDateTime startDate, OffsetDateTime endDate) {
+        String enrolledAt = "pi." + PROTOCOL_INSTANCES.ENROLLED_AT.getName();
+        org.jooq.Condition cond = DSL.trueCondition();
+        if (startDate != null) {
+            cond = cond.and(DSL.condition(
+                    enrolledAt + " >= parseDateTime64BestEffort(?)", startDate.toString()));
+        }
+        if (endDate != null) {
+            cond = cond.and(DSL.condition(
+                    enrolledAt + " <= parseDateTime64BestEffort(?)", endDate.toString()));
+        }
+        return cond;
     }
 
     @Override
@@ -489,6 +519,8 @@ public class StepInstanceRepositoryImpl
         var practitionerPairs = practitionerPairsSubqueryFiltered(startDate, endDate, facilityId);
         var deviations = finalAs(DEVIATIONS, "d");
 
+        // Date range now narrows the step set to enrollments in the period (so "Step
+        // Completion %" reflects the cohort being viewed, not all-time step rows).
         return dsl.select(
                     DSL.field("iel.practitioner_ref").as("practitioner_ref"),
                     uniq("si.id").as("total_steps"),
@@ -501,6 +533,7 @@ public class StepInstanceRepositoryImpl
                         "iel.subject = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
                 .leftJoin(deviations).on(DSL.condition("d.step_instance_id = si.id"))
                 .where(DSL.field("iel.practitioner_ref").ne(""))
+                .and(enrolledBetween(startDate, endDate))
                 .groupBy(DSL.field("iel.practitioner_ref"))
                 .fetch()
                 .map(r -> toComplianceRow(r, "practitioner_ref"));
@@ -531,6 +564,7 @@ public class StepInstanceRepositoryImpl
                 .and(DSL.condition(
                         "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
                         protocolDefinitionId.toString()))
+                .and(enrolledBetween(startDate, endDate))
                 .groupBy(DSL.field("iel.practitioner_ref"))
                 .fetch()
                 .map(r -> toComplianceRow(r, "practitioner_ref"));

@@ -21,6 +21,7 @@ public class ProtocolAnalyticsService {
     private final ProtocolDefinitionRepository protocolDefinitionRepository;
     private final ProtocolInstanceRepository protocolInstanceRepository;
     private final StepInstanceRepository stepInstanceRepository;
+    private final ComplianceEventLogRepository complianceEventLogRepository;
     private final ObjectMapper objectMapper;
 
     @Cacheable(value = "analytics", key = "'action-order-' + #protocolDefinitionId")
@@ -78,13 +79,14 @@ public class ProtocolAnalyticsService {
         // Resolve requiredBehavior per actionId from PlanDefinition
         Map<String, String> requiredBehaviorMap = resolveRequiredBehaviorMap(pd);
 
-        // NOTE: facility and date range narrow the cache key + cohort but step-state
-        // counts (overdue/missed/etc.) are stocks at observation time. They cannot be
-        // restricted to "in-period" without a step-state-history table; we therefore
-        // surface the same step distribution for all cohorts and document the limitation.
+        // Date range narrows the cohort to enrollments enrolled in the period; the
+        // step-state distribution is therefore reported relative to that cohort.
+        // (Step states are still "current state at observation time" — we don't replay
+        //  state history, so transitions that happened in the period aren't isolated.)
         List<Object[]> rows = (facilityId != null && !facilityId.isEmpty())
-                ? stepInstanceRepository.findStepAnalyticsByFacility(protocolDefinitionId, facilityId)
-                : stepInstanceRepository.findStepAnalytics(protocolDefinitionId);
+                ? stepInstanceRepository.findStepAnalyticsByFacility(
+                        protocolDefinitionId, facilityId, startDate, endDate)
+                : stepInstanceRepository.findStepAnalytics(protocolDefinitionId, startDate, endDate);
 
         List<StepAnalyticsDto.StepMetric> steps = rows.stream().map(row -> {
             String actionId = (String) row[0];
@@ -155,13 +157,25 @@ public class ProtocolAnalyticsService {
                 .orElseThrow(() -> new EntityNotFoundException(
                         "Protocol definition not found: " + protocolDefinitionId));
 
-        // facilityId / date range scoping is applied at the totalEnrollments tally
-        // (so funnel drop-off % reflects the selected cohort).
-        List<Object[]> rows = stepInstanceRepository.findCompletionFunnel(protocolDefinitionId);
-        long totalEnrollments = (startDate != null || endDate != null)
-                ? protocolInstanceRepository.findByProtocolDefinitionIdAndEnrolledBetween(
-                        protocolDefinitionId, startDate, endDate).size()
-                : protocolInstanceRepository.findByProtocolDefinitionId(protocolDefinitionId).size();
+        // Both the funnel rows and totalEnrollments are scoped to enrollments in the
+        // selected date range and (optionally) facility.
+        List<Object[]> rows = stepInstanceRepository.findCompletionFunnel(
+                protocolDefinitionId, facilityId, startDate, endDate);
+        long totalEnrollments;
+        if (facilityId != null && !facilityId.isEmpty()) {
+            // Approximate: count distinct patients in scope by replaying the same join
+            // logic — defer to a dedicated query if accuracy becomes critical.
+            totalEnrollments = rows.stream()
+                    .mapToLong(r -> ((Number) r[1]).longValue())
+                    .max()
+                    .orElse(0L);
+        } else if (startDate != null || endDate != null) {
+            totalEnrollments = protocolInstanceRepository.findByProtocolDefinitionIdAndEnrolledBetween(
+                    protocolDefinitionId, startDate, endDate).size();
+        } else {
+            totalEnrollments = protocolInstanceRepository.findByProtocolDefinitionId(
+                    protocolDefinitionId).size();
+        }
 
         List<CompletionFunnelDto.FunnelStep> funnel = new ArrayList<>();
         int order = 1;
@@ -198,19 +212,29 @@ public class ProtocolAnalyticsService {
                         "Protocol definition not found: " + protocolDefinitionId));
 
         // Narrow to enrollments in the selected date range; if no range we still see all-time.
-        List<Object[]> rows;
-        if (startDate != null || endDate != null) {
-            rows = protocolInstanceRepository.findByProtocolDefinitionIdAndEnrolledBetween(
-                            protocolDefinitionId, startDate, endDate).stream()
-                    .collect(Collectors.groupingBy(
-                            pi -> pi.getStatus().name(),
-                            Collectors.counting()))
-                    .entrySet().stream()
-                    .map(e -> new Object[]{e.getKey(), e.getValue()})
+        // When a facility is selected, further restrict to patients tied to that facility
+        // via mv_patient_facility_latest (consistent with patient cohort scoping elsewhere).
+        List<org.openphc.cce.insights.domain.entity.ProtocolInstance> instances =
+                (startDate != null || endDate != null)
+                        ? protocolInstanceRepository.findByProtocolDefinitionIdAndEnrolledBetween(
+                                protocolDefinitionId, startDate, endDate)
+                        : protocolInstanceRepository.findByProtocolDefinitionId(protocolDefinitionId);
+        if (facilityId != null && !facilityId.isEmpty()) {
+            java.util.Set<String> patientsAtFacility = complianceEventLogRepository
+                    .findPatientsByFacility(facilityId)
+                    .stream().map(r -> (String) r[1])
+                    .collect(Collectors.toSet());
+            instances = instances.stream()
+                    .filter(pi -> patientsAtFacility.contains(pi.getPatientId()))
                     .collect(Collectors.toList());
-        } else {
-            rows = protocolInstanceRepository.countByProtocolDefinitionIdGroupByStatus(protocolDefinitionId);
         }
+        List<Object[]> rows = instances.stream()
+                .collect(Collectors.groupingBy(
+                        pi -> pi.getStatus().name(),
+                        Collectors.counting()))
+                .entrySet().stream()
+                .map(e -> new Object[]{e.getKey(), e.getValue()})
+                .collect(Collectors.toList());
         long total = rows.stream().mapToLong(r -> ((Number) r[1]).longValue()).sum();
 
         Map<String, OutcomeDistributionDto.StatusCount> distribution = new LinkedHashMap<>();
@@ -230,16 +254,21 @@ public class ProtocolAnalyticsService {
                 .build();
     }
 
-    @Cacheable(value = "analytics", key = "'enrollment-' + #protocolDefinitionId + '-' + #interval")
+    @Cacheable(value = "analytics",
+            key = "'enrollment-' + #protocolDefinitionId + '-' + #interval + '-' + (#facilityId ?: 'all') + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all')")
     public EnrollmentTrendDto getEnrollmentTrends(UUID protocolDefinitionId, String interval,
+                                                   String facilityId,
                                                    OffsetDateTime startDate, OffsetDateTime endDate) {
         protocolDefinitionRepository.findById(protocolDefinitionId)
                 .orElseThrow(() -> new EntityNotFoundException(
                         "Protocol definition not found: " + protocolDefinitionId));
 
         String dbInterval = DateUtil.mapInterval(interval);
-        List<Object[]> rows = protocolInstanceRepository.findEnrollmentTrends(
-                protocolDefinitionId, dbInterval, startDate, endDate);
+        List<Object[]> rows = (facilityId != null && !facilityId.isEmpty())
+                ? protocolInstanceRepository.findEnrollmentTrendsByFacility(
+                        protocolDefinitionId, facilityId, dbInterval, startDate, endDate)
+                : protocolInstanceRepository.findEnrollmentTrends(
+                        protocolDefinitionId, dbInterval, startDate, endDate);
 
         List<EnrollmentTrendDto.TrendPoint> trends = rows.stream().map(row ->
                 EnrollmentTrendDto.TrendPoint.builder()

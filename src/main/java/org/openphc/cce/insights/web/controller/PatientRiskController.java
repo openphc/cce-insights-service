@@ -26,7 +26,8 @@ public class PatientRiskController {
             @RequestParam(required = false) OffsetDateTime endDate,
             @RequestParam(defaultValue = "50") int limit,
             @RequestParam(required = false) String cursor) {
-        List<AtRiskHotspotDto> hotspots = patientRiskService.getAtRiskHotspots(startDate, endDate);
+        List<AtRiskHotspotDto> hotspots = patientRiskService.getAtRiskHotspots(
+                protocolDefinitionId, startDate, endDate);
         return ResponseEntity.ok(ApiResponse.ok(hotspots));
     }
 
@@ -40,7 +41,7 @@ public class PatientRiskController {
             @RequestParam(defaultValue = "50") int limit,
             @RequestParam(required = false) String cursor) {
         List<RepeatDeviationPatientDto> patients = patientRiskService.getRepeatDeviationPatients(
-                minDeviations, startDate, endDate);
+                minDeviations, facilityId, protocolDefinitionId, startDate, endDate);
         return ResponseEntity.ok(ApiResponse.ok(patients));
     }
 }

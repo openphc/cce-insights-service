@@ -23,18 +23,33 @@ public class FacilityActivityController {
     /**
      * GET /v1/insights/facilities/activity-summary
      *
-     * With startDate+endDate: counts facilities active (event_count > 0) in the period.
-     * Without dates: falls back to today's snapshot from mv_daily_facility_activity_summary.
+     * With startDate+endDate: counts facilities with ≥1 successful HIE submission in the period.
+     * With facilityId: reports the single-facility tile (1 in-scope; 1 active/inactive depending on
+     *   whether that facility transmitted in the period).
+     * Without filters: falls back to today's snapshot from mv_daily_facility_activity_summary.
      */
     @GetMapping("/activity-summary")
     public ResponseEntity<ApiResponse<FacilityActivitySummaryDto>> getActivitySummary(
+            @RequestParam(required = false) String facilityId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
-        FacilityActivitySummaryDto dto = (startDate != null || endDate != null)
-                ? facilityActivityService.getActivitySummaryByDateRange(
-                        startDate != null ? startDate : LocalDate.now(),
-                        endDate   != null ? endDate   : LocalDate.now())
-                : facilityActivityService.getActivitySummary();
+        FacilityActivitySummaryDto dto;
+        if (facilityId != null && !facilityId.isEmpty()) {
+            LocalDate effectiveStart = startDate != null ? startDate
+                    : endDate != null ? endDate
+                    : LocalDate.now();
+            LocalDate effectiveEnd   = endDate   != null ? endDate
+                    : startDate != null ? startDate
+                    : LocalDate.now();
+            dto = facilityActivityService.getActivitySummaryForFacility(
+                    facilityId, effectiveStart, effectiveEnd);
+        } else if (startDate != null || endDate != null) {
+            dto = facilityActivityService.getActivitySummaryByDateRange(
+                    startDate != null ? startDate : LocalDate.now(),
+                    endDate   != null ? endDate   : LocalDate.now());
+        } else {
+            dto = facilityActivityService.getActivitySummary();
+        }
         return ResponseEntity.ok(ApiResponse.ok(dto));
     }
 }

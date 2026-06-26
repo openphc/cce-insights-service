@@ -28,8 +28,10 @@ public class PatientRiskService {
     private final ComplianceEventLogRepository complianceEventLogRepository;
     private final DailyKpiRepository dailyKpiRepository;
 
-    @Cacheable(value = "analytics", key = "'risk-hotspots'")
-    public List<AtRiskHotspotDto> getAtRiskHotspots(OffsetDateTime startDate, OffsetDateTime endDate) {
+    @Cacheable(value = "analytics",
+            key = "'risk-hotspots-' + (#protocolDefinitionId ?: 'all') + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all')")
+    public List<AtRiskHotspotDto> getAtRiskHotspots(UUID protocolDefinitionId,
+                                                     OffsetDateTime startDate, OffsetDateTime endDate) {
         // Build facility -> set of patient IDs mapping
         List<Object[]> facilityPatientRows = complianceEventLogRepository.findFacilityPatientMapping();
         Map<String, Set<String>> facilityPatients = new LinkedHashMap<>();
@@ -45,10 +47,23 @@ public class PatientRiskService {
             facilityNameMap.put((String) row[0], (String) row[1]);
         }
 
-        // Build patient -> steps mapping using batch load (2 queries instead of N+1)
-        List<ProtocolInstance> allInstances = protocolInstanceRepository.findAll();
+        // Narrow protocol_instances to the selected protocol (when provided) and to
+        // enrollments in the selected date range (when provided). Steps inherit the scope.
+        List<ProtocolInstance> allInstances;
+        boolean hasRange = startDate != null || endDate != null;
+        if (protocolDefinitionId != null && hasRange) {
+            allInstances = protocolInstanceRepository.findByProtocolDefinitionIdAndEnrolledBetween(
+                    protocolDefinitionId, startDate, endDate);
+        } else if (protocolDefinitionId != null) {
+            allInstances = protocolInstanceRepository.findByProtocolDefinitionId(protocolDefinitionId);
+        } else if (hasRange) {
+            allInstances = protocolInstanceRepository.findEnrolledBetween(startDate, endDate);
+        } else {
+            allInstances = protocolInstanceRepository.findAll();
+        }
         Map<UUID, String> instanceToPatient = allInstances.stream()
-                .collect(Collectors.toMap(ProtocolInstance::getId, ProtocolInstance::getPatientId));
+                .filter(pi -> pi.getPatientId() != null)
+                .collect(Collectors.toMap(ProtocolInstance::getId, ProtocolInstance::getPatientId, (a, b) -> a));
         Map<String, List<StepInstance>> patientSteps = new HashMap<>();
         for (StepInstance si : stepInstanceRepository.findByProtocolInstanceIdIn(
                 new ArrayList<>(instanceToPatient.keySet()))) {
@@ -94,12 +109,28 @@ public class PatientRiskService {
         }).collect(Collectors.toList());
     }
 
-    @Cacheable(value = "analytics", key = "'repeat-deviations-' + #minDeviations")
+    @Cacheable(value = "analytics",
+            key = "'repeat-deviations-' + #minDeviations + '-' + (#facilityId ?: 'all') + '-' + (#protocolDefinitionId ?: 'all') + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all')")
     public List<RepeatDeviationPatientDto> getRepeatDeviationPatients(int minDeviations,
+                                                                       String facilityId,
+                                                                       UUID protocolDefinitionId,
                                                                        OffsetDateTime startDate,
                                                                        OffsetDateTime endDate) {
         List<Object[]> rows = deviationRepository.findRepeatDeviationPatients(
-                minDeviations, null, startDate, endDate);
+                minDeviations, facilityId, startDate, endDate);
+
+        // Narrow the result to the selected protocol when set. The SQL aggregates by
+        // patient across all protocols, so we filter the affected-protocols dimension
+        // by restricting rows to patients enrolled in the requested protocol.
+        if (protocolDefinitionId != null) {
+            Set<String> patientsInProtocol = new HashSet<>();
+            for (ProtocolInstance pi : protocolInstanceRepository.findByProtocolDefinitionId(protocolDefinitionId)) {
+                if (pi.getPatientId() != null) patientsInProtocol.add(pi.getPatientId());
+            }
+            rows = rows.stream()
+                    .filter(r -> patientsInProtocol.contains((String) r[0]))
+                    .collect(Collectors.toList());
+        }
 
         return rows.stream().map(row -> RepeatDeviationPatientDto.builder()
                 .patientId((String) row[0])

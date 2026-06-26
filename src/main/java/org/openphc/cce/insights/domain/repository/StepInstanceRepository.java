@@ -14,11 +14,15 @@ public interface StepInstanceRepository extends ReadOnlyRepository<StepInstance,
 
     List<Object[]> countByProtocolInstanceIdGroupByState(UUID protocolInstanceId);
 
-    List<Object[]> findStepAnalytics(UUID protocolDefId);
+    List<Object[]> findStepAnalytics(UUID protocolDefId,
+                                     OffsetDateTime startDate, OffsetDateTime endDate);
 
-    List<Object[]> findStepAnalyticsByFacility(UUID protocolDefId, String facilityId);
+    List<Object[]> findStepAnalyticsByFacility(UUID protocolDefId, String facilityId,
+                                                OffsetDateTime startDate, OffsetDateTime endDate);
 
-    List<Object[]> findCompletionFunnel(UUID protocolDefId);
+    /** Scoped to enrollments in date range (when set) and optionally to a single facility. */
+    List<Object[]> findCompletionFunnel(UUID protocolDefId, String facilityId,
+                                         OffsetDateTime startDate, OffsetDateTime endDate);
 
     List<Object[]> findStepComplianceByFacility();
 
