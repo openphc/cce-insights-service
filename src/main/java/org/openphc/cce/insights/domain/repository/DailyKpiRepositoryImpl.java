@@ -142,10 +142,10 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
                     DSL.field("facility_id",               String.class),
                     DSL.field(DSL.sql("max(expected_patients_per_day)"), Long.class),
                     DSL.sum(DSL.field("actual_patients", Long.class)),
-                    DSL.field(DSL.sql("if(max(expected_patients_per_day) = 0, toFloat64(100.0)," +
-                        " max(adoption_rate_pct))"), Double.class),
-                    DSL.field(DSL.sql("if(max(expected_patients_per_day) = 0, toInt64(0)," +
-                        " max(reporting_gap))"), Long.class))
+                    DSL.field(DSL.sql("if(coalesce(max(expected_patients_per_day), 0) = 0, toFloat64(100.0)," +
+                        " coalesce(max(adoption_rate_pct), toFloat64(0)))"), Double.class),
+                    DSL.field(DSL.sql("if(coalesce(max(expected_patients_per_day), 0) = 0, toInt64(0)," +
+                        " coalesce(max(reporting_gap), toInt64(0)))"), Long.class))
                   .from(DSL.table(DSL.sql("mv_daily_adoption_kpis" + finalClause())))
                   .where(DSL.sql("snapshot_date = today()"))
                   .and(DSL.field("facility_id").in(facilityIds))
@@ -333,11 +333,11 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
                              .where(DSL.field("_is_deleted").eq(0));
 
         String rateExpr =
-            "toFloat32(round(if(max(expected_patients_per_day) = 0, 100.0," +
-            " sum(actual_patients) / nullIf(max(expected_patients_per_day) * " + calendarDays + ", 0) * 100), 1))";
+            "toFloat32(round(if(coalesce(max(expected_patients_per_day), 0) = 0, 100.0," +
+            " sum(actual_patients) / nullIf(coalesce(max(expected_patients_per_day), 0) * " + calendarDays + ", 0) * 100), 1))";
         String gapExpr =
-            "toInt64(if(max(expected_patients_per_day) = 0, 0," +
-            " max(expected_patients_per_day) * " + calendarDays + " - sum(actual_patients)))";
+            "toInt64(if(coalesce(max(expected_patients_per_day), 0) = 0, 0," +
+            " coalesce(max(expected_patients_per_day), 0) * " + calendarDays + " - sum(actual_patients)))";
 
         // facility_name is NOT in mv_daily_adoption_kpis — resolved from facility table in service layer.
         return dsl.select(
