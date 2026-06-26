@@ -22,6 +22,7 @@ public class FacilityRankingController {
     @GetMapping("/ranking")
     public ResponseEntity<ApiResponse<List<FacilityRankingDto>>> getFacilityRanking(
             @RequestParam(required = false) UUID protocolDefinitionId,
+            @RequestParam(required = false) String facilityId,
             @RequestParam(defaultValue = "complianceRate") String rankBy,
             @RequestParam(defaultValue = "desc") String order,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
@@ -29,7 +30,7 @@ public class FacilityRankingController {
             @RequestParam(defaultValue = "50") int limit,
             @RequestParam(required = false) String cursor) {
         List<FacilityRankingDto> rankings = facilityRankingService.getRankings(
-                protocolDefinitionId, startDate, endDate, rankBy, order, limit);
+                protocolDefinitionId, facilityId, startDate, endDate, rankBy, order, limit);
         return ResponseEntity.ok(ApiResponse.ok(rankings));
     }
 }

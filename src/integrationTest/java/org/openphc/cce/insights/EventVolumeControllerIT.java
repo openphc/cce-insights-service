@@ -32,7 +32,7 @@ class EventVolumeControllerIT extends AbstractIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        when(eventVolumeService.getSummary(any(), any()))
+        when(eventVolumeService.getSummary(any(), any(), any(), any()))
                 .thenReturn(EventVolumeSummaryDto.builder()
                         .totalEvents(10)
                         .processingStatusBreakdown(Map.of(
@@ -48,11 +48,11 @@ class EventVolumeControllerIT extends AbstractIntegrationTest {
                                 .period("2026-03").total(5).byResourceType(Map.of("Encounter", 5L)).build()))
                         .build());
 
-        when(eventVolumeService.getByResourceType(any(), any()))
+        when(eventVolumeService.getByResourceType(any(), any(), any(), any()))
                 .thenReturn(List.of(ResourceTypeCountDto.builder()
                         .resourceType("Encounter").count(10).build()));
 
-        when(eventVolumeService.getByFacility(any(), any()))
+        when(eventVolumeService.getByFacility(any(), any(), any(), any(), any()))
                 .thenReturn(List.of(FacilityEventCountDto.builder()
                         .facilityId("fac-1").totalEvents(5).byResourceType(List.of()).build()));
     }

@@ -25,8 +25,8 @@ Aggregate compliance metrics for a specific protocol across all enrolled patient
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `facilityId` | String | — | Filter by facility FOSA ID |
-| `startDate` | ISO 8601 | — | Start of date range |
-| `endDate` | ISO 8601 | — | End of date range |
+| `startDate` | ISO 8601 | — | Start of date range — when set, `totalEnrollments` counts distinct patients **enrolled in the period** (matches Dashboard cohort semantics) |
+| `endDate` | ISO 8601 | — | End of date range — also used as the snapshot date for step metrics |
 
 **Response: `200 OK`**
 
@@ -81,7 +81,7 @@ Facility-level compliance metrics across all protocols.
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `protocolDefinitionId` | UUID | — | Filter by specific protocol |
-| `startDate` | ISO 8601 | — | Start of date range |
+| `startDate` | ISO 8601 | — | When set, `totalPatients` counts distinct patients enrolled at this facility in the period |
 | `endDate` | ISO 8601 | — | End of date range |
 
 **Response: `200 OK`**
@@ -117,7 +117,8 @@ Facility-level compliance metrics across all protocols.
 
 ### 1.3 GET `/v1/insights/protocols/{protocolDefinitionId}/patients`
 
-List patients enrolled in a protocol, filterable by compliance status.
+List patients enrolled in a protocol, filterable by compliance status. Results are
+deduplicated to **one row per patient** (most recent enrollment in the filtered period).
 
 **Required Scope:** `dashboard:read`
 
@@ -126,8 +127,11 @@ List patients enrolled in a protocol, filterable by compliance status.
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `status` | String | — | Filter: `on_track` (compliant), `non_compliant` |
-| `facilityId` | String | — | Filter by facility |
-| `limit` | Integer | `50` | Page size (max 200) |
+| `facilityId` | String | — | Restrict to patients whose latest facility (via `mv_patient_facility_latest`) matches |
+| `patientId` | String | — | Substring search on patient ID |
+| `startDate` | ISO 8601 | — | When set, cohort = enrolled in period — pagination `total_count` reflects unique patients in that cohort |
+| `endDate` | ISO 8601 | — | End of date range |
+| `limit` | Integer | `15` | Page size (max 200) |
 | `cursor` | String | — | Pagination cursor |
 
 **Response: `200 OK`**
@@ -507,34 +511,42 @@ Deviation trends aggregated by time period.
 
 ### 3.3 GET `/v1/insights/intelligence/summary`
 
-Intelligence events summary — counts by type and time period.
+Intelligence delivery summary — counts by status, action type, destination, severity.
 
 **Required Scope:** `dashboard:read`
 
-> **Note:** In release 1.0.0, this endpoint aggregates deviation records as a proxy for intelligence events. Full intelligence event aggregation will be available when the Compliance Service enables intelligence trigger publishing.
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `protocolDefinitionId` | UUID | — | Restrict to deliveries associated with the selected protocol's canonical URL |
+| `startDate` | ISO 8601 | — | Start of date range |
+| `endDate` | ISO 8601 | — | End of date range |
 
 **Response: `200 OK`**
 
 ```json
 {
   "data": {
-    "totalDeviations": 270,
-    "byType": {
-      "overdue": 180,
-      "missed": 90
-    },
-    "bySeverity": {
-      "warning": 180,
-      "critical": 90
-    },
-    "recentActivity": {
-      "last24Hours": 8,
-      "last7Days": 42,
-      "last30Days": 145
-    }
+    "total": 270,
+    "delivered": 180,
+    "failed": 30,
+    "pending": 60,
+    "successRate": 66.7,
+    "avgLatencySeconds": 2.4,
+    "byStatus": [...],
+    "byActionType": [...],
+    "bySeverity": [...],
+    "byDestination": [...],
+    "activeAdaptors": [...]
   }
 }
 ```
+
+> **Note:** the deviation-focused intelligence aggregator now lives at
+> `/v1/insights/deviations/intelligence-summary`. The two endpoints serve different
+> purposes — this one tracks delivery success of intelligence actions to receiver
+> adaptors; the deviation endpoint summarises deviation counts in time windows.
 
 ---
 
@@ -1066,12 +1078,19 @@ Facility leaderboard ranked by compliance rate, deviation count, or event volume
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `protocolDefinitionId` | UUID | — | Filter by protocol (ranks within that protocol) |
+| `facilityId` | String | — | Narrow the ranking to a single facility (still returned with full rank metadata) |
 | `rankBy` | String | `complianceRate` | Ranking metric: `complianceRate`, `deviationCount`, `eventVolume` |
 | `order` | String | `desc` | `asc` (worst first) or `desc` (best first) |
 | `startDate` | ISO 8601 | — | Date range start |
 | `endDate` | ISO 8601 | — | Date range end |
 | `limit` | Integer | `50` | Page size (max 200) |
 | `cursor` | String | — | Pagination cursor |
+
+> **Field semantics:** `totalEvents` is sourced from `inbound_event_logs` (status =
+> `ACCEPTED`) in the period, intersected with the facility reference list — matches the
+> Active Facilities tile and the Events → By Facility table. Earlier versions read
+> `event_count` from the compliance MV which under-counted facilities with accepted but
+> unmatched events.
 
 **Response: `200 OK`**
 
@@ -1679,26 +1698,55 @@ Aggregated dashboard KPIs — total patients, total enrollments, compliance rate
 
 ### 15.2 GET `/v1/insights/dashboard/compliance-summary`
 
-Compliance summary across all protocols for dashboard display.
+Patient compliance, facility activity, and practitioner step-completion tiles for the
+Dashboard. All sections respect the global `facilityId` / `startDate` / `endDate` filters.
 
 **Required Scope:** `dashboard:read`
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `facilityId` | String | — | Narrow patients/practitioner counts to a single facility (when set, activity tile reflects whether that facility transmitted). |
+| `startDate` | ISO 8601 | — | Start of date range (cohort = enrolled in period) |
+| `endDate` | ISO 8601 | — | End of date range |
 
 **Response: `200 OK`**
 
 ```json
 {
   "data": {
-    "protocols": [
-      {
-        "protocolDefinitionId": "550e8400-...",
-        "protocolName": "ANC High Risk",
-        "totalEnrollments": 120,
-        "complianceRate": 0.75
-      }
-    ]
+    "patients": {
+      "trackedPatients": 19,
+      "compliantPatients": 1,
+      "nonCompliantPatients": 18,
+      "complianceRate": 5.3
+    },
+    "facilities": {
+      "trackedFacilities": 5,
+      "activeFacilities": 3,
+      "inactiveFacilities": 2,
+      "activeFacilityRate": 60.0
+    },
+    "practitioners": {
+      "trackedPractitioners": 12,
+      "above90": 4,
+      "between75And90": 5,
+      "below75": 3
+    }
   }
 }
 ```
+
+> **Definitions:**
+> - `trackedPatients` = distinct patients **enrolled in the selected period** (or
+>   all-time when no range is provided). When a facility is selected, the cohort is
+>   constrained via `mv_patient_facility_latest`.
+> - `activeFacilities` = facilities with ≥1 successful HIE submission
+>   (`inbound_event_logs.status = 'ACCEPTED'`) in the period — see
+>   §3.13a in the data dictionary.
+> - Practitioner buckets are **step-completion** percentiles, not the deviation-based
+>   patient compliance.
 
 ---
 
@@ -1740,7 +1788,10 @@ Returns compliance summary aggregated across all protocols in a single call.
 
 ### 17.1 GET `/v1/insights/practitioners/ranking`
 
-Rank practitioners by compliance rate, deviation count, or event volume.
+Rank practitioners by **step-completion percentage**, patients served, or event volume.
+The `complianceRate` field on the response is a step-completion ratio
+(`completedSteps / totalSteps`), distinct from the deviation-based patient compliance
+returned elsewhere — see §3.13 in the data dictionary.
 
 **Required Scope:** `dashboard:read`
 
@@ -1748,12 +1799,13 @@ Rank practitioners by compliance rate, deviation count, or event volume.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `rankBy` | String | `complianceRate` | Ranking criterion: `complianceRate`, `deviationCount`, `eventVolume` |
+| `rankBy` | String | `complianceRate` | Ranking criterion: `complianceRate` (step completion), `totalPatients`, `totalEvents` |
 | `order` | String | `desc` | Sort direction: `asc` or `desc` |
 | `limit` | Integer | `50` | Page size |
 | `startDate` | ISO 8601 | — | Start of date range |
 | `endDate` | ISO 8601 | — | End of date range |
 | `facilityId` | String | — | Filter by facility |
+| `protocolDefinitionId` | UUID | — | Restrict to practitioners with step rows under the selected protocol |
 
 **Response: `200 OK`**
 

@@ -219,7 +219,7 @@ Always filter with `FINAL` and `WHERE snapshot_date = today()` for the current d
 |--------|-------------|
 | `snapshot_date` | Calendar day |
 | `total_in_scope` | Total facilities in `facility` |
-| `active_facilities` | Facilities with at least one HIE event on this day |
+| `active_facilities` | Facilities with ≥1 successful HIE submission (`inbound_event_logs.status = 'ACCEPTED'`) on this day |
 | `inactive_facilities` | In-scope facilities with no events on this day |
 | `active_facility_rate_pct` | `active_facilities / total_in_scope × 100` |
 
@@ -241,7 +241,13 @@ Always filter with `FINAL` and `WHERE snapshot_date = today()` for the current d
 |--------|-------------|
 | `snapshot_date` | Calendar day |
 | `protocol_definition_id` | UUID of the protocol |
-| `total_deviations`, `overdue_count`, `missed_count`, `order_violation_count` | Deviation header card values |
+| `total_deviations`, `overdue_count`, `missed_count`, `order_violation_count` | Daily snapshot deviation counts |
+
+> **Important — date-range queries must not SUM this MV.** Each daily row is a *stock*
+> snapshot (open deviations as of that day), not a flow of new deviations, so summing
+> across days double-counts deviations that remain open. The Deviations page header
+> instead counts distinct rows from the `deviations` base table filtered by
+> `detected_at` — see `DeviationRepository.countByTypeFiltered`.
 
 **`mv_daily_event_kpis`** — one row per `snapshot_date` (global pipeline summary)
 
@@ -435,14 +441,24 @@ Supported intervals: `daily`, `weekly`, `monthly`.
 ### 3.9 Facility Ranking Formulas
 
 ```
-compliance_rate = (completed_steps + skipped_steps) / total_steps per facility
+tracked_patients     = uniq(protocol_instance.patient_id) joined with mv_patient_facility_latest
+                       (optionally constrained to enrolled_at in selected period)
 
-active_deviations = COUNT(deviations) detected within last 30 days at facility
+compliance_rate      = (tracked − non_compliant) / tracked × 100 per facility
+                       (non_compliant = uniq patients with any deviation in period)
 
-total_events = COUNT(DISTINCT event_log.id) at facility
+active_deviations    = SUM(daily total_deviations) from mv_daily_facility_kpis FINAL
+
+total_events         = uniq inbound_event_logs.id with status='ACCEPTED' in the period,
+                       intersected with the facility reference list
+                       (replaces the earlier mv_daily_facility_kpis.event_count path,
+                        which only counted compliance-matched events)
 ```
 
-Facility-level compliance is computed from `step_instance` aggregations (not per-protocol-instance averages). The `findStepComplianceByFacility()` query groups by `facility_id` and returns `totalSteps` and `completedSteps` (including `COMPLETED` and `SKIPPED` states).
+The events column on the ranking table is intentionally sourced from
+`inbound_event_logs` so it matches the Active Facilities tile and the Events → By Facility
+table; otherwise a facility that submits accepted-but-unmatched HIE events would appear
+active with zero ranked events.
 
 Ranking options (`rankBy` parameter):
 | Value | Sort Expression |
@@ -488,26 +504,36 @@ Breakdowns are computed per `source` system. A high `ZERO_MATCH` rate indicates 
 
 ### 3.13 At-Risk Hotspot Formulas
 
-Patient compliance category is computed across **all active protocol instances** at a facility:
+Patient compliance category is binary across **all active protocol instances** at a
+facility (the legacy `at_risk` middle tier was retired — every patient is either
+compliant or non-compliant in the analytics surface):
 
 ```
-on_track       = patient has NO step_instance with state IN ('OVERDUE', 'MISSED') across all active enrollments
-at_risk        = patient has at least one 'OVERDUE' step_instance AND NO 'MISSED'
-non_compliant  = patient has at least one 'MISSED' step_instance
+on_track       = patient has NO deviation rows in the selected period
+non_compliant  = patient has ≥1 deviation row in the selected period
 
 percentage = category_count / total_patients_at_facility * 100
 ```
 
+> The hotspot endpoint still emits a 3-tier label for backwards compatibility, but the
+> Dashboard, Compliance Overview, and Patient List all use the binary model above.
+
 > **Note:** Facility is derived by joining `protocol_instance` → `event_log.facility_id`.
 
-### 3.13a Facility Activity Formulas (mv_daily_facility_activity_summary)
+### 3.13a Facility Activity Formulas
+
+Per the e-Buzima requirements: a facility is active if it has transmitted **any successful
+HIE submission** in the reporting period — regardless of whether the events matched a
+protocol step. Counts therefore come from `inbound_event_logs`, not the compliance MV.
 
 ```
-total_in_scope       = COUNT(*) FROM facility FINAL
+total_in_scope       = COUNT(*) FROM facility FINAL WHERE _is_deleted = 0
 
-active_facilities    = COUNT(facility_id) FROM mv_daily_facility_kpis FINAL
-                       WHERE snapshot_date = today() AND event_count > 0
-                       (facilities in scope that had at least one HIE transmission today)
+active_facilities    = uniq(facility_id) FROM inbound_event_logs FINAL
+                       WHERE status = 'ACCEPTED'
+                         AND facility_id IN (facility reference)
+                         AND received_at BETWEEN startDate AND endDate
+                       (today() when no range)
 
 inactive_facilities  = total_in_scope − active_facilities
 
@@ -515,7 +541,14 @@ active_facility_rate = active_facilities / total_in_scope × 100
 ```
 
 > The denominator (`total_in_scope`) comes from `facility`, not from observed event data.
-> This ensures facilities that transmitted no events today are counted as inactive (not omitted).
+> This ensures facilities that transmitted no events in the period are counted as inactive
+> (not omitted).
+>
+> **Historical note:** earlier versions sourced `active_facilities` from
+> `mv_daily_facility_kpis.event_count`, which only counted compliance-matched events. A
+> facility that submitted accepted-but-unmatched HIE events (e.g. for unknown patients)
+> appeared as inactive while still showing non-zero events on the Events tab. The
+> definition above replaces that path so all activity surfaces agree.
 
 ### 3.13b e-Buzima Adoption Formulas (mv_daily_adoption_kpis)
 
@@ -531,12 +564,22 @@ reporting_gap     = expected_patients_per_day − actual_patients
 ```
 
 Multi-day (date-range) aggregation (via `DailyKpiRepository.getAdoptionKpisByDateRange`):
+
+The API response uses **daily averages** so the columns are directly comparable to the
+per-day baseline (`expectedVisitsPerDay`). The adoption rate is a period total.
+
 ```
-total_actual          = SUM(actual_patients) over the date range
-total_expected        = expected_patients_per_day × COUNT(distinct days in range)
-period_adoption_rate  = total_actual / total_expected × 100
-period_reporting_gap  = total_expected − total_actual
+calendar_days         = (endDate − startDate) + 1
+total_actual          = SUM(actual_patients) across MV rows in range
+
+actualVisitsPerDay    = round(total_actual / calendar_days)
+expectedVisitsPerDay  = max(expected_patients_per_day)
+reportingGapPerDay    = expectedVisitsPerDay − actualVisitsPerDay
+adoptionRate (%)      = total_actual / (expectedVisitsPerDay × calendar_days) × 100
 ```
+
+> Days without an MV row contribute `0` to the daily average — that prevents a facility
+> with sparse reporting from being over-credited.
 
 ### 3.14 Repeat Deviation Formulas
 

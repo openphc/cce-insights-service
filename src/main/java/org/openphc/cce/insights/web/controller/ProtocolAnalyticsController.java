@@ -30,7 +30,8 @@ public class ProtocolAnalyticsController {
             @RequestParam(required = false) String facilityId,
             @RequestParam(required = false) OffsetDateTime startDate,
             @RequestParam(required = false) OffsetDateTime endDate) {
-        StepAnalyticsDto analytics = protocolAnalyticsService.getStepAnalytics(protocolDefinitionId, facilityId);
+        StepAnalyticsDto analytics = protocolAnalyticsService.getStepAnalytics(
+                protocolDefinitionId, facilityId, startDate, endDate);
         return ResponseEntity.ok(ApiResponse.ok(analytics));
     }
 
@@ -40,7 +41,8 @@ public class ProtocolAnalyticsController {
             @RequestParam(required = false) String facilityId,
             @RequestParam(required = false) OffsetDateTime startDate,
             @RequestParam(required = false) OffsetDateTime endDate) {
-        CompletionFunnelDto funnel = protocolAnalyticsService.getCompletionFunnel(protocolDefinitionId);
+        CompletionFunnelDto funnel = protocolAnalyticsService.getCompletionFunnel(
+                protocolDefinitionId, facilityId, startDate, endDate);
         return ResponseEntity.ok(ApiResponse.ok(funnel));
     }
 
@@ -51,7 +53,7 @@ public class ProtocolAnalyticsController {
             @RequestParam(required = false) OffsetDateTime startDate,
             @RequestParam(required = false) OffsetDateTime endDate) {
         OutcomeDistributionDto distribution = protocolAnalyticsService.getOutcomeDistribution(
-                protocolDefinitionId);
+                protocolDefinitionId, facilityId, startDate, endDate);
         return ResponseEntity.ok(ApiResponse.ok(distribution));
     }
 

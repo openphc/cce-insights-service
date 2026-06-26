@@ -10,7 +10,6 @@ import org.openphc.cce.insights.web.dto.PatientComplianceDto;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -27,9 +26,8 @@ public class ComplianceSummaryController {
             @RequestParam(required = false) String facilityId,
             @RequestParam(required = false) OffsetDateTime startDate,
             @RequestParam(required = false) OffsetDateTime endDate) {
-        LocalDate snapshotDate = resolveSnapshotDate(startDate, endDate);
         ComplianceSummaryDto summary = complianceSummaryService.getAllProtocolsComplianceSummary(
-                facilityId, snapshotDate);
+                facilityId, startDate, endDate);
         return ResponseEntity.ok(ApiResponse.ok(summary));
     }
 
@@ -39,17 +37,9 @@ public class ComplianceSummaryController {
             @RequestParam(required = false) String facilityId,
             @RequestParam(required = false) OffsetDateTime startDate,
             @RequestParam(required = false) OffsetDateTime endDate) {
-        LocalDate snapshotDate = resolveSnapshotDate(startDate, endDate);
         ComplianceSummaryDto summary = complianceSummaryService.getProtocolComplianceSummary(
-                protocolDefinitionId, facilityId, snapshotDate);
+                protocolDefinitionId, facilityId, startDate, endDate);
         return ResponseEntity.ok(ApiResponse.ok(summary));
-    }
-
-    /** End of selected period; null = today's snapshot. */
-    private static LocalDate resolveSnapshotDate(OffsetDateTime startDate, OffsetDateTime endDate) {
-        if (endDate != null) return endDate.toLocalDate();
-        if (startDate != null) return startDate.toLocalDate();
-        return null;
     }
 
     @GetMapping("/facilities/{facilityId}/compliance-summary")
@@ -58,7 +48,8 @@ public class ComplianceSummaryController {
             @RequestParam(required = false) UUID protocolDefinitionId,
             @RequestParam(required = false) OffsetDateTime startDate,
             @RequestParam(required = false) OffsetDateTime endDate) {
-        FacilitySummaryDto summary = complianceSummaryService.getFacilityComplianceSummary(facilityId);
+        FacilitySummaryDto summary = complianceSummaryService.getFacilityComplianceSummary(
+                facilityId, startDate, endDate);
         return ResponseEntity.ok(ApiResponse.ok(summary));
     }
 
@@ -77,7 +68,7 @@ public class ComplianceSummaryController {
             try { offset = Integer.parseInt(cursor); } catch (NumberFormatException ignored) {}
         }
         var result = complianceSummaryService.getProtocolPatients(
-                protocolDefinitionId, status, patientId, startDate, endDate, limit, offset);
+                protocolDefinitionId, status, facilityId, patientId, startDate, endDate, limit, offset);
         long totalCount = result.totalCount();
         boolean hasMore = offset + result.patients().size() < totalCount;
         String nextCursor = hasMore ? String.valueOf(offset + limit) : null;

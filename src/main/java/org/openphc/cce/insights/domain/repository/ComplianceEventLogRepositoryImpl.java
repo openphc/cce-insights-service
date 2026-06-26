@@ -257,6 +257,46 @@ public class ComplianceEventLogRepositoryImpl
     }
 
     @Override
+    public List<Object[]> countByFacilityFiltered(String facilityId, String source, String resourceType,
+                                                   OffsetDateTime startDate, OffsetDateTime endDate) {
+        String fid = str(facilityId);
+        String src = str(source);
+        String rt  = str(resourceType);
+        var cel = finalAs(COMPLIANCE_EVENT_LOGS, "cel");
+        var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
+
+        var where = DSL.field("cel." + COMPLIANCE_EVENT_LOGS.PROCESSING_STATUS.getName()).ne("DUPLICATE")
+                .and(DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()).ne(""))
+                .and(DSL.condition(
+                        "cel." + COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
+                        dtStart(startDate)))
+                .and(DSL.condition(
+                        "cel." + COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
+                        dtEnd(endDate)));
+        if (!fid.isEmpty()) where = where.and(DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()).eq(fid));
+        if (!src.isEmpty()) where = where.and(DSL.field("iel." + INBOUND_EVENT_LOGS.SOURCE.getName()).eq(src));
+        if (!rt.isEmpty())  where = where.and(DSL.field("iel." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName()).eq(rt));
+
+        return dsl.select(
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()),
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName()),
+                    DSL.field("count()", Long.class).as("cnt"))
+                  .from(cel)
+                  .join(iel).on(DSL.condition(
+                          "iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName() +
+                          " = cel." + COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
+                  .where(where)
+                  .groupBy(
+                          DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()),
+                          DSL.field("iel." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName()))
+                  .orderBy(
+                          DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()),
+                          DSL.field("cnt").desc())
+                  .fetch()
+                  .map(r -> new Object[]{r.get(0, String.class), r.get(1, String.class), r.get(2, Long.class)});
+    }
+
+    @Override
     public List<Object[]> findEventTrends(String interval, String facilityId, String source,
                                            String resourceType,
                                            OffsetDateTime startDate, OffsetDateTime endDate) {

@@ -46,4 +46,16 @@ public interface ProtocolInstanceRepository extends ReadOnlyRepository<ProtocolI
      * When dates are provided, tracked = enrolled in range; non-compliant = deviation in range.
      */
     List<Object[]> countPatientComplianceByFacility(OffsetDateTime startDate, OffsetDateTime endDate);
+
+    /**
+     * Same shape as {@link #countPatientComplianceByFacility} but scoped to a single facility.
+     * Returns a 2-element array: [trackedPatients, nonCompliantPatients].
+     */
+    long[] countPatientCohortForFacility(String facilityId, OffsetDateTime startDate, OffsetDateTime endDate);
+
+    /**
+     * Distinct enrolled patients for a specific facility within an optional date range.
+     */
+    long countDistinctPatientsForFacility(String facilityId,
+                                          OffsetDateTime startDate, OffsetDateTime endDate);
 }

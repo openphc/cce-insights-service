@@ -271,6 +271,42 @@ public class ProtocolInstanceRepositoryImpl
                   });
     }
 
+    @Override
+    public long[] countPatientCohortForFacility(String facilityId,
+                                                OffsetDateTime startDate, OffsetDateTime endDate) {
+        if (facilityId == null || facilityId.isEmpty()) {
+            return new long[]{0L, 0L};
+        }
+        for (Object[] row : countPatientComplianceByFacility(startDate, endDate)) {
+            if (facilityId.equals(row[0])) {
+                return new long[]{
+                        ((Number) row[1]).longValue(),
+                        ((Number) row[2]).longValue()
+                };
+            }
+        }
+        return new long[]{0L, 0L};
+    }
+
+    @Override
+    public long countDistinctPatientsForFacility(String facilityId,
+                                                  OffsetDateTime startDate, OffsetDateTime endDate) {
+        if (facilityId == null || facilityId.isEmpty()) {
+            return 0L;
+        }
+        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        var pf = DSL.table(DSL.sql("mv_patient_facility_latest pf" + finalClause()));
+        Long count = dsl.select(
+                        DSL.field("uniq(pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName() + ")", Long.class))
+                    .from(pi)
+                    .join(pf).on(DSL.condition(
+                            "pf.patient_id = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
+                    .where(DSL.field("pf.facility_id").eq(facilityId))
+                    .and(enrollmentBetween(startDate, endDate))
+                    .fetchOne(0, Long.class);
+        return count != null ? count : 0L;
+    }
+
     private org.jooq.Condition enrollmentBetween(OffsetDateTime startDate, OffsetDateTime endDate) {
         String enrolledAt = "pi." + PROTOCOL_INSTANCES.ENROLLED_AT.getName();
         org.jooq.Condition condition = DSL.trueCondition();

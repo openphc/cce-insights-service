@@ -37,7 +37,7 @@ class ComplianceSummaryControllerIT extends AbstractIntegrationTest {
 
     @Test
     void getProtocolComplianceSummary_returnsAggregatedMetrics() throws Exception {
-        when(complianceSummaryService.getProtocolComplianceSummary(eq(PROTOCOL_ID), any(), any()))
+        when(complianceSummaryService.getProtocolComplianceSummary(eq(PROTOCOL_ID), any(), any(), any()))
                 .thenReturn(ComplianceSummaryDto.builder()
                         .protocolDefinitionId(PROTOCOL_ID)
                         .totalEnrollments(3)
@@ -60,7 +60,7 @@ class ComplianceSummaryControllerIT extends AbstractIntegrationTest {
 
     @Test
     void getProtocolComplianceSummary_notFound() throws Exception {
-        when(complianceSummaryService.getProtocolComplianceSummary(eq(UNKNOWN_ID), any(), any()))
+        when(complianceSummaryService.getProtocolComplianceSummary(eq(UNKNOWN_ID), any(), any(), any()))
                 .thenThrow(new EntityNotFoundException("Protocol definition not found: " + UNKNOWN_ID));
 
         mockMvc.perform(get("/v1/insights/protocols/00000000-0000-0000-0000-000000000000/compliance-summary"))
@@ -69,7 +69,7 @@ class ComplianceSummaryControllerIT extends AbstractIntegrationTest {
 
     @Test
     void getProtocolPatients_returnsAllPatients() throws Exception {
-        when(complianceSummaryService.getProtocolPatients(eq(PROTOCOL_ID), isNull(), isNull(), any(), any(), eq(15), eq(0)))
+        when(complianceSummaryService.getProtocolPatients(eq(PROTOCOL_ID), isNull(), isNull(), isNull(), any(), any(), eq(15), eq(0)))
                 .thenReturn(new ProtocolPatientsPage(List.of(
                         PatientComplianceDto.builder().patientId("p1").complianceCategory("on_track").build(),
                         PatientComplianceDto.builder().patientId("p2").complianceCategory("on_track").build(),
@@ -84,7 +84,7 @@ class ComplianceSummaryControllerIT extends AbstractIntegrationTest {
 
     @Test
     void getProtocolPatients_filteredByStatus() throws Exception {
-        when(complianceSummaryService.getProtocolPatients(eq(PROTOCOL_ID), eq("non_compliant"), isNull(), any(), any(), eq(15), eq(0)))
+        when(complianceSummaryService.getProtocolPatients(eq(PROTOCOL_ID), eq("non_compliant"), isNull(), isNull(), any(), any(), eq(15), eq(0)))
                 .thenReturn(new ProtocolPatientsPage(List.of(
                         PatientComplianceDto.builder().patientId("p3").complianceCategory("non_compliant").build()), 1));
 

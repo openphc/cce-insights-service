@@ -20,13 +20,18 @@ public class EventVolumeService {
     private final InboundEventRepository inboundEventRepository;
     private final DailyKpiRepository dailyKpiRepository;
 
-    @Cacheable(value = "metrics", key = "'vol-summary-' + #startDate + '-' + #endDate")
-    public EventVolumeSummaryDto getSummary(OffsetDateTime startDate, OffsetDateTime endDate) {
-        List<Object[]> byFacility = complianceEventLogRepository.countByFacility(startDate, endDate);
-        List<Object[]> byResourceType = complianceEventLogRepository.countByResourceType(null, null, startDate, endDate);
+    @Cacheable(value = "metrics",
+            key = "'vol-summary-' + (#facilityId ?: 'all') + '-' + (#source ?: 'all') + '-' + #startDate + '-' + #endDate")
+    public EventVolumeSummaryDto getSummary(String facilityId, String source,
+                                             OffsetDateTime startDate, OffsetDateTime endDate) {
+        List<Object[]> byFacility = complianceEventLogRepository.countByFacilityFiltered(
+                facilityId, source, null, startDate, endDate);
+        List<Object[]> byResourceType = complianceEventLogRepository.countByResourceType(
+                facilityId, source, startDate, endDate);
         // Source counts from inbound_event — captures ALL received events, not just compliance-matched
-        List<Object[]> bySource = inboundEventRepository.countBySource(null, startDate, endDate);
-        List<Object[]> byProcessingStatus = complianceEventLogRepository.countByProcessingStatus(null, startDate, endDate);
+        List<Object[]> bySource = inboundEventRepository.countBySource(facilityId, startDate, endDate);
+        List<Object[]> byProcessingStatus = complianceEventLogRepository.countByProcessingStatus(
+                facilityId, startDate, endDate);
 
         long totalEvents = byResourceType.stream().mapToLong(r -> ((Number) r[1]).longValue()).sum();
 
@@ -110,9 +115,11 @@ public class EventVolumeService {
         }
     }
 
-    @Cacheable(value = "metrics", key = "'vol-restype-' + #startDate + '-' + #endDate")
-    public List<ResourceTypeCountDto> getByResourceType(OffsetDateTime startDate, OffsetDateTime endDate) {
-        return complianceEventLogRepository.countByResourceType(null, null, startDate, endDate).stream()
+    @Cacheable(value = "metrics",
+            key = "'vol-restype-' + (#facilityId ?: 'all') + '-' + (#source ?: 'all') + '-' + #startDate + '-' + #endDate")
+    public List<ResourceTypeCountDto> getByResourceType(String facilityId, String source,
+                                                        OffsetDateTime startDate, OffsetDateTime endDate) {
+        return complianceEventLogRepository.countByResourceType(facilityId, source, startDate, endDate).stream()
                 .map(row -> ResourceTypeCountDto.builder()
                         .resourceType((String) row[0])
                         .count(((Number) row[1]).longValue())
@@ -120,9 +127,12 @@ public class EventVolumeService {
                 .collect(Collectors.toList());
     }
 
-    @Cacheable(value = "metrics", key = "'vol-facility-' + #startDate + '-' + #endDate")
-    public List<FacilityEventCountDto> getByFacility(OffsetDateTime startDate, OffsetDateTime endDate) {
-        List<Object[]> rows = complianceEventLogRepository.countByFacility(startDate, endDate);
+    @Cacheable(value = "metrics",
+            key = "'vol-facility-' + (#facilityId ?: 'all') + '-' + (#source ?: 'all') + '-' + (#resourceType ?: 'all') + '-' + #startDate + '-' + #endDate")
+    public List<FacilityEventCountDto> getByFacility(String facilityId, String source, String resourceType,
+                                                     OffsetDateTime startDate, OffsetDateTime endDate) {
+        List<Object[]> rows = complianceEventLogRepository.countByFacilityFiltered(
+                facilityId, source, resourceType, startDate, endDate);
         // rows: [facility_id, resource_type, count] — aggregate by facility
         Map<String, List<Object[]>> grouped = new LinkedHashMap<>();
         for (Object[] row : rows) {

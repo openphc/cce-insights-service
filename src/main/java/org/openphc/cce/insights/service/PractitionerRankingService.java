@@ -22,12 +22,15 @@ public class PractitionerRankingService {
     private final StepInstanceRepository stepInstanceRepository;
     private final DeviationRepository deviationRepository;
 
-    @Cacheable(value = "analytics", key = "'practitioner-rankings-' + #sortBy + '-' + #order + '-' + #limit + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all') + '-' + (#facilityId ?: 'all')")
+    @Cacheable(value = "analytics",
+            key = "'practitioner-rankings-' + #sortBy + '-' + #order + '-' + #limit + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all') + '-' + (#facilityId ?: 'all') + '-' + (#protocolDefinitionId ?: 'all')")
     public List<PractitionerRankingDto> getRankings(String sortBy, String order, int limit,
                                                      OffsetDateTime startDate, OffsetDateTime endDate,
-                                                     String facilityId) {
+                                                     String facilityId, UUID protocolDefinitionId) {
 
-        // Practitioner summary: ref, display, facilityId, totalEvents, totalPatients
+        // Practitioner summary: ref, display, facilityId, totalEvents, totalPatients.
+        // protocolDefinitionId narrows the rankings to practitioners with step rows in
+        // the selected protocol (applied below when filtering step compliance).
         List<Object[]> summaryRows = complianceEventLogRepository.findPractitionerSummaryFiltered(startDate, endDate, facilityId);
 
         // Build facility name lookup from canonical facility table
@@ -55,14 +58,26 @@ public class PractitionerRankingService {
             patientCountMap.merge(ref, patients, Long::sum);
         }
 
-        // Step compliance by practitioner
-        List<Object[]> complianceRows = stepInstanceRepository.findStepComplianceByPractitionerFiltered(startDate, endDate, facilityId);
+        // Step compliance by practitioner — optionally scoped to a protocol.
+        List<Object[]> complianceRows = protocolDefinitionId != null
+                ? stepInstanceRepository.findStepComplianceByPractitionerForProtocol(
+                        startDate, endDate, facilityId, protocolDefinitionId)
+                : stepInstanceRepository.findStepComplianceByPractitionerFiltered(
+                        startDate, endDate, facilityId);
         Map<String, Long> totalStepsMap = new LinkedHashMap<>();
         Map<String, Long> completedStepsMap = new LinkedHashMap<>();
         for (Object[] row : complianceRows) {
             String ref = (String) row[0];
             totalStepsMap.put(ref, ((Number) row[1]).longValue());
             completedStepsMap.put(ref, ((Number) row[2]).longValue());
+        }
+        // Narrow the practitioner list to those who actually have step rows in the
+        // selected protocol — drops practitioners whose events did not involve it.
+        if (protocolDefinitionId != null) {
+            displayMap.keySet().retainAll(totalStepsMap.keySet());
+            facilityMap.keySet().retainAll(totalStepsMap.keySet());
+            eventCountMap.keySet().retainAll(totalStepsMap.keySet());
+            patientCountMap.keySet().retainAll(totalStepsMap.keySet());
         }
 
         // Deviations by practitioner (via matched event)

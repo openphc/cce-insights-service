@@ -42,6 +42,10 @@ public interface InboundEventRepository extends ReadOnlyRepository<InboundEvent,
 
     long countAccepted(String facilityId, OffsetDateTime startDate, OffsetDateTime endDate);
 
+    /** Returns true if this facility transmitted ≥1 successful HIE submission in the range. */
+    boolean facilityTransmittedInRange(String facilityId,
+                                       OffsetDateTime startDate, OffsetDateTime endDate);
+
     List<Object[]> findEventTrends(String interval, String facilityId, String source,
                                     OffsetDateTime startDate, OffsetDateTime endDate);
 

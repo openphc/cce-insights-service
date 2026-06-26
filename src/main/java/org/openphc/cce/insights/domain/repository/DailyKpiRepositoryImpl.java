@@ -28,10 +28,13 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
     }
 
     // ── mv_daily_facility_activity_summary ───────────────────────────────────
+    // Per requirements: a facility is active if it has transmitted ANY successful
+    // HIE submission in the period (regardless of compliance match). We therefore
+    // count distinct facility_ids in inbound_event_logs (status='ACCEPTED'), not
+    // mv_daily_facility_kpis (which only contains compliance-matched events).
 
     @Override
     public Object[] getFacilityActivitySummary() {
-        // facility is the source of truth — total, active, and inactive all anchored to it.
         long totalInScope = toLong(
             dsl.selectCount()
                .from(DSL.table(DSL.sql("facility" + finalClause())))
@@ -42,16 +45,12 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
                              .from(DSL.table(DSL.sql("facility" + finalClause())))
                              .where(DSL.field("_is_deleted").eq(0));
 
-        Long activeFacilities = dsl.selectCount()
-            .from(
-                dsl.select(DSL.field("facility_id"))
-                   .from(DSL.table(DSL.sql("mv_daily_facility_kpis" + finalClause())))
-                   .where(DSL.sql("snapshot_date = today()"))
-                   .and(DSL.field("facility_id").in(facilityIds))
-                   .groupBy(DSL.field("facility_id"))
-                   .having(DSL.condition(DSL.sql("sum(event_count) > 0")))
-                   .asTable("active_fac")
-            )
+        Long activeFacilities = dsl.select(DSL.field("uniq(facility_id)", Long.class))
+            .from(DSL.table(DSL.sql("inbound_event_logs" + finalClause())))
+            .where(DSL.field("status").eq("ACCEPTED"))
+            .and(DSL.field("facility_id").ne(""))
+            .and(DSL.field("facility_id").in(facilityIds))
+            .and(DSL.condition("toDate(received_at) = today()"))
             .fetchOne(0, Long.class);
 
         long active = totalInScope == 0 ? 0L : (activeFacilities == null ? 0L : activeFacilities);
@@ -61,30 +60,27 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
     }
 
     // ── mv_daily_facility_activity_summary (date range) ─────────────────────
-    // "Active" = had event_count > 0 on at least one day in the range.
-    // total_in_scope always comes from facility (programme list).
+    // "Active" = facility with ≥1 successful HIE submission anywhere in the range.
 
     @Override
     public Object[] getFacilityActivitySummaryByDateRange(LocalDate startDate, LocalDate endDate) {
         long totalInScope = toLong(
             dsl.selectCount()
                .from(DSL.table(DSL.sql("facility" + finalClause())))
+               .where(DSL.field("_is_deleted").eq(0))
                .fetchOne(0, Long.class));
 
         var facilityIds = dsl.select(DSL.field("facility_id"))
                              .from(DSL.table(DSL.sql("facility" + finalClause())))
                              .where(DSL.field("_is_deleted").eq(0));
 
-        Long activeFacilities = dsl.selectCount()
-            .from(
-                dsl.select(DSL.field("facility_id"))
-                   .from(DSL.table(DSL.sql("mv_daily_facility_kpis" + finalClause())))
-                   .where(DSL.field("snapshot_date", LocalDate.class).between(startDate).and(endDate))
-                   .and(DSL.field("facility_id").in(facilityIds))
-                   .groupBy(DSL.field("facility_id"))
-                   .having(DSL.condition(DSL.sql("sum(event_count) > 0")))
-                   .asTable("active_fac")
-            )
+        Long activeFacilities = dsl.select(DSL.field("uniq(facility_id)", Long.class))
+            .from(DSL.table(DSL.sql("inbound_event_logs" + finalClause())))
+            .where(DSL.field("status").eq("ACCEPTED"))
+            .and(DSL.field("facility_id").ne(""))
+            .and(DSL.field("facility_id").in(facilityIds))
+            .and(DSL.condition("toDate(received_at) >= ?", startDate))
+            .and(DSL.condition("toDate(received_at) <= ?", endDate))
             .fetchOne(0, Long.class);
 
         long active = totalInScope == 0 ? 0L : (activeFacilities == null ? 0L : activeFacilities);
@@ -320,44 +316,50 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
 
     @Override
     public List<Object[]> getAdoptionKpisByDateRange(LocalDate startDate, LocalDate endDate) {
-        // total_expected = expected_patients_per_day × calendar_days_in_range
-        // total_actual   = SUM(actual_patients) across all MV rows in range
-        // period_rate    = total_actual / total_expected × 100
+        // Period semantics, all aligned with UI labels "Expected Visits / Day", "Actual
+        // Visits / Day", "Reporting Gap / Day":
+        //   expectedVisitsPerDay = baseline from facility (per day)
+        //   actualVisitsPerDay   = AVG of daily reporters over the calendar range
+        //                          (sum of MV actual_patients ÷ calendar_days)
+        //   reportingGapPerDay   = expectedVisitsPerDay − actualVisitsPerDay
+        //   adoptionRate (%)     = total_actual / (expected × calendar_days) × 100
         //
-        // Use the full calendar span (not MV row count) so that a facility with only
-        // 1 refresh of data in a 30-day window shows 1/(20×30)=0.17%, not 1/(20×1)=5%.
+        // Calendar days (not MV row count) is used so that a facility with sparse MV
+        // data is not double-credited — silent days contribute zero to the daily average.
         long calendarDays = ChronoUnit.DAYS.between(startDate, endDate) + 1;
 
         var facilityIds = dsl.select(DSL.field("facility_id"))
                              .from(DSL.table(DSL.sql("facility" + finalClause())))
                              .where(DSL.field("_is_deleted").eq(0));
 
+        String avgActualExpr =
+            "toInt64(round(sum(actual_patients) / " + calendarDays + "))";
         String rateExpr =
             "toFloat32(round(if(coalesce(max(expected_patients_per_day), 0) = 0, 100.0," +
             " sum(actual_patients) / nullIf(coalesce(max(expected_patients_per_day), 0) * " + calendarDays + ", 0) * 100), 1))";
-        String gapExpr =
+        String gapPerDayExpr =
             "toInt64(if(coalesce(max(expected_patients_per_day), 0) = 0, 0," +
-            " coalesce(max(expected_patients_per_day), 0) * " + calendarDays + " - sum(actual_patients)))";
+            " coalesce(max(expected_patients_per_day), 0) - round(sum(actual_patients) / " + calendarDays + ")))";
 
         // facility_name is NOT in mv_daily_adoption_kpis — resolved from facility table in service layer.
         return dsl.select(
                     DSL.field("facility_id",              String.class),
                     DSL.field(DSL.sql("max(expected_patients_per_day)"), Long.class),
-                    DSL.sum(DSL.field("actual_patients",  Long.class)),
+                    DSL.field(DSL.sql(avgActualExpr), Long.class),
                     DSL.field(DSL.sql(rateExpr)),
-                    DSL.field(DSL.sql(gapExpr)))
+                    DSL.field(DSL.sql(gapPerDayExpr)))
                   .from(DSL.table(DSL.sql("mv_daily_adoption_kpis" + finalClause())))
                   .where(DSL.field("snapshot_date", LocalDate.class).between(startDate).and(endDate))
                   .and(DSL.field("facility_id").in(facilityIds))
                   .groupBy(DSL.field("facility_id"))
-                  .orderBy(DSL.field(DSL.sql(gapExpr)).desc())
+                  .orderBy(DSL.field(DSL.sql(gapPerDayExpr)).desc())
                   .fetch()
                   .map(r -> new Object[]{
                       r.get(0, String.class),   // [0] facility_id
-                      toLong(r.get(1)),          // [1] expected_patients_per_day
-                      toLong(r.get(2)),          // [2] actual_patients
-                      toDouble(r.get(3)),        // [3] adoption_rate_pct
-                      toLong(r.get(4))           // [4] reporting_gap
+                      toLong(r.get(1)),          // [1] expected_visits_per_day
+                      toLong(r.get(2)),          // [2] actual_visits_per_day (avg daily)
+                      toDouble(r.get(3)),        // [3] adoption_rate_pct (period)
+                      toLong(r.get(4))           // [4] reporting_gap_per_day (avg daily)
                   });
     }
 

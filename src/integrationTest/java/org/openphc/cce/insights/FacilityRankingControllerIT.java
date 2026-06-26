@@ -11,6 +11,7 @@ import org.openphc.cce.insights.web.controller.FacilityRankingController;
 import org.openphc.cce.insights.web.GlobalExceptionHandler;
 import org.openphc.cce.insights.web.dto.FacilityRankingDto;
 
+import java.time.LocalDate;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.*;
@@ -30,7 +31,9 @@ class FacilityRankingControllerIT extends AbstractIntegrationTest {
 
     @Test
     void getFacilityRanking_returnsRankedList() throws Exception {
-        when(facilityRankingService.getRankings(any(), any(), any(), eq("complianceRate"), eq("desc"), eq(50)))
+        when(facilityRankingService.getRankings(
+                any(), nullable(String.class), nullable(LocalDate.class), nullable(LocalDate.class),
+                eq("complianceRate"), eq("desc"), eq(50)))
                 .thenReturn(List.of(FacilityRankingDto.builder()
                         .rank(1).facilityId("fac-1").complianceRate(95.0)
                         .totalEvents(20).totalEnrollments(5).activeDeviations(1).build()));

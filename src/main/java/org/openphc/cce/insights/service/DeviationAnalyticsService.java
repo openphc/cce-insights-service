@@ -1,7 +1,6 @@
 package org.openphc.cce.insights.service;
 
 import lombok.RequiredArgsConstructor;
-import org.openphc.cce.insights.domain.repository.DailyKpiRepository;
 import org.openphc.cce.insights.domain.repository.DeviationRepository;
 import org.openphc.cce.insights.web.dto.*;
 import org.springframework.cache.annotation.Cacheable;
@@ -17,7 +16,6 @@ import java.util.stream.Collectors;
 public class DeviationAnalyticsService {
 
     private final DeviationRepository deviationRepository;
-    private final DailyKpiRepository dailyKpiRepository;
 
     public List<DeviationDto> getDeviations(String deviationType, String facilityId,
                                              UUID protocolDefinitionId,
@@ -38,20 +36,31 @@ public class DeviationAnalyticsService {
                 .build()).collect(Collectors.toList());
     }
 
-    @Cacheable(value = "analytics", key = "'deviation-kpis-' + (#protocolDefinitionId ?: 'all') + '-' + (#startDate ?: 'today') + '-' + (#endDate ?: 'today')")
-    public DeviationKpiDto getDeviationKpis(UUID protocolDefinitionId,
+    @Cacheable(value = "analytics", key = "'deviation-kpis-' + (#protocolDefinitionId ?: 'all') + '-' + (#facilityId ?: 'all') + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all')")
+    public DeviationKpiDto getDeviationKpis(UUID protocolDefinitionId, String facilityId,
                                              OffsetDateTime startDate, OffsetDateTime endDate) {
-        Object[] row = (startDate != null || endDate != null)
-                ? dailyKpiRepository.getDeviationKpisByDateRange(
-                        protocolDefinitionId,
-                        startDate != null ? startDate.toLocalDate() : endDate.toLocalDate(),
-                        endDate   != null ? endDate.toLocalDate()   : startDate.toLocalDate())
-                : dailyKpiRepository.getDeviationKpis(protocolDefinitionId);
+        // Counts distinct deviation rows in the deviations table, optionally scoped to
+        // protocol, facility (via mv_patient_facility_latest) and detection date range.
+        // Replaces summing mv_daily_deviation_kpis snapshot rows, which inflated totals
+        // by counting the same active deviation on every day it appeared in the snapshot.
+        List<Object[]> rows = deviationRepository.countByTypeFiltered(
+                protocolDefinitionId, facilityId, startDate, endDate);
+        long total = 0, overdue = 0, missed = 0, orderViolation = 0;
+        for (Object[] row : rows) {
+            long c = ((Number) row[1]).longValue();
+            total += c;
+            switch ((String) row[0]) {
+                case "OVERDUE" -> overdue = c;
+                case "MISSED" -> missed = c;
+                case "ORDER_VIOLATION" -> orderViolation = c;
+                default -> {}
+            }
+        }
         return DeviationKpiDto.builder()
-                .totalDeviations(((Number) row[0]).longValue())
-                .overdueCount(((Number) row[1]).longValue())
-                .missedCount(((Number) row[2]).longValue())
-                .orderViolationCount(((Number) row[3]).longValue())
+                .totalDeviations(total)
+                .overdueCount(overdue)
+                .missedCount(missed)
+                .orderViolationCount(orderViolation)
                 .build();
     }
 
@@ -94,9 +103,11 @@ public class DeviationAnalyticsService {
                                                                    String facilityId) {
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         List<Object[]> allDeviations = deviationRepository.countByTypeInRange(startDate, endDate, facilityId);
-        List<Object[]> last24h = deviationRepository.countByTypeSince(now.minusHours(24));
-        List<Object[]> last7d = deviationRepository.countByTypeSince(now.minusDays(7));
-        List<Object[]> last30d = deviationRepository.countByTypeSince(now.minusDays(30));
+        // Recent-activity windows respect the selected facility so the header tile and the
+        // recent-activity counts stay consistent when a facility is chosen.
+        List<Object[]> last24h = deviationRepository.countByTypeSince(now.minusHours(24), facilityId);
+        List<Object[]> last7d = deviationRepository.countByTypeSince(now.minusDays(7), facilityId);
+        List<Object[]> last30d = deviationRepository.countByTypeSince(now.minusDays(30), facilityId);
 
         long total = 0, overdueCount = 0, missedCount = 0, orderViolationCount = 0;
         for (Object[] row : allDeviations) {
@@ -122,7 +133,7 @@ public class DeviationAnalyticsService {
                 .build();
     }
 
-    @Cacheable(value = "analytics", key = "'dev-action-' + #protocolDefId")
+    @Cacheable(value = "analytics", key = "'dev-action-' + #protocolDefId + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all')")
     public List<DeviationByActionDto> getDeviationsByAction(UUID protocolDefId,
                                                              OffsetDateTime startDate,
                                                              OffsetDateTime endDate) {
@@ -139,7 +150,7 @@ public class DeviationAnalyticsService {
                 .build()).collect(Collectors.toList());
     }
 
-    @Cacheable(value = "analytics", key = "'dev-resolution-' + #protocolDefId")
+    @Cacheable(value = "analytics", key = "'dev-resolution-' + #protocolDefId + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all')")
     public DeviationResolutionDto getResolutionRate(UUID protocolDefId,
                                                      OffsetDateTime startDate,
                                                      OffsetDateTime endDate) {

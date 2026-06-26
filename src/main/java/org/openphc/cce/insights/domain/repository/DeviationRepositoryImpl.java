@@ -331,15 +331,58 @@ public class DeviationRepositoryImpl
     }
 
     @Override
-    public List<Object[]> countByTypeSince(OffsetDateTime since) {
-        var d = finalAs(DEVIATIONS, "d");
+    public List<Object[]> countByTypeSince(OffsetDateTime since, String facilityId) {
+        String fid = str(facilityId);
+        var d  = finalAs(DEVIATIONS, "d");
+        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        var pf = DSL.table("mv_patient_facility_latest").as("pf");
         return dsl.select(
                     DSL.field("d." + DEVIATIONS.DEVIATION_TYPE.getName()),
                     DSL.field("count()", Long.class))
                   .from(d)
+                  .join(pi).on(DSL.condition(
+                          "d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                  .leftJoin(pf).on(DSL.condition(
+                          "pf.patient_id = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
                   .where(DSL.condition(
                           "d." + DEVIATIONS.DETECTED_AT.getName() + " >= parseDateTime64BestEffort(?)",
                           dt(since)))
+                  .and(DSL.condition("? = '' OR pf.facility_id = ?", fid, fid))
+                  .groupBy(DSL.field("d." + DEVIATIONS.DEVIATION_TYPE.getName()))
+                  .fetch()
+                  .map(r -> new Object[]{r.get(0, String.class), r.get(1, Long.class)});
+    }
+
+    @Override
+    public List<Object[]> countByTypeFiltered(UUID protocolDefinitionId, String facilityId,
+                                              OffsetDateTime startDate, OffsetDateTime endDate) {
+        String fid = str(facilityId);
+        var d  = finalAs(DEVIATIONS, "d");
+        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        var pf = DSL.table("mv_patient_facility_latest").as("pf");
+
+        org.jooq.SelectJoinStep<?> step = dsl.select(
+                    DSL.field("d." + DEVIATIONS.DEVIATION_TYPE.getName()),
+                    DSL.field("count()", Long.class))
+                  .from(d);
+        org.jooq.SelectJoinStep<?> joined = step
+                  .join(pi).on(DSL.condition(
+                          "d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                  .leftJoin(pf).on(DSL.condition(
+                          "pf.patient_id = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()));
+        org.jooq.SelectConditionStep<?> where = joined.where(DSL.condition(
+                          "d." + DEVIATIONS.DETECTED_AT.getName() + " >= parseDateTime64BestEffort(?)",
+                          dtStart(startDate)))
+                  .and(DSL.condition(
+                          "d." + DEVIATIONS.DETECTED_AT.getName() + " <= parseDateTime64BestEffort(?)",
+                          dtEnd(endDate)))
+                  .and(DSL.condition("? = '' OR pf.facility_id = ?", fid, fid));
+        if (protocolDefinitionId != null) {
+            where = where.and(DSL.condition(
+                          "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
+                          protocolDefinitionId.toString()));
+        }
+        return where
                   .groupBy(DSL.field("d." + DEVIATIONS.DEVIATION_TYPE.getName()))
                   .fetch()
                   .map(r -> new Object[]{r.get(0, String.class), r.get(1, Long.class)});

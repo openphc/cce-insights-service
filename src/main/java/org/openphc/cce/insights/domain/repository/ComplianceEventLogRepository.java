@@ -25,6 +25,10 @@ public interface ComplianceEventLogRepository extends ReadOnlyRepository<Complia
 
     List<Object[]> countByFacility(OffsetDateTime startDate, OffsetDateTime endDate);
 
+    /** Filterable by facility/source/resourceType. Source filter joins inbound_event_logs. */
+    List<Object[]> countByFacilityFiltered(String facilityId, String source, String resourceType,
+                                            OffsetDateTime startDate, OffsetDateTime endDate);
+
     List<Object[]> findEventTrends(String interval, String facilityId, String source,
                                    String resourceType, OffsetDateTime startDate, OffsetDateTime endDate);
 

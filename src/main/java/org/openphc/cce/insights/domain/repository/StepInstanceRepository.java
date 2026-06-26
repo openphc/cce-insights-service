@@ -30,6 +30,15 @@ public interface StepInstanceRepository extends ReadOnlyRepository<StepInstance,
                                                             OffsetDateTime endDate,
                                                             String facilityId);
 
+    /** Same as filtered version but scoped to a single protocol. */
+    List<Object[]> findStepComplianceByPractitionerForProtocol(OffsetDateTime startDate,
+                                                                OffsetDateTime endDate,
+                                                                String facilityId,
+                                                                UUID protocolDefinitionId);
+
+    /** Distinct patient ids enrolled in a protocol. */
+    List<String> findPatientIdsByProtocolDefinitionId(UUID protocolDefinitionId);
+
     // Batch load — replaces per-instance findByProtocolInstanceId calls in paged loops
     List<StepInstance> findByProtocolInstanceIdIn(List<UUID> ids);
 

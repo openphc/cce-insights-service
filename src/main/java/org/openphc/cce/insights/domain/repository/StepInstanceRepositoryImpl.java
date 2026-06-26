@@ -507,6 +507,47 @@ public class StepInstanceRepositoryImpl
     }
 
     @Override
+    public List<Object[]> findStepComplianceByPractitionerForProtocol(OffsetDateTime startDate,
+                                                                       OffsetDateTime endDate,
+                                                                       String facilityId,
+                                                                       UUID protocolDefinitionId) {
+        var stepInstances = finalAs(STEP_INSTANCES, "si");
+        var protocolInstances = finalAs(PROTOCOL_INSTANCES, "pi");
+        var practitionerPairs = practitionerPairsSubqueryFiltered(startDate, endDate, facilityId);
+        var deviations = finalAs(DEVIATIONS, "d");
+
+        return dsl.select(
+                    DSL.field("iel.practitioner_ref").as("practitioner_ref"),
+                    uniq("si.id").as("total_steps"),
+                    completedStepsAggregate("si")
+                )
+                .from(stepInstances)
+                .join(protocolInstances).on(DSL.condition(
+                        "si." + STEP_INSTANCES.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                .join(practitionerPairs).on(DSL.condition(
+                        "iel.subject = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
+                .leftJoin(deviations).on(DSL.condition("d.step_instance_id = si.id"))
+                .where(DSL.field("iel.practitioner_ref").ne(""))
+                .and(DSL.condition(
+                        "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
+                        protocolDefinitionId.toString()))
+                .groupBy(DSL.field("iel.practitioner_ref"))
+                .fetch()
+                .map(r -> toComplianceRow(r, "practitioner_ref"));
+    }
+
+    @Override
+    public List<String> findPatientIdsByProtocolDefinitionId(UUID protocolDefinitionId) {
+        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        return dsl.selectDistinct(DSL.field("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
+                  .from(pi)
+                  .where(DSL.condition(
+                          "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
+                          protocolDefinitionId.toString()))
+                  .fetch(0, String.class);
+    }
+
+    @Override
     public Object[] aggregateStepMetrics(UUID protocolDefinitionId) {
         var si = finalAs(STEP_INSTANCES, "si");
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");

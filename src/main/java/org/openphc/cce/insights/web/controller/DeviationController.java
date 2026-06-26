@@ -20,10 +20,12 @@ public class DeviationController {
     @GetMapping("/deviations/kpis")
     public ResponseEntity<ApiResponse<DeviationKpiDto>> getDeviationKpis(
             @RequestParam(required = false) UUID protocolDefinitionId,
+            @RequestParam(required = false) String facilityId,
             @RequestParam(required = false) OffsetDateTime startDate,
             @RequestParam(required = false) OffsetDateTime endDate) {
         return ResponseEntity.ok(ApiResponse.ok(
-                deviationAnalyticsService.getDeviationKpis(protocolDefinitionId, startDate, endDate)));
+                deviationAnalyticsService.getDeviationKpis(
+                        protocolDefinitionId, facilityId, startDate, endDate)));
     }
 
     @GetMapping("/deviations")

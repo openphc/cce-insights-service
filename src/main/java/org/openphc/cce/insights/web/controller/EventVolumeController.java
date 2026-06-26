@@ -27,7 +27,7 @@ public class EventVolumeController {
             @RequestParam(required = false) String source,
             @RequestParam(required = false) OffsetDateTime startDate,
             @RequestParam(required = false) OffsetDateTime endDate) {
-        EventVolumeSummaryDto summary = eventVolumeService.getSummary(startDate, endDate);
+        EventVolumeSummaryDto summary = eventVolumeService.getSummary(facilityId, source, startDate, endDate);
         return ResponseEntity.ok(ApiResponse.ok(summary));
     }
 
@@ -50,18 +50,20 @@ public class EventVolumeController {
             @RequestParam(required = false) String source,
             @RequestParam(required = false) OffsetDateTime startDate,
             @RequestParam(required = false) OffsetDateTime endDate) {
-        List<ResourceTypeCountDto> counts = eventVolumeService.getByResourceType(startDate, endDate);
+        List<ResourceTypeCountDto> counts = eventVolumeService.getByResourceType(
+                facilityId, source, startDate, endDate);
         return ResponseEntity.ok(ApiResponse.ok(counts));
     }
 
     @GetMapping("/by-facility")
     public ResponseEntity<ApiResponse<List<FacilityEventCountDto>>> getByFacility(
+            @RequestParam(required = false) String facilityId,
             @RequestParam(required = false) String resourceType,
+            @RequestParam(required = false) String source,
             @RequestParam(required = false) OffsetDateTime startDate,
-            @RequestParam(required = false) OffsetDateTime endDate,
-            @RequestParam(defaultValue = "50") int limit,
-            @RequestParam(required = false) String cursor) {
-        List<FacilityEventCountDto> counts = eventVolumeService.getByFacility(startDate, endDate);
+            @RequestParam(required = false) OffsetDateTime endDate) {
+        List<FacilityEventCountDto> counts = eventVolumeService.getByFacility(
+                facilityId, source, resourceType, startDate, endDate);
         return ResponseEntity.ok(ApiResponse.ok(counts));
     }
 }

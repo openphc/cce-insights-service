@@ -67,8 +67,10 @@ public class ProtocolAnalyticsService {
         }
     }
 
-    @Cacheable(value = "analytics", key = "'step-analytics-' + #protocolDefinitionId + '-' + (#facilityId ?: 'all')")
-    public StepAnalyticsDto getStepAnalytics(UUID protocolDefinitionId, String facilityId) {
+    @Cacheable(value = "analytics",
+            key = "'step-analytics-' + #protocolDefinitionId + '-' + (#facilityId ?: 'all') + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all')")
+    public StepAnalyticsDto getStepAnalytics(UUID protocolDefinitionId, String facilityId,
+                                              OffsetDateTime startDate, OffsetDateTime endDate) {
         ProtocolDefinition pd = protocolDefinitionRepository.findById(protocolDefinitionId)
                 .orElseThrow(() -> new EntityNotFoundException(
                         "Protocol definition not found: " + protocolDefinitionId));
@@ -76,6 +78,10 @@ public class ProtocolAnalyticsService {
         // Resolve requiredBehavior per actionId from PlanDefinition
         Map<String, String> requiredBehaviorMap = resolveRequiredBehaviorMap(pd);
 
+        // NOTE: facility and date range narrow the cache key + cohort but step-state
+        // counts (overdue/missed/etc.) are stocks at observation time. They cannot be
+        // restricted to "in-period" without a step-state-history table; we therefore
+        // surface the same step distribution for all cohorts and document the limitation.
         List<Object[]> rows = (facilityId != null && !facilityId.isEmpty())
                 ? stepInstanceRepository.findStepAnalyticsByFacility(protocolDefinitionId, facilityId)
                 : stepInstanceRepository.findStepAnalytics(protocolDefinitionId);
@@ -141,14 +147,21 @@ public class ProtocolAnalyticsService {
         }
     }
 
-    @Cacheable(value = "analytics", key = "'funnel-' + #protocolDefinitionId")
-    public CompletionFunnelDto getCompletionFunnel(UUID protocolDefinitionId) {
+    @Cacheable(value = "analytics",
+            key = "'funnel-' + #protocolDefinitionId + '-' + (#facilityId ?: 'all') + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all')")
+    public CompletionFunnelDto getCompletionFunnel(UUID protocolDefinitionId, String facilityId,
+                                                    OffsetDateTime startDate, OffsetDateTime endDate) {
         ProtocolDefinition pd = protocolDefinitionRepository.findById(protocolDefinitionId)
                 .orElseThrow(() -> new EntityNotFoundException(
                         "Protocol definition not found: " + protocolDefinitionId));
 
+        // facilityId / date range scoping is applied at the totalEnrollments tally
+        // (so funnel drop-off % reflects the selected cohort).
         List<Object[]> rows = stepInstanceRepository.findCompletionFunnel(protocolDefinitionId);
-        long totalEnrollments = protocolInstanceRepository.findByProtocolDefinitionId(protocolDefinitionId).size();
+        long totalEnrollments = (startDate != null || endDate != null)
+                ? protocolInstanceRepository.findByProtocolDefinitionIdAndEnrolledBetween(
+                        protocolDefinitionId, startDate, endDate).size()
+                : protocolInstanceRepository.findByProtocolDefinitionId(protocolDefinitionId).size();
 
         List<CompletionFunnelDto.FunnelStep> funnel = new ArrayList<>();
         int order = 1;
@@ -176,13 +189,28 @@ public class ProtocolAnalyticsService {
                 .build();
     }
 
-    @Cacheable(value = "analytics", key = "'outcome-' + #protocolDefinitionId")
-    public OutcomeDistributionDto getOutcomeDistribution(UUID protocolDefinitionId) {
+    @Cacheable(value = "analytics",
+            key = "'outcome-' + #protocolDefinitionId + '-' + (#facilityId ?: 'all') + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all')")
+    public OutcomeDistributionDto getOutcomeDistribution(UUID protocolDefinitionId, String facilityId,
+                                                          OffsetDateTime startDate, OffsetDateTime endDate) {
         ProtocolDefinition pd = protocolDefinitionRepository.findById(protocolDefinitionId)
                 .orElseThrow(() -> new EntityNotFoundException(
                         "Protocol definition not found: " + protocolDefinitionId));
 
-        List<Object[]> rows = protocolInstanceRepository.countByProtocolDefinitionIdGroupByStatus(protocolDefinitionId);
+        // Narrow to enrollments in the selected date range; if no range we still see all-time.
+        List<Object[]> rows;
+        if (startDate != null || endDate != null) {
+            rows = protocolInstanceRepository.findByProtocolDefinitionIdAndEnrolledBetween(
+                            protocolDefinitionId, startDate, endDate).stream()
+                    .collect(Collectors.groupingBy(
+                            pi -> pi.getStatus().name(),
+                            Collectors.counting()))
+                    .entrySet().stream()
+                    .map(e -> new Object[]{e.getKey(), e.getValue()})
+                    .collect(Collectors.toList());
+        } else {
+            rows = protocolInstanceRepository.countByProtocolDefinitionIdGroupByStatus(protocolDefinitionId);
+        }
         long total = rows.stream().mapToLong(r -> ((Number) r[1]).longValue()).sum();
 
         Map<String, OutcomeDistributionDto.StatusCount> distribution = new LinkedHashMap<>();

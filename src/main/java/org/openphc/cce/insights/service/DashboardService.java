@@ -71,9 +71,9 @@ public class DashboardService {
 
         // Top 3 and Bottom 3 facilities by compliance rate
         List<FacilityRankingDto> topFacilities = facilityRankingService.getRankings(
-                null, rangeStart, rangeEnd, "complianceRate", "desc", 3);
+                null, facilityId, rangeStart, rangeEnd, "complianceRate", "desc", 3);
         List<FacilityRankingDto> bottomFacilities = facilityRankingService.getRankings(
-                null, rangeStart, rangeEnd, "complianceRate", "asc", 3);
+                null, facilityId, rangeStart, rangeEnd, "complianceRate", "asc", 3);
 
         // Enrich facility rankings with HIE patient counts
         enrichFacilitiesWithHIE(topFacilities, facilityHIEPatients);
@@ -92,18 +92,31 @@ public class DashboardService {
                 .build();
     }
 
-    @Cacheable(value = "metrics", key = "'dashboard-compliance-summary-' + #startDate + '-' + #endDate")
-    public DashboardComplianceSummaryDto getComplianceSummary(OffsetDateTime startDate,
+    @Cacheable(value = "metrics", key = "'dashboard-compliance-summary-' + (#facilityId ?: 'all') + '-' + #startDate + '-' + #endDate")
+    public DashboardComplianceSummaryDto getComplianceSummary(String facilityId,
+                                                             OffsetDateTime startDate,
                                                              OffsetDateTime endDate) {
         boolean hasRange = startDate != null || endDate != null;
+        boolean hasFacility = facilityId != null && !facilityId.isEmpty();
 
-        long totalPatients = hasRange
-                ? protocolInstanceRepository.countDistinctPatientsEnrolledBetween(startDate, endDate)
-                : protocolInstanceRepository.findDistinctPatientIds().size();
-
-        long patientsWithDeviations = hasRange
-                ? deviationRepository.countDistinctPatientsWithDeviationsBetween(startDate, endDate)
-                : deviationRepository.countDistinctPatientsWithDeviations();
+        long totalPatients;
+        long patientsWithDeviations;
+        if (hasFacility) {
+            // Facility-scoped cohort: enrolled patients at the selected facility
+            // (always range-aware so the tile respects the date filter).
+            OffsetDateTime cohortStart = hasRange ? startDate : null;
+            OffsetDateTime cohortEnd   = hasRange ? endDate   : null;
+            long[] counts = protocolInstanceRepository.countPatientCohortForFacility(
+                    facilityId, cohortStart, cohortEnd);
+            totalPatients = counts[0];
+            patientsWithDeviations = counts[1];
+        } else if (hasRange) {
+            totalPatients = protocolInstanceRepository.countDistinctPatientsEnrolledBetween(startDate, endDate);
+            patientsWithDeviations = deviationRepository.countDistinctPatientsWithDeviationsBetween(startDate, endDate);
+        } else {
+            totalPatients = protocolInstanceRepository.findDistinctPatientIds().size();
+            patientsWithDeviations = deviationRepository.countDistinctPatientsWithDeviations();
+        }
 
         long compliantPatients = Math.max(0, totalPatients - patientsWithDeviations);
         double patientComplianceRate = totalPatients > 0
@@ -119,9 +132,19 @@ public class DashboardService {
         long activeFacilities = ((Number) activityRow[1]).longValue();
         long inactiveFacilities = ((Number) activityRow[2]).longValue();
         double activeFacilityRate = ((Number) activityRow[3]).doubleValue();
+        // When a single facility is selected, the activity tile reflects whether
+        // THAT facility transmitted any HIE submission in the period.
+        if (hasFacility) {
+            boolean transmitted = inboundEventRepository.facilityTransmittedInRange(
+                    facilityId, startDate, endDate);
+            totalInScope = 1L;
+            activeFacilities = transmitted ? 1L : 0L;
+            inactiveFacilities = transmitted ? 0L : 1L;
+            activeFacilityRate = transmitted ? 100.0 : 0.0;
+        }
 
         List<PractitionerRankingDto> allPractitioners = practitionerRankingService.getRankings(
-                "complianceRate", "desc", 1000, startDate, endDate, null);
+                "complianceRate", "desc", 1000, startDate, endDate, facilityId, null);
         long totalPractitioners = allPractitioners.size();
         long practitionerAbove90 = allPractitioners.stream()
                 .filter(p -> p.getComplianceRate() > 90.0).count();

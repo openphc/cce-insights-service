@@ -31,9 +31,20 @@ public class ComplianceSummaryService {
     private final ComplianceEventLogRepository complianceEventLogRepository;
     private final DailyKpiRepository dailyKpiRepository;
 
-    @Cacheable(value = "analytics", key = "'compliance-all-' + (#facilityId ?: 'all') + '-' + (#snapshotDate ?: 'today')")
-    public ComplianceSummaryDto getAllProtocolsComplianceSummary(String facilityId, LocalDate snapshotDate) {
+    @Cacheable(value = "analytics",
+            key = "'compliance-all-' + (#facilityId ?: 'all') + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all')")
+    public ComplianceSummaryDto getAllProtocolsComplianceSummary(String facilityId,
+                                                                 OffsetDateTime startDate,
+                                                                 OffsetDateTime endDate) {
         boolean hasFacility = facilityId != null && !facilityId.isEmpty();
+        LocalDate snapshotDate = endDate != null ? endDate.toLocalDate()
+                : startDate != null ? startDate.toLocalDate()
+                : null;
+        long enrolledInPeriod = (startDate != null || endDate != null)
+                ? (hasFacility
+                        ? protocolInstanceRepository.countDistinctPatientsForFacility(facilityId, startDate, endDate)
+                        : protocolInstanceRepository.countDistinctPatientsEnrolledBetween(startDate, endDate))
+                : -1L;
 
         if (!hasFacility) {
             // No facility filter — use pre-aggregated MV (replaces 2 full base-table scans)
@@ -47,10 +58,16 @@ public class ComplianceSummaryService {
                         .build();
             }
             long compliantPatients = toLong(kpis[10]);
+            long effectiveEnrollments = enrolledInPeriod >= 0 ? enrolledInPeriod : totalEnrollments;
+            long effectiveCompliant = enrolledInPeriod >= 0
+                    ? Math.min(effectiveEnrollments, compliantPatients)
+                    : compliantPatients;
             return ComplianceSummaryDto.builder()
-                    .totalEnrollments(totalEnrollments)
-                    .compliantPatients(compliantPatients)
-                    .complianceRate(Math.round((double) compliantPatients / totalEnrollments * 1000.0) / 10.0)
+                    .totalEnrollments(effectiveEnrollments)
+                    .compliantPatients(effectiveCompliant)
+                    .complianceRate(effectiveEnrollments > 0
+                            ? Math.round((double) effectiveCompliant / effectiveEnrollments * 1000.0) / 10.0
+                            : 0.0)
                     .stepMetrics(ComplianceSummaryDto.StepMetrics.builder()
                             .totalSteps(toLong(kpis[8])).completed(toLong(kpis[0]))
                             .onTime(toLong(kpis[6])).late(toLong(kpis[7])).early(toLong(kpis[5]))
@@ -68,7 +85,7 @@ public class ComplianceSummaryService {
         Object[] sm = stepInstanceRepository.aggregateStepMetricsByFacility(facilityId);
         Object[] dm = deviationRepository.aggregateDeviationMetricsByFacility(facilityId);
 
-        long totalEnrollments = toLong(sm[9]);
+        long totalEnrollments = enrolledInPeriod >= 0 ? enrolledInPeriod : toLong(sm[9]);
         if (totalEnrollments == 0) {
             return ComplianceSummaryDto.builder()
                     .totalEnrollments(0).compliantPatients(0).complianceRate(0.0)
@@ -97,14 +114,27 @@ public class ComplianceSummaryService {
                 .build();
     }
 
-    @Cacheable(value = "analytics", key = "'compliance-' + #protocolDefinitionId + '-' + (#facilityId ?: 'all') + '-' + (#snapshotDate ?: 'today')")
+    @Cacheable(value = "analytics",
+            key = "'compliance-' + #protocolDefinitionId + '-' + (#facilityId ?: 'all') + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all')")
     public ComplianceSummaryDto getProtocolComplianceSummary(UUID protocolDefinitionId, String facilityId,
-                                                              LocalDate snapshotDate) {
+                                                              OffsetDateTime startDate,
+                                                              OffsetDateTime endDate) {
         ProtocolDefinition pd = protocolDefinitionRepository.findById(protocolDefinitionId)
                 .orElseThrow(() -> new EntityNotFoundException(
                         "Protocol definition not found: " + protocolDefinitionId));
 
         boolean hasFacility = facilityId != null && !facilityId.isEmpty();
+        LocalDate snapshotDate = endDate != null ? endDate.toLocalDate()
+                : startDate != null ? startDate.toLocalDate()
+                : null;
+        long enrolledInPeriod = (startDate != null || endDate != null)
+                ? protocolInstanceRepository.findByProtocolDefinitionIdAndEnrolledBetween(
+                        protocolDefinitionId, startDate, endDate).stream()
+                        .map(pi -> pi.getPatientId())
+                        .filter(java.util.Objects::nonNull)
+                        .distinct()
+                        .count()
+                : -1L;
 
         if (!hasFacility) {
             // No facility filter — use pre-aggregated MV. Replaces 3 base-table queries:
@@ -123,13 +153,19 @@ public class ComplianceSummaryService {
             statusBreakdown.put("expired",   toLong(kpis[18]));
 
             long compliantPatients = toLong(kpis[10]);
+            long effectiveEnrollments = enrolledInPeriod >= 0 ? enrolledInPeriod : totalEnrollments;
+            long effectiveCompliant = enrolledInPeriod >= 0
+                    ? Math.min(effectiveEnrollments, compliantPatients)
+                    : compliantPatients;
             return ComplianceSummaryDto.builder()
                     .protocolDefinitionId(protocolDefinitionId)
                     .protocolCanonical(pd.getUrl() + "|" + pd.getVersion())
-                    .totalEnrollments(totalEnrollments)
-                    .compliantPatients(compliantPatients)
+                    .totalEnrollments(effectiveEnrollments)
+                    .compliantPatients(effectiveCompliant)
                     .statusBreakdown(statusBreakdown)
-                    .complianceRate(Math.round((double) compliantPatients / totalEnrollments * 1000.0) / 10.0)
+                    .complianceRate(effectiveEnrollments > 0
+                            ? Math.round((double) effectiveCompliant / effectiveEnrollments * 1000.0) / 10.0
+                            : 0.0)
                     .stepMetrics(ComplianceSummaryDto.StepMetrics.builder()
                             .totalSteps(toLong(kpis[8])).completed(toLong(kpis[0]))
                             .onTime(toLong(kpis[6])).late(toLong(kpis[7])).early(toLong(kpis[5]))
@@ -147,7 +183,7 @@ public class ComplianceSummaryService {
         Object[] sm = stepInstanceRepository.aggregateStepMetricsByProtocolAndFacility(protocolDefinitionId, facilityId);
         Object[] dm = deviationRepository.aggregateDeviationMetricsByProtocolAndFacility(protocolDefinitionId, facilityId);
 
-        long totalEnrollments = toLong(sm[9]);
+        long totalEnrollments = enrolledInPeriod >= 0 ? enrolledInPeriod : toLong(sm[9]);
         if (totalEnrollments == 0) {
             return buildEmptySummary(pd);
         }
@@ -184,8 +220,10 @@ public class ComplianceSummaryService {
                 .build();
     }
 
-    @Cacheable(value = "analytics", key = "'protocol-patients-' + #protocolDefinitionId + '-' + #statusFilter + '-' + #patientIdFilter + '-' + #startDate + '-' + #endDate + '-' + #limit + '-' + #offset")
+    @Cacheable(value = "analytics",
+            key = "'protocol-patients-' + #protocolDefinitionId + '-' + #statusFilter + '-' + (#facilityIdFilter ?: 'all') + '-' + #patientIdFilter + '-' + #startDate + '-' + #endDate + '-' + #limit + '-' + #offset")
     public ProtocolPatientsPage getProtocolPatients(UUID protocolDefinitionId, String statusFilter,
+                                                    String facilityIdFilter,
                                                     String patientIdFilter,
                                                     OffsetDateTime startDate, OffsetDateTime endDate,
                                                     int limit, int offset) {
@@ -196,6 +234,19 @@ public class ComplianceSummaryService {
         int pageSize = Math.max(limit, 1);
         List<ProtocolInstance> instances = latestInstancePerPatient(
                 loadInstancesForPatientFilter(protocolDefinitionId, patientIdFilter, startDate, endDate));
+
+        // Apply facility filter (membership via mv_patient_facility_latest).
+        if (facilityIdFilter != null && !facilityIdFilter.isEmpty()) {
+            Set<String> patientIdsAtFacility = complianceEventLogRepository
+                    .findPatientsByFacility(facilityIdFilter)
+                    .stream()
+                    .map(r -> (String) r[1])
+                    .collect(Collectors.toSet());
+            instances = instances.stream()
+                    .filter(pi -> patientIdsAtFacility.contains(pi.getPatientId()))
+                    .collect(Collectors.toList());
+        }
+
         instances.sort(Comparator.comparing(ProtocolInstance::getEnrolledAt,
                 Comparator.nullsLast(Comparator.reverseOrder())));
 
@@ -287,18 +338,24 @@ public class ComplianceSummaryService {
         return results;
     }
 
-    @Cacheable(value = "analytics", key = "'facility-' + #facilityId")
-    public FacilitySummaryDto getFacilityComplianceSummary(String facilityId) {
-        List<Object[]> rows = complianceEventLogRepository.findPatientsByFacility(facilityId);
-        Set<String> patients = new LinkedHashSet<>();
-        for (Object[] row : rows) patients.add((String) row[1]);
+    @Cacheable(value = "analytics",
+            key = "'facility-' + #facilityId + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all')")
+    public FacilitySummaryDto getFacilityComplianceSummary(String facilityId,
+                                                           OffsetDateTime startDate,
+                                                           OffsetDateTime endDate) {
+        // totalPatients respects the global date range so the tile lines up with the
+        // Dashboard tracked-cohort numbers.
+        long totalPatients = (startDate != null || endDate != null)
+                ? protocolInstanceRepository.countDistinctPatientsForFacility(facilityId, startDate, endDate)
+                : complianceEventLogRepository.findPatientsByFacility(facilityId)
+                        .stream().map(r -> (String) r[1]).distinct().count();
 
         // 2 aggregate queries replace findAll() + N+1 per-instance loops
         List<Object[]> stepMetrics = stepInstanceRepository.findProtocolStepMetricsByFacility(facilityId);
         if (stepMetrics.isEmpty()) {
             return FacilitySummaryDto.builder()
                     .facilityId(facilityId)
-                    .totalPatients(patients.size())
+                    .totalPatients(totalPatients)
                     .totalEnrollments(0)
                     .overallComplianceRate(0.0)
                     .protocolBreakdown(List.of())
@@ -338,7 +395,7 @@ public class ComplianceSummaryService {
 
         return FacilitySummaryDto.builder()
                 .facilityId(facilityId)
-                .totalPatients(patients.size())
+                .totalPatients(totalPatients)
                 .totalEnrollments(totalEnrollments)
                 .overallComplianceRate(overallRate)
                 .protocolBreakdown(breakdowns)

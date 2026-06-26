@@ -37,7 +37,7 @@ class ProtocolAnalyticsControllerIT extends AbstractIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        when(protocolAnalyticsService.getStepAnalytics(eq(PROTOCOL_ID), any()))
+        when(protocolAnalyticsService.getStepAnalytics(eq(PROTOCOL_ID), any(), any(), any()))
                 .thenReturn(StepAnalyticsDto.builder()
                         .protocolDefinitionId(PROTOCOL_ID)
                         .protocolCanonical("http://example.org/anc|1.0")
@@ -50,7 +50,7 @@ class ProtocolAnalyticsControllerIT extends AbstractIntegrationTest {
                                 .build()))
                         .build());
 
-        when(protocolAnalyticsService.getCompletionFunnel(PROTOCOL_ID))
+        when(protocolAnalyticsService.getCompletionFunnel(eq(PROTOCOL_ID), any(), any(), any()))
                 .thenReturn(CompletionFunnelDto.builder()
                         .protocolDefinitionId(PROTOCOL_ID)
                         .protocolCanonical("http://example.org/anc|1.0")
@@ -60,7 +60,7 @@ class ProtocolAnalyticsControllerIT extends AbstractIntegrationTest {
                                 .completedCount(2).completionRate(0.67).dropOffRate(0.33).build()))
                         .build());
 
-        when(protocolAnalyticsService.getOutcomeDistribution(PROTOCOL_ID))
+        when(protocolAnalyticsService.getOutcomeDistribution(eq(PROTOCOL_ID), any(), any(), any()))
                 .thenReturn(OutcomeDistributionDto.builder()
                         .protocolDefinitionId(PROTOCOL_ID)
                         .protocolCanonical("http://example.org/anc|1.0")
@@ -77,7 +77,7 @@ class ProtocolAnalyticsControllerIT extends AbstractIntegrationTest {
                                 .period("2026-03").enrollments(3).build()))
                         .build());
 
-        when(protocolAnalyticsService.getStepAnalytics(eq(UNKNOWN_ID), any()))
+        when(protocolAnalyticsService.getStepAnalytics(eq(UNKNOWN_ID), any(), any(), any()))
                 .thenThrow(new EntityNotFoundException("Protocol definition not found: " + UNKNOWN_ID));
     }
 

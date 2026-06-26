@@ -27,9 +27,17 @@ public interface DeviationRepository extends ReadOnlyRepository<Deviation, UUID>
 
     List<Object[]> findResolutionRate(UUID protocolDefId, OffsetDateTime startDate, OffsetDateTime endDate);
 
-    List<Object[]> countByTypeSince(OffsetDateTime since);
+    List<Object[]> countByTypeSince(OffsetDateTime since, String facilityId);
 
     List<Object[]> countByTypeInRange(OffsetDateTime startDate, OffsetDateTime endDate, String facilityId);
+
+    /**
+     * Period count of deviations grouped by deviation_type, with optional protocol and facility filters.
+     * Replaces summing daily snapshot rows from mv_daily_deviation_kpis (which double-counts across days).
+     * Returns rows of [deviation_type(String), count(long)].
+     */
+    List<Object[]> countByTypeFiltered(UUID protocolDefinitionId, String facilityId,
+                                        OffsetDateTime startDate, OffsetDateTime endDate);
 
     List<Object[]> findRepeatDeviationPatients(int minDeviations, String facilityId,
                                                OffsetDateTime startDate, OffsetDateTime endDate);

@@ -2,6 +2,65 @@
 
 ## Unreleased
 
+### Metric Definitions — Fundamental Fixes
+
+A workspace-wide audit found 14 places where two screens computed the "same" KPI from
+different sources, where a global filter was silently dropped, or where snapshot rows
+were summed across days. The following changes align everything to a single set of
+definitions; see `docs/data-dictionary.md` for the canonical formulas.
+
+- **Active / Inactive Facilities** — counted from `inbound_event_logs` (status =
+  `ACCEPTED`) intersected with the facility reference list, matching the requirement
+  that *any successful HIE submission qualifies*. Previously sourced from
+  `mv_daily_facility_kpis.event_count`, which excluded accepted-but-unmatched events.
+- **Facility Ranking `totalEvents`** — now sourced from `inbound_event_logs` for the
+  same reason; the "Events (period)" column aligns with the Events → By Facility table
+  and the Active Facilities tile.
+- **Deviation header KPIs** — counted from the `deviations` base table by
+  `detected_at`, not by summing `mv_daily_deviation_kpis` snapshot rows (which
+  inflated totals by counting still-open deviations every day they appeared).
+- **e-Buzima Adoption period columns** — `actualVisitsPerDay` and `reportingGapPerDay`
+  are now daily averages over the calendar range (matching the column labels), not
+  period totals.
+- **Dashboard vs Compliance Overview Tracked Patients** — both surfaces now count
+  *distinct patients enrolled in the selected period* (Compliance Overview previously
+  reported active-as-of-snapshot, which made the two pages disagree).
+
+### Filter Wiring (previously silently dropped)
+
+- **Global facility filter** — `facilityId` is now applied through
+  `/dashboard/compliance-summary`, `/facilities/ranking`,
+  `/protocols/{id}/patients`, `/deviations/kpis`, deviation `intelligence-summary`
+  recent-activity windows, `/events/summary`, `/events/by-resource-type`, and
+  `/events/by-facility`.
+- **Date range filter** — `/facilities/{facilityId}/compliance-summary` now respects
+  `startDate` / `endDate` instead of always returning all-time numbers.
+- **Protocol filter** — `/intelligence/summary` and `/practitioners/ranking` now
+  accept `protocolDefinitionId`; protocol-analytics endpoints
+  (`completion-funnel`, `outcome-distribution`) narrow to enrollments in the
+  selected period.
+- **Cache keys** — `dev-action`, `dev-resolution`, `step-analytics`, `funnel`,
+  `outcome`, `practitioner-rankings`, `compliance-all`, `compliance-{protocol}`,
+  `facility-{id}` cache keys all include date range / facility / protocol where
+  applicable so changing filters no longer returns stale results.
+
+### Naming
+
+- `PatientList` description, Practitioner Analytics tiles, and ranking column relabeled
+  to **"Step Completion"** to make explicit that the metric differs from the
+  deviation-based patient compliance shown on the Dashboard.
+- `e-Buzima Adoption` columns renamed to **Expected Visits / Day**, **Actual Visits /
+  Day**, **Reporting Gap / Day**, **Adoption Rate** (column order also swapped).
+
+### API Field Renames (breaking)
+
+- `AdoptionKpi.expectedPatientsPerDay` → `expectedVisitsPerDay`
+- `AdoptionKpi.actualPatients` → `actualVisitsPerDay`
+- `AdoptionKpi.reportingGap` → `reportingGapPerDay`
+- `FacilityReference.expectedPatientsPerDay` → `expectedVisitsPerDay`
+
+UI and service must be deployed together.
+
 ### Removed
 
 - **`GET /v1/insights/events/source-comparison`** — Removed source comparison endpoint, `SourceComparisonDto`, overlap/unique repository queries, and related integration tests.

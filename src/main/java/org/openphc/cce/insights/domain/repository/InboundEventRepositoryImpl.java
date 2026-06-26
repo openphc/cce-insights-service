@@ -356,6 +356,13 @@ public class InboundEventRepositoryImpl
     }
 
     @Override
+    public boolean facilityTransmittedInRange(String facilityId,
+                                               OffsetDateTime startDate, OffsetDateTime endDate) {
+        if (facilityId == null || facilityId.isEmpty()) return false;
+        return countAccepted(facilityId, startDate, endDate) > 0;
+    }
+
+    @Override
     public List<Object[]> findEventTrends(String interval, String facilityId, String source,
                                            OffsetDateTime startDate, OffsetDateTime endDate) {
         String fid = str(facilityId);
