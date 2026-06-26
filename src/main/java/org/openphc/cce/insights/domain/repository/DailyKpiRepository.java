@@ -37,10 +37,11 @@ public interface DailyKpiRepository {
     List<Object[]> getFacilityKpis();
 
     /**
-     * mv_daily_adoption_kpis — one row per facility_id, ordered by reporting_gap DESC.
-     * Returns: [facility_id(String), facility_name(String),
-     *           expected_patients_per_day(long), actual_patients(long),
-     *           adoption_rate_pct(double), reporting_gap(long)]
+     * mv_daily_adoption_kpis — today's snapshot, one row per facility_id.
+     * Returns: [facility_id(String), expected_patients_per_day(long),
+     *           sum_actual_patients(double), adoption_rate_pct(double)]
+     * Service layer rounds the actual count (ceiling) and derives the reporting gap so
+     * the API and UI cannot disagree.
      */
     List<Object[]> getAdoptionKpis();
 
@@ -84,11 +85,9 @@ public interface DailyKpiRepository {
 
     /**
      * mv_daily_adoption_kpis — multi-day aggregation for a reporting period.
-     * Per schema/07 formula: total_actual = SUM(actual_patients),
-     * total_expected = expected_patients_per_day × days_in_period,
-     * period_rate    = total_actual / total_expected × 100.
-     * Returns: [0] facility_id, [1] facility_name, [2] expected_patients_per_day,
-     *          [3] total_actual, [4] adoption_rate_pct (period), [5] reporting_gap (period)
+     * Returns: [facility_id(String), expected_patients_per_day(long),
+     *           sum_actual_patients(double), adoption_rate_pct(double)]
+     * Service layer ceiling-rounds the daily-average actual and derives the gap.
      */
     List<Object[]> getAdoptionKpisByDateRange(LocalDate startDate, LocalDate endDate);
 

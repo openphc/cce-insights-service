@@ -11,12 +11,13 @@ public class AdoptionKpiDto {
     private String facilityName;
     /** Validated baseline from facility (set by programme staff). */
     private long expectedVisitsPerDay;
-    /** Average daily distinct reporters over the selected period (or today when no range).
-     *  Float so small averages (e.g. 15 visits over 90 days = 0.17) are not rounded to 0. */
-    private double actualVisitsPerDay;
+    /** Average daily distinct reporters, rounded UP to a whole number so a sparse
+     *  non-zero average (e.g. 1 visit over 90 days = 0.011/day) still shows as ≥ 1. */
+    private long actualVisitsPerDay;
     /** actual / expected × 100 (period total when a date range is supplied). */
     private double adoptionRate;
-    /** Average daily expected − actual; positive = under-reporting. Float for the same
-     *  reason as {@link #actualVisitsPerDay}. */
-    private double reportingGapPerDay;
+    /** {@code expectedVisitsPerDay − actualVisitsPerDay}; positive = under-reporting.
+     *  Always a whole number — derived from the displayed `actualVisitsPerDay` so the
+     *  three columns are guaranteed to reconcile. */
+    private long reportingGapPerDay;
 }

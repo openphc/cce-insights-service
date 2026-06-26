@@ -133,29 +133,24 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
         var facilityIds = dsl.select(DSL.field("facility_id"))
                              .from(DSL.table(DSL.sql("facility" + finalClause())))
                              .where(DSL.field("_is_deleted").eq(0));
-        // facility_name is NOT in mv_daily_adoption_kpis — resolved from facility table in service layer.
-        // actual_patients / reporting_gap are returned as Double so the same DTO shape
-        // works for both today's snapshot and the multi-day average (see getAdoptionKpisByDateRange).
+        // Service layer derives actualVisitsPerDay (ceil) + reportingGapPerDay so the
+        // API and UI cannot disagree. SQL just returns the raw inputs.
         return dsl.select(
                     DSL.field("facility_id",               String.class),
                     DSL.field(DSL.sql("max(expected_patients_per_day)"), Long.class),
                     DSL.field(DSL.sql("toFloat64(sum(actual_patients))"), Double.class),
                     DSL.field(DSL.sql("if(coalesce(max(expected_patients_per_day), 0) = 0, toFloat64(100.0)," +
-                        " coalesce(max(adoption_rate_pct), toFloat64(0)))"), Double.class),
-                    DSL.field(DSL.sql("if(coalesce(max(expected_patients_per_day), 0) = 0, toFloat64(0)," +
-                        " toFloat64(coalesce(max(reporting_gap), toInt64(0))))"), Double.class))
+                        " coalesce(max(adoption_rate_pct), toFloat64(0)))"), Double.class))
                   .from(DSL.table(DSL.sql("mv_daily_adoption_kpis" + finalClause())))
                   .where(DSL.sql("snapshot_date = today()"))
                   .and(DSL.field("facility_id").in(facilityIds))
                   .groupBy(DSL.field("facility_id"))
-                  .orderBy(DSL.field(DSL.sql("max(reporting_gap)")).desc())
                   .fetch()
                   .map(r -> new Object[]{
                       r.get(0, String.class),   // [0] facility_id
                       toLong(r.get(1)),          // [1] expected_patients_per_day
-                      toDouble(r.get(2)),        // [2] actual_patients (sum)
-                      toDouble(r.get(3)),        // [3] adoption_rate_pct
-                      toDouble(r.get(4))         // [4] reporting_gap
+                      toDouble(r.get(2)),        // [2] sum(actual_patients)
+                      toDouble(r.get(3))         // [3] adoption_rate_pct
                   });
     }
 
@@ -334,34 +329,28 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
                              .from(DSL.table(DSL.sql("facility" + finalClause())))
                              .where(DSL.field("_is_deleted").eq(0));
 
-        String avgActualExpr =
-            "toFloat32(round(sum(actual_patients) / " + calendarDays + ", 1))";
         String rateExpr =
             "toFloat32(round(if(coalesce(max(expected_patients_per_day), 0) = 0, 100.0," +
             " sum(actual_patients) / nullIf(coalesce(max(expected_patients_per_day), 0) * " + calendarDays + ", 0) * 100), 1))";
-        String gapPerDayExpr =
-            "toFloat32(round(if(coalesce(max(expected_patients_per_day), 0) = 0, 0," +
-            " coalesce(max(expected_patients_per_day), 0) - sum(actual_patients) / " + calendarDays + "), 1))";
 
-        // facility_name is NOT in mv_daily_adoption_kpis — resolved from facility table in service layer.
+        // Service layer derives ceiled actualVisitsPerDay + reportingGapPerDay so the
+        // table columns reconcile by construction. SQL only returns raw inputs + the
+        // precise period adoption rate (which doesn't suffer from rounding artefacts).
         return dsl.select(
                     DSL.field("facility_id",              String.class),
                     DSL.field(DSL.sql("max(expected_patients_per_day)"), Long.class),
-                    DSL.field(DSL.sql(avgActualExpr), Double.class),
-                    DSL.field(DSL.sql(rateExpr)),
-                    DSL.field(DSL.sql(gapPerDayExpr), Double.class))
+                    DSL.field(DSL.sql("toFloat64(sum(actual_patients))"), Double.class),
+                    DSL.field(DSL.sql(rateExpr), Double.class))
                   .from(DSL.table(DSL.sql("mv_daily_adoption_kpis" + finalClause())))
                   .where(DSL.field("snapshot_date", LocalDate.class).between(startDate).and(endDate))
                   .and(DSL.field("facility_id").in(facilityIds))
                   .groupBy(DSL.field("facility_id"))
-                  .orderBy(DSL.field(DSL.sql(gapPerDayExpr)).desc())
                   .fetch()
                   .map(r -> new Object[]{
                       r.get(0, String.class),   // [0] facility_id
-                      toLong(r.get(1)),          // [1] expected_visits_per_day (integer baseline)
-                      toDouble(r.get(2)),        // [2] actual_visits_per_day (avg daily, 1 decimal)
-                      toDouble(r.get(3)),        // [3] adoption_rate_pct (period)
-                      toDouble(r.get(4))         // [4] reporting_gap_per_day (avg daily, 1 decimal)
+                      toLong(r.get(1)),          // [1] expected_visits_per_day
+                      toDouble(r.get(2)),        // [2] sum(actual_patients) — raw
+                      toDouble(r.get(3))         // [3] adoption_rate_pct (period)
                   });
     }
 
