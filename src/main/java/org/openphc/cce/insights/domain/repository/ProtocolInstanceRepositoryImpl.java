@@ -63,11 +63,17 @@ public class ProtocolInstanceRepositoryImpl
     // Repository methods — full jOOQ DSL
     // ══════════════════════════════════════════════════════════════════════════════
 
+    /** Excludes Debezium-propagated soft-deletes (_is_deleted=1) when FINAL merges haven't run yet. */
+    private static org.jooq.Condition notDeleted() {
+        return DSL.condition("pi._is_deleted = 0");
+    }
+
     @Override
     public List<String> findDistinctPatientIds() {
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
         return dsl.selectDistinct(DSL.field("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
                   .from(pi)
+                  .where(notDeleted())
                   .orderBy(DSL.field("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
                   .fetch(0, String.class);
     }
@@ -78,7 +84,8 @@ public class ProtocolInstanceRepositoryImpl
         Long count = dsl.select(
                         DSL.field("uniq(pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName() + ")", Long.class))
                     .from(pi)
-                    .where(enrollmentBetween(startDate, endDate))
+                    .where(notDeleted())
+                    .and(enrollmentBetween(startDate, endDate))
                     .fetchOne(0, Long.class);
         return count != null ? count : 0L;
     }
@@ -88,7 +95,8 @@ public class ProtocolInstanceRepositoryImpl
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
         return dsl.select(DSL.asterisk())
                   .from(pi)
-                  .where(DSL.field("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()).eq(patientId))
+                  .where(notDeleted())
+                  .and(DSL.field("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()).eq(patientId))
                   .fetch()
                   .map(this::toProtocolInstance);
     }
@@ -98,7 +106,8 @@ public class ProtocolInstanceRepositoryImpl
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
         return dsl.select(DSL.asterisk())
                   .from(pi)
-                  .where(DSL.condition(
+                  .where(notDeleted())
+                  .and(DSL.condition(
                           "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
                           protocolDefinitionId.toString()))
                   .fetch()
@@ -110,7 +119,8 @@ public class ProtocolInstanceRepositoryImpl
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
         return dsl.select(DSL.asterisk())
                   .from(pi)
-                  .where(enrollmentBetween(startDate, endDate))
+                  .where(notDeleted())
+                  .and(enrollmentBetween(startDate, endDate))
                   .orderBy(DSL.field("pi." + PROTOCOL_INSTANCES.ENROLLED_AT.getName()).desc())
                   .fetch()
                   .map(this::toProtocolInstance);
@@ -123,7 +133,8 @@ public class ProtocolInstanceRepositoryImpl
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
         return dsl.select(DSL.asterisk())
                   .from(pi)
-                  .where(DSL.condition(
+                  .where(notDeleted())
+                  .and(DSL.condition(
                           "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
                           protocolDefinitionId.toString()))
                   .and(enrollmentBetween(startDate, endDate))
@@ -135,9 +146,10 @@ public class ProtocolInstanceRepositoryImpl
     @Override
     public Page<ProtocolInstance> findByProtocolDefinitionId(UUID protocolDefinitionId, Pageable pageable) {
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
-        var condition = DSL.condition(
-                "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
-                protocolDefinitionId.toString());
+        var condition = notDeleted()
+                .and(DSL.condition(
+                        "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
+                        protocolDefinitionId.toString()));
         List<ProtocolInstance> content = dsl.select(DSL.asterisk())
                 .from(pi)
                 .where(condition)
@@ -160,7 +172,8 @@ public class ProtocolInstanceRepositoryImpl
                     DSL.field("pi." + PROTOCOL_INSTANCES.STATUS.getName()),
                     DSL.field("count()", Long.class))
                   .from(pi)
-                  .where(DSL.condition(
+                  .where(notDeleted())
+                  .and(DSL.condition(
                           "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
                           protocolDefId.toString()))
                   .groupBy(DSL.field("pi." + PROTOCOL_INSTANCES.STATUS.getName()))
@@ -180,7 +193,8 @@ public class ProtocolInstanceRepositoryImpl
                   .from(pi)
                   .join(pf).on(DSL.condition(
                           "pf.patient_id = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
-                  .where(DSL.condition(
+                  .where(notDeleted())
+                  .and(DSL.condition(
                           "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
                           protocolDefId.toString()))
                   .and(DSL.field("pf.facility_id").eq(facilityId))
@@ -205,7 +219,8 @@ public class ProtocolInstanceRepositoryImpl
                     DSL.field(DSL.sql(periodExpr)).as("period"),
                     DSL.field("count()", Long.class).as("enrollments"))
                   .from(pi)
-                  .where(DSL.condition(
+                  .where(notDeleted())
+                  .and(DSL.condition(
                           "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
                           protocolDefId.toString()))
                   .and(DSL.condition(
@@ -225,10 +240,11 @@ public class ProtocolInstanceRepositoryImpl
                                                                        ProtocolInstanceStatus status,
                                                                        Pageable pageable) {
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
-        var condition = DSL.condition(
-                "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
-                protocolDefId.toString())
-            .and(DSL.field("pi." + PROTOCOL_INSTANCES.STATUS.getName()).eq(status.name()));
+        var condition = notDeleted()
+                .and(DSL.condition(
+                        "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
+                        protocolDefId.toString()))
+                .and(DSL.field("pi." + PROTOCOL_INSTANCES.STATUS.getName()).eq(status.name()));
         List<ProtocolInstance> content = dsl.select(DSL.asterisk())
                 .from(pi)
                 .where(condition)
@@ -250,11 +266,12 @@ public class ProtocolInstanceRepositoryImpl
                                                                                     Pageable pageable) {
         String pattern = "%" + patientId.toLowerCase() + "%";
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
-        var condition = DSL.condition(
-                "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
-                protocolDefId.toString())
-            .and(DSL.condition(
-                    "lower(pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName() + ") LIKE ?", pattern));
+        var condition = notDeleted()
+                .and(DSL.condition(
+                        "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
+                        protocolDefId.toString()))
+                .and(DSL.condition(
+                        "lower(pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName() + ") LIKE ?", pattern));
         List<ProtocolInstance> content = dsl.select(DSL.asterisk())
                 .from(pi)
                 .where(condition)
@@ -298,7 +315,8 @@ public class ProtocolInstanceRepositoryImpl
                           "pf.patient_id = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
                   .leftJoin(d).on(DSL.condition(
                           "d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
-                  .where(DSL.field("pf.facility_id").ne(""))
+                  .where(notDeleted())
+                  .and(DSL.field("pf.facility_id").ne(""))
                   .and(enrollmentBetween(startDate, endDate))
                   .groupBy(DSL.field("pf.facility_id"))
                   .orderBy(DSL.field("pf.facility_id"))
@@ -340,7 +358,8 @@ public class ProtocolInstanceRepositoryImpl
                     .from(pi)
                     .join(pf).on(DSL.condition(
                             "pf.patient_id = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
-                    .where(DSL.field("pf.facility_id").eq(facilityId))
+                    .where(notDeleted())
+                    .and(DSL.field("pf.facility_id").eq(facilityId))
                     .and(enrollmentBetween(startDate, endDate))
                     .fetchOne(0, Long.class);
         return count != null ? count : 0L;

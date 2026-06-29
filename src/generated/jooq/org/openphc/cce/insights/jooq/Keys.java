@@ -36,11 +36,13 @@ import org.openphc.cce.insights.jooq.tables.MvIntelligenceSummary;
 import org.openphc.cce.insights.jooq.tables.MvPatientFacilityLatest;
 import org.openphc.cce.insights.jooq.tables.MvPractitionerSummary;
 import org.openphc.cce.insights.jooq.tables.ProtocolDefinitions;
+import org.openphc.cce.insights.jooq.tables.ProtocolInstanceHistory;
 import org.openphc.cce.insights.jooq.tables.ProtocolInstances;
 import org.openphc.cce.insights.jooq.tables.ReceiverAdaptor;
 import org.openphc.cce.insights.jooq.tables.RollupDeliveryCurrent;
 import org.openphc.cce.insights.jooq.tables.RollupProtocolInstanceCurrent;
 import org.openphc.cce.insights.jooq.tables.RollupStepCurrent;
+import org.openphc.cce.insights.jooq.tables.StepInstanceHistory;
 import org.openphc.cce.insights.jooq.tables.StepInstances;
 
 
@@ -82,10 +84,12 @@ public class Keys {
     public static final UniqueKey<Record> PK_MV_PATIENT_FACILITY_LATEST = Internal.createUniqueKey(MvPatientFacilityLatest.MV_PATIENT_FACILITY_LATEST, DSL.name("PK_mv_patient_facility_latest"), new TableField[] { MvPatientFacilityLatest.MV_PATIENT_FACILITY_LATEST.PATIENT_ID }, true);
     public static final UniqueKey<Record> PK_MV_PRACTITIONER_SUMMARY = Internal.createUniqueKey(MvPractitionerSummary.MV_PRACTITIONER_SUMMARY, DSL.name("PK_mv_practitioner_summary"), new TableField[] { MvPractitionerSummary.MV_PRACTITIONER_SUMMARY.FACILITY_ID, MvPractitionerSummary.MV_PRACTITIONER_SUMMARY.PRACTITIONER_REF, MvPractitionerSummary.MV_PRACTITIONER_SUMMARY.DAY }, true);
     public static final UniqueKey<Record> PK_PROTOCOL_DEFINITIONS = Internal.createUniqueKey(ProtocolDefinitions.PROTOCOL_DEFINITIONS, DSL.name("PK_protocol_definitions"), new TableField[] { ProtocolDefinitions.PROTOCOL_DEFINITIONS.ID }, true);
+    public static final UniqueKey<Record> PK_PROTOCOL_INSTANCE_HISTORY = Internal.createUniqueKey(ProtocolInstanceHistory.PROTOCOL_INSTANCE_HISTORY, DSL.name("PK_protocol_instance_history"), new TableField[] { ProtocolInstanceHistory.PROTOCOL_INSTANCE_HISTORY.ID }, true);
     public static final UniqueKey<Record> PK_PROTOCOL_INSTANCES = Internal.createUniqueKey(ProtocolInstances.PROTOCOL_INSTANCES, DSL.name("PK_protocol_instances"), new TableField[] { ProtocolInstances.PROTOCOL_INSTANCES.ID }, true);
     public static final UniqueKey<Record> PK_RECEIVER_ADAPTOR = Internal.createUniqueKey(ReceiverAdaptor.RECEIVER_ADAPTOR, DSL.name("PK_receiver_adaptor"), new TableField[] { ReceiverAdaptor.RECEIVER_ADAPTOR.ID }, true);
     public static final UniqueKey<Record> PK_ROLLUP_DELIVERY_CURRENT = Internal.createUniqueKey(RollupDeliveryCurrent.ROLLUP_DELIVERY_CURRENT, DSL.name("PK_rollup_delivery_current"), new TableField[] { RollupDeliveryCurrent.ROLLUP_DELIVERY_CURRENT.ID }, true);
     public static final UniqueKey<Record> PK_ROLLUP_PROTOCOL_INSTANCE_CURRENT = Internal.createUniqueKey(RollupProtocolInstanceCurrent.ROLLUP_PROTOCOL_INSTANCE_CURRENT, DSL.name("PK_rollup_protocol_instance_current"), new TableField[] { RollupProtocolInstanceCurrent.ROLLUP_PROTOCOL_INSTANCE_CURRENT.PROTOCOL_DEFINITION_ID, RollupProtocolInstanceCurrent.ROLLUP_PROTOCOL_INSTANCE_CURRENT.ID }, true);
     public static final UniqueKey<Record> PK_ROLLUP_STEP_CURRENT = Internal.createUniqueKey(RollupStepCurrent.ROLLUP_STEP_CURRENT, DSL.name("PK_rollup_step_current"), new TableField[] { RollupStepCurrent.ROLLUP_STEP_CURRENT.PROTOCOL_INSTANCE_ID, RollupStepCurrent.ROLLUP_STEP_CURRENT.ID }, true);
+    public static final UniqueKey<Record> PK_STEP_INSTANCE_HISTORY = Internal.createUniqueKey(StepInstanceHistory.STEP_INSTANCE_HISTORY, DSL.name("PK_step_instance_history"), new TableField[] { StepInstanceHistory.STEP_INSTANCE_HISTORY.ID }, true);
     public static final UniqueKey<Record> PK_STEP_INSTANCES = Internal.createUniqueKey(StepInstances.STEP_INSTANCES, DSL.name("PK_step_instances"), new TableField[] { StepInstances.STEP_INSTANCES.ID }, true);
 }
