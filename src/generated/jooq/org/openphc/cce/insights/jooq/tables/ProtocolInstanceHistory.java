@@ -62,12 +62,6 @@ public class ProtocolInstanceHistory extends TableImpl<Record> {
     public final TableField<Record, UUID> PROTOCOL_INSTANCE_ID = createField(DSL.name("protocol_instance_id"), SQLDataType.UUID.nullable(false), this, "");
 
     /**
-     * The column
-     * <code>cce_analytics.protocol_instance_history.protocol_definition_id</code>.
-     */
-    public final TableField<Record, UUID> PROTOCOL_DEFINITION_ID = createField(DSL.name("protocol_definition_id"), SQLDataType.UUID.nullable(false), this, "");
-
-    /**
      * The column <code>cce_analytics.protocol_instance_history.status</code>.
      */
     public final TableField<Record, Object> STATUS = createField(DSL.name("status"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
