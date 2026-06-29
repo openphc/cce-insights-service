@@ -77,6 +77,9 @@ import org.openphc.cce.insights.jooq.tables.MvPractitionerSummaryMv;
 import org.openphc.cce.insights.jooq.tables.ProtocolDefinitions;
 import org.openphc.cce.insights.jooq.tables.ProtocolDefinitionsMv;
 import org.openphc.cce.insights.jooq.tables.ProtocolDefinitionsQueue;
+import org.openphc.cce.insights.jooq.tables.ProtocolInstanceHistory;
+import org.openphc.cce.insights.jooq.tables.ProtocolInstanceHistoryMv;
+import org.openphc.cce.insights.jooq.tables.ProtocolInstanceHistoryQueue;
 import org.openphc.cce.insights.jooq.tables.ProtocolInstances;
 import org.openphc.cce.insights.jooq.tables.ProtocolInstancesMv;
 import org.openphc.cce.insights.jooq.tables.ProtocolInstancesQueue;
@@ -89,6 +92,9 @@ import org.openphc.cce.insights.jooq.tables.RollupProtocolInstanceCurrent;
 import org.openphc.cce.insights.jooq.tables.RollupProtocolInstanceCurrentMv;
 import org.openphc.cce.insights.jooq.tables.RollupStepCurrent;
 import org.openphc.cce.insights.jooq.tables.RollupStepCurrentMv;
+import org.openphc.cce.insights.jooq.tables.StepInstanceHistory;
+import org.openphc.cce.insights.jooq.tables.StepInstanceHistoryMv;
+import org.openphc.cce.insights.jooq.tables.StepInstanceHistoryQueue;
 import org.openphc.cce.insights.jooq.tables.StepInstances;
 import org.openphc.cce.insights.jooq.tables.StepInstancesMv;
 import org.openphc.cce.insights.jooq.tables.StepInstancesQueue;
@@ -444,6 +450,21 @@ public class CceAnalytics extends SchemaImpl {
     public final ProtocolDefinitionsQueue PROTOCOL_DEFINITIONS_QUEUE = ProtocolDefinitionsQueue.PROTOCOL_DEFINITIONS_QUEUE;
 
     /**
+     * The table <code>cce_analytics.protocol_instance_history</code>.
+     */
+    public final ProtocolInstanceHistory PROTOCOL_INSTANCE_HISTORY = ProtocolInstanceHistory.PROTOCOL_INSTANCE_HISTORY;
+
+    /**
+     * The table <code>cce_analytics.protocol_instance_history_mv</code>.
+     */
+    public final ProtocolInstanceHistoryMv PROTOCOL_INSTANCE_HISTORY_MV = ProtocolInstanceHistoryMv.PROTOCOL_INSTANCE_HISTORY_MV;
+
+    /**
+     * The table <code>cce_analytics.protocol_instance_history_queue</code>.
+     */
+    public final ProtocolInstanceHistoryQueue PROTOCOL_INSTANCE_HISTORY_QUEUE = ProtocolInstanceHistoryQueue.PROTOCOL_INSTANCE_HISTORY_QUEUE;
+
+    /**
      * The table <code>cce_analytics.protocol_instances</code>.
      */
     public final ProtocolInstances PROTOCOL_INSTANCES = ProtocolInstances.PROTOCOL_INSTANCES;
@@ -502,6 +523,21 @@ public class CceAnalytics extends SchemaImpl {
      * The table <code>cce_analytics.rollup_step_current_mv</code>.
      */
     public final RollupStepCurrentMv ROLLUP_STEP_CURRENT_MV = RollupStepCurrentMv.ROLLUP_STEP_CURRENT_MV;
+
+    /**
+     * The table <code>cce_analytics.step_instance_history</code>.
+     */
+    public final StepInstanceHistory STEP_INSTANCE_HISTORY = StepInstanceHistory.STEP_INSTANCE_HISTORY;
+
+    /**
+     * The table <code>cce_analytics.step_instance_history_mv</code>.
+     */
+    public final StepInstanceHistoryMv STEP_INSTANCE_HISTORY_MV = StepInstanceHistoryMv.STEP_INSTANCE_HISTORY_MV;
+
+    /**
+     * The table <code>cce_analytics.step_instance_history_queue</code>.
+     */
+    public final StepInstanceHistoryQueue STEP_INSTANCE_HISTORY_QUEUE = StepInstanceHistoryQueue.STEP_INSTANCE_HISTORY_QUEUE;
 
     /**
      * The table <code>cce_analytics.step_instances</code>.
@@ -601,6 +637,9 @@ public class CceAnalytics extends SchemaImpl {
             ProtocolDefinitions.PROTOCOL_DEFINITIONS,
             ProtocolDefinitionsMv.PROTOCOL_DEFINITIONS_MV,
             ProtocolDefinitionsQueue.PROTOCOL_DEFINITIONS_QUEUE,
+            ProtocolInstanceHistory.PROTOCOL_INSTANCE_HISTORY,
+            ProtocolInstanceHistoryMv.PROTOCOL_INSTANCE_HISTORY_MV,
+            ProtocolInstanceHistoryQueue.PROTOCOL_INSTANCE_HISTORY_QUEUE,
             ProtocolInstances.PROTOCOL_INSTANCES,
             ProtocolInstancesMv.PROTOCOL_INSTANCES_MV,
             ProtocolInstancesQueue.PROTOCOL_INSTANCES_QUEUE,
@@ -613,6 +652,9 @@ public class CceAnalytics extends SchemaImpl {
             RollupProtocolInstanceCurrentMv.ROLLUP_PROTOCOL_INSTANCE_CURRENT_MV,
             RollupStepCurrent.ROLLUP_STEP_CURRENT,
             RollupStepCurrentMv.ROLLUP_STEP_CURRENT_MV,
+            StepInstanceHistory.STEP_INSTANCE_HISTORY,
+            StepInstanceHistoryMv.STEP_INSTANCE_HISTORY_MV,
+            StepInstanceHistoryQueue.STEP_INSTANCE_HISTORY_QUEUE,
             StepInstances.STEP_INSTANCES,
             StepInstancesMv.STEP_INSTANCES_MV,
             StepInstancesQueue.STEP_INSTANCES_QUEUE

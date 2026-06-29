@@ -71,6 +71,9 @@ import org.openphc.cce.insights.jooq.tables.MvPractitionerSummaryMv;
 import org.openphc.cce.insights.jooq.tables.ProtocolDefinitions;
 import org.openphc.cce.insights.jooq.tables.ProtocolDefinitionsMv;
 import org.openphc.cce.insights.jooq.tables.ProtocolDefinitionsQueue;
+import org.openphc.cce.insights.jooq.tables.ProtocolInstanceHistory;
+import org.openphc.cce.insights.jooq.tables.ProtocolInstanceHistoryMv;
+import org.openphc.cce.insights.jooq.tables.ProtocolInstanceHistoryQueue;
 import org.openphc.cce.insights.jooq.tables.ProtocolInstances;
 import org.openphc.cce.insights.jooq.tables.ProtocolInstancesMv;
 import org.openphc.cce.insights.jooq.tables.ProtocolInstancesQueue;
@@ -83,6 +86,9 @@ import org.openphc.cce.insights.jooq.tables.RollupProtocolInstanceCurrent;
 import org.openphc.cce.insights.jooq.tables.RollupProtocolInstanceCurrentMv;
 import org.openphc.cce.insights.jooq.tables.RollupStepCurrent;
 import org.openphc.cce.insights.jooq.tables.RollupStepCurrentMv;
+import org.openphc.cce.insights.jooq.tables.StepInstanceHistory;
+import org.openphc.cce.insights.jooq.tables.StepInstanceHistoryMv;
+import org.openphc.cce.insights.jooq.tables.StepInstanceHistoryQueue;
 import org.openphc.cce.insights.jooq.tables.StepInstances;
 import org.openphc.cce.insights.jooq.tables.StepInstancesMv;
 import org.openphc.cce.insights.jooq.tables.StepInstancesQueue;
@@ -431,6 +437,21 @@ public class Tables {
     public static final ProtocolDefinitionsQueue PROTOCOL_DEFINITIONS_QUEUE = ProtocolDefinitionsQueue.PROTOCOL_DEFINITIONS_QUEUE;
 
     /**
+     * The table <code>cce_analytics.protocol_instance_history</code>.
+     */
+    public static final ProtocolInstanceHistory PROTOCOL_INSTANCE_HISTORY = ProtocolInstanceHistory.PROTOCOL_INSTANCE_HISTORY;
+
+    /**
+     * The table <code>cce_analytics.protocol_instance_history_mv</code>.
+     */
+    public static final ProtocolInstanceHistoryMv PROTOCOL_INSTANCE_HISTORY_MV = ProtocolInstanceHistoryMv.PROTOCOL_INSTANCE_HISTORY_MV;
+
+    /**
+     * The table <code>cce_analytics.protocol_instance_history_queue</code>.
+     */
+    public static final ProtocolInstanceHistoryQueue PROTOCOL_INSTANCE_HISTORY_QUEUE = ProtocolInstanceHistoryQueue.PROTOCOL_INSTANCE_HISTORY_QUEUE;
+
+    /**
      * The table <code>cce_analytics.protocol_instances</code>.
      */
     public static final ProtocolInstances PROTOCOL_INSTANCES = ProtocolInstances.PROTOCOL_INSTANCES;
@@ -489,6 +510,21 @@ public class Tables {
      * The table <code>cce_analytics.rollup_step_current_mv</code>.
      */
     public static final RollupStepCurrentMv ROLLUP_STEP_CURRENT_MV = RollupStepCurrentMv.ROLLUP_STEP_CURRENT_MV;
+
+    /**
+     * The table <code>cce_analytics.step_instance_history</code>.
+     */
+    public static final StepInstanceHistory STEP_INSTANCE_HISTORY = StepInstanceHistory.STEP_INSTANCE_HISTORY;
+
+    /**
+     * The table <code>cce_analytics.step_instance_history_mv</code>.
+     */
+    public static final StepInstanceHistoryMv STEP_INSTANCE_HISTORY_MV = StepInstanceHistoryMv.STEP_INSTANCE_HISTORY_MV;
+
+    /**
+     * The table <code>cce_analytics.step_instance_history_queue</code>.
+     */
+    public static final StepInstanceHistoryQueue STEP_INSTANCE_HISTORY_QUEUE = StepInstanceHistoryQueue.STEP_INSTANCE_HISTORY_QUEUE;
 
     /**
      * The table <code>cce_analytics.step_instances</code>.
