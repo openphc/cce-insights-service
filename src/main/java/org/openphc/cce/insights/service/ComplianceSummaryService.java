@@ -221,11 +221,12 @@ public class ComplianceSummaryService {
     }
 
     @Cacheable(value = "analytics",
-            key = "'protocol-patients-' + #protocolDefinitionId + '-' + #statusFilter + '-' + (#facilityIdFilter ?: 'all') + '-' + #patientIdFilter + '-' + #startDate + '-' + #endDate + '-' + #limit + '-' + #offset")
+            key = "'protocol-patients-' + #protocolDefinitionId + '-' + #statusFilter + '-' + (#facilityIdFilter ?: 'all') + '-' + #patientIdFilter + '-' + #startDate + '-' + #endDate + '-' + #dateFilterMode + '-' + #limit + '-' + #offset")
     public ProtocolPatientsPage getProtocolPatients(UUID protocolDefinitionId, String statusFilter,
                                                     String facilityIdFilter,
                                                     String patientIdFilter,
                                                     OffsetDateTime startDate, OffsetDateTime endDate,
+                                                    String dateFilterMode,
                                                     int limit, int offset) {
         protocolDefinitionRepository.findById(protocolDefinitionId)
                 .orElseThrow(() -> new EntityNotFoundException(
@@ -233,7 +234,7 @@ public class ComplianceSummaryService {
 
         int pageSize = Math.max(limit, 1);
         List<ProtocolInstance> instances = latestInstancePerPatient(
-                loadInstancesForPatientFilter(protocolDefinitionId, patientIdFilter, startDate, endDate));
+                loadInstancesForPatientFilter(protocolDefinitionId, patientIdFilter, startDate, endDate, dateFilterMode));
 
         // Apply facility filter (membership via mv_patient_facility_latest).
         if (facilityIdFilter != null && !facilityIdFilter.isEmpty()) {
@@ -275,11 +276,20 @@ public class ComplianceSummaryService {
     private List<ProtocolInstance> loadInstancesForPatientFilter(UUID protocolDefinitionId,
                                                                   String patientIdFilter,
                                                                   OffsetDateTime startDate,
-                                                                  OffsetDateTime endDate) {
-        List<ProtocolInstance> instances = (startDate != null || endDate != null)
-                ? protocolInstanceRepository.findByProtocolDefinitionIdAndEnrolledBetween(
-                        protocolDefinitionId, startDate, endDate)
-                : protocolInstanceRepository.findByProtocolDefinitionId(protocolDefinitionId);
+                                                                  OffsetDateTime endDate,
+                                                                  String dateFilterMode) {
+        boolean hasDateRange = startDate != null || endDate != null;
+        boolean activityMode = "activity".equalsIgnoreCase(dateFilterMode);
+        List<ProtocolInstance> instances;
+        if (!hasDateRange) {
+            instances = protocolInstanceRepository.findByProtocolDefinitionId(protocolDefinitionId);
+        } else if (activityMode) {
+            instances = protocolInstanceRepository.findByProtocolDefinitionIdWithActivityBetween(
+                    protocolDefinitionId, startDate, endDate);
+        } else {
+            instances = protocolInstanceRepository.findByProtocolDefinitionIdAndEnrolledBetween(
+                    protocolDefinitionId, startDate, endDate);
+        }
         if (patientIdFilter != null && !patientIdFilter.isEmpty()) {
             String pattern = patientIdFilter.toLowerCase();
             return instances.stream()

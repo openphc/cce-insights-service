@@ -25,6 +25,11 @@ public interface ProtocolInstanceRepository extends ReadOnlyRepository<ProtocolI
                                                                         OffsetDateTime startDate,
                                                                         OffsetDateTime endDate);
 
+    /** Protocol instances that had step activity (step updated_at) in the given window. */
+    List<ProtocolInstance> findByProtocolDefinitionIdWithActivityBetween(UUID protocolDefinitionId,
+                                                                          OffsetDateTime startDate,
+                                                                          OffsetDateTime endDate);
+
     /** All protocol_instance rows whose enrolled_at falls in the optional bounds. */
     List<ProtocolInstance> findEnrolledBetween(OffsetDateTime startDate, OffsetDateTime endDate);
 
