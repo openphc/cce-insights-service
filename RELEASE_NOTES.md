@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+### Soft-Delete Phantom Row Fix
+
+- **`_is_deleted = 0` filter** added to all 14 query methods in `ProtocolInstanceRepositoryImpl`. ClickHouse `ReplacingMergeTree(_version, _is_deleted)` tables receive Debezium CDC tombstone rows (`_is_deleted=1`) when a patient enrollment is deleted in Postgres. Without explicit filtering, these phantom rows appear in compliance counts, patient lists, and enrollment trends until background merges run. The fix is a `notDeleted()` helper that appends `_is_deleted = 0` as the first WHERE condition on every query against `protocol_instances`, independently of whether the `FINAL` clause is enabled.
+
+### Patient Compliance — Date Filter Mode
+
+- **`dateFilterMode` query parameter** added to `GET /v1/insights/protocols/{protocolDefinitionId}/patients`. Accepts `enrollment` (default) or `activity`.
+  - `enrollment` (unchanged behaviour) — cohort = patients whose `enrolled_at` falls within `[startDate, endDate]`.
+  - `activity` — cohort = patients with at least one step instance whose `updated_at` falls within `[startDate, endDate]`, regardless of enrollment date. Powered by a new `findByProtocolDefinitionIdWithActivityBetween` repository method that uses an IN subquery on `step_instances.updated_at`.
+- **Cache key** for `getProtocolPatients` updated to include `dateFilterMode` so toggling modes invalidates the cached page.
+- **UI toggle** — Patient Compliance page (`PatientList.tsx`) shows radio buttons "Enrollment Date" / "Activity Date". The subtitle under the page header updates dynamically to describe which cohort is being shown.
+
+### Protocol Journey Sub-Step Visibility Fix
+
+- **Bug fixed:** on Patient Detail, a root step that was `NOT_STARTED` and filtered out could still have its sub-steps rendered. For example, "Lab Order" (root, `NOT_STARTED`, not yet triggered) was hidden but "Laboratory Results" (its sub-step) still appeared.
+- **Root cause:** the inline `.filter()` only checked the sub-step's own status, not whether its parent root step was visible.
+- **Fix:** `PatientDetail.tsx` Protocol Journey section now uses a two-pass algorithm — first pass pre-computes a `visibleRootIdx` set for all root steps; second pass filters each step using parent visibility inheritance so sub-steps of hidden roots are also hidden.
+
+### jOOQ Regeneration
+
+- Regenerated jOOQ sources from live ClickHouse schema (`./gradlew generateJooq`). Four columns removed from generated history tables (`ProtocolInstanceHistory`, `StepInstanceHistory`) matching schema changes made upstream — these columns are genuinely absent from the ClickHouse schema and no application code referenced them.
+
 ### Metric Definitions — Fundamental Fixes
 
 A workspace-wide audit found 14 places where two screens computed the "same" KPI from

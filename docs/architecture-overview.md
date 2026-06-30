@@ -215,6 +215,8 @@ dsl.select(DSL.field(STEP_INSTANCES.STATE.getName()))
 
 > **FINAL clause:** ClickHouse `ReplacingMergeTree` tables may have duplicate rows until background merges complete. The `FINAL` modifier forces deduplication at query time. All queries against `mv_daily_*` tables and `facility` must use `FINAL` — these are always queried with explicit `FINAL` in `DailyKpiRepositoryImpl`.
 
+> **Soft-delete awareness (`_is_deleted = 0`):** The `protocol_instances` table uses `ReplacingMergeTree(_version, _is_deleted)`. Debezium CDC propagates Postgres deletes as new rows with `_is_deleted=1` rather than physical deletions. Until ClickHouse background merges run (which can be delayed on low-traffic UAT environments), both the original row and the tombstone row co-exist. All `ProtocolInstanceRepositoryImpl` queries include an explicit `_is_deleted = 0` filter as the first `WHERE` condition so deleted protocol instances never appear in compliance analytics regardless of whether `FINAL` has merged the data. The `CLICKHOUSE_USE_FINAL` flag (default `false` on UAT) provides an additional safeguard but is not relied upon as the primary guard.
+
 ### 4.3 Key Query Patterns
 
 **Protocol Compliance Summary:**

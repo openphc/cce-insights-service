@@ -129,8 +129,9 @@ deduplicated to **one row per patient** (most recent enrollment in the filtered 
 | `status` | String | — | Filter: `on_track` (compliant), `non_compliant` |
 | `facilityId` | String | — | Restrict to patients whose latest facility (via `mv_patient_facility_latest`) matches |
 | `patientId` | String | — | Substring search on patient ID |
-| `startDate` | ISO 8601 | — | When set, cohort = enrolled in period — pagination `total_count` reflects unique patients in that cohort |
+| `startDate` | ISO 8601 | — | When set, narrows cohort based on `dateFilterMode` |
 | `endDate` | ISO 8601 | — | End of date range |
+| `dateFilterMode` | String | `enrollment` | `enrollment` — cohort = patients enrolled in [startDate, endDate]; `activity` — cohort = patients with step activity (`step_instances.updated_at`) in [startDate, endDate] regardless of enrollment date |
 | `limit` | Integer | `15` | Page size (max 200) |
 | `cursor` | String | — | Pagination cursor |
 
