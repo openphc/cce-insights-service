@@ -365,6 +365,28 @@ public class ProtocolInstanceRepositoryImpl
         return count != null ? count : 0L;
     }
 
+    @Override
+    public List<ProtocolInstance> findByProtocolDefinitionIdWithActivityBetween(UUID protocolDefinitionId,
+                                                                                 OffsetDateTime startDate,
+                                                                                 OffsetDateTime endDate) {
+        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        return dsl.select(DSL.asterisk())
+                  .from(pi)
+                  .where(notDeleted())
+                  .and(DSL.condition(
+                          "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
+                          protocolDefinitionId.toString()))
+                  .and(DSL.condition(
+                          "pi.id IN (SELECT protocol_instance_id FROM step_instances" + finalClause()
+                          + " WHERE _is_deleted = 0"
+                          + " AND updated_at >= parseDateTime64BestEffort(?)"
+                          + " AND updated_at <= parseDateTime64BestEffort(?))",
+                          dtStart(startDate), dtEnd(endDate)))
+                  .orderBy(DSL.field("pi." + PROTOCOL_INSTANCES.ENROLLED_AT.getName()).desc())
+                  .fetch()
+                  .map(this::toProtocolInstance);
+    }
+
     private org.jooq.Condition enrollmentBetween(OffsetDateTime startDate, OffsetDateTime endDate) {
         String enrolledAt = "pi." + PROTOCOL_INSTANCES.ENROLLED_AT.getName();
         org.jooq.Condition condition = DSL.trueCondition();
