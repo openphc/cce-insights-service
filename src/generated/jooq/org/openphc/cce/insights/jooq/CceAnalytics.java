@@ -11,16 +11,47 @@ import org.jooq.Catalog;
 import org.jooq.Table;
 import org.jooq.impl.SchemaImpl;
 import org.openphc.cce.insights.jooq.tables.ActionDefinitions;
+import org.openphc.cce.insights.jooq.tables.ActionDefinitionsMv;
+import org.openphc.cce.insights.jooq.tables.ActionDefinitionsQueue;
 import org.openphc.cce.insights.jooq.tables.ComplianceEventLogs;
+import org.openphc.cce.insights.jooq.tables.ComplianceEventLogsMv;
+import org.openphc.cce.insights.jooq.tables.ComplianceEventLogsQueue;
 import org.openphc.cce.insights.jooq.tables.DestinationAdaptorMapping;
+import org.openphc.cce.insights.jooq.tables.DestinationAdaptorMappingMv;
+import org.openphc.cce.insights.jooq.tables.DestinationAdaptorMappingQueue;
 import org.openphc.cce.insights.jooq.tables.Deviations;
+import org.openphc.cce.insights.jooq.tables.DeviationsMv;
+import org.openphc.cce.insights.jooq.tables.DeviationsQueue;
+import org.openphc.cce.insights.jooq.tables.DictActionDefinitions;
+import org.openphc.cce.insights.jooq.tables.DictDeliveryAdaptor;
+import org.openphc.cce.insights.jooq.tables.DictPatientFacility;
+import org.openphc.cce.insights.jooq.tables.DictProtocolDefinitions;
 import org.openphc.cce.insights.jooq.tables.Facility;
+import org.openphc.cce.insights.jooq.tables.FacilityMv;
+import org.openphc.cce.insights.jooq.tables.FacilityQueue;
 import org.openphc.cce.insights.jooq.tables.InboundEventLogs;
+import org.openphc.cce.insights.jooq.tables.InboundEventLogsMv;
+import org.openphc.cce.insights.jooq.tables.InboundEventLogsQueue;
 import org.openphc.cce.insights.jooq.tables.IntelligenceDeliveries;
+import org.openphc.cce.insights.jooq.tables.IntelligenceDeliveriesMv;
+import org.openphc.cce.insights.jooq.tables.IntelligenceDeliveriesQueue;
 import org.openphc.cce.insights.jooq.tables.IntelligenceEventLogs;
+import org.openphc.cce.insights.jooq.tables.IntelligenceEventLogsMv;
+import org.openphc.cce.insights.jooq.tables.IntelligenceEventLogsQueue;
 import org.openphc.cce.insights.jooq.tables.MvComplianceProcessingQuality;
 import org.openphc.cce.insights.jooq.tables.MvComplianceProcessingQualityMv;
+import org.openphc.cce.insights.jooq.tables.MvDailyAdoptionKpis;
+import org.openphc.cce.insights.jooq.tables.MvDailyAdoptionKpisMv;
 import org.openphc.cce.insights.jooq.tables.MvDailyComplianceKpis;
+import org.openphc.cce.insights.jooq.tables.MvDailyComplianceKpisMv;
+import org.openphc.cce.insights.jooq.tables.MvDailyDeviationKpis;
+import org.openphc.cce.insights.jooq.tables.MvDailyDeviationKpisMv;
+import org.openphc.cce.insights.jooq.tables.MvDailyEventKpis;
+import org.openphc.cce.insights.jooq.tables.MvDailyEventKpisMv;
+import org.openphc.cce.insights.jooq.tables.MvDailyFacilityActivitySummary;
+import org.openphc.cce.insights.jooq.tables.MvDailyFacilityActivitySummaryMv;
+import org.openphc.cce.insights.jooq.tables.MvDailyFacilityKpis;
+import org.openphc.cce.insights.jooq.tables.MvDailyFacilityKpisMv;
 import org.openphc.cce.insights.jooq.tables.MvDeviationByPatient;
 import org.openphc.cce.insights.jooq.tables.MvDeviationByPatientMv;
 import org.openphc.cce.insights.jooq.tables.MvDeviationByProtocol;
@@ -44,9 +75,17 @@ import org.openphc.cce.insights.jooq.tables.MvPatientFacilityLatestMv;
 import org.openphc.cce.insights.jooq.tables.MvPractitionerSummary;
 import org.openphc.cce.insights.jooq.tables.MvPractitionerSummaryMv;
 import org.openphc.cce.insights.jooq.tables.ProtocolDefinitions;
+import org.openphc.cce.insights.jooq.tables.ProtocolDefinitionsMv;
+import org.openphc.cce.insights.jooq.tables.ProtocolDefinitionsQueue;
 import org.openphc.cce.insights.jooq.tables.ProtocolInstanceHistory;
+import org.openphc.cce.insights.jooq.tables.ProtocolInstanceHistoryMv;
+import org.openphc.cce.insights.jooq.tables.ProtocolInstanceHistoryQueue;
 import org.openphc.cce.insights.jooq.tables.ProtocolInstances;
+import org.openphc.cce.insights.jooq.tables.ProtocolInstancesMv;
+import org.openphc.cce.insights.jooq.tables.ProtocolInstancesQueue;
 import org.openphc.cce.insights.jooq.tables.ReceiverAdaptor;
+import org.openphc.cce.insights.jooq.tables.ReceiverAdaptorMv;
+import org.openphc.cce.insights.jooq.tables.ReceiverAdaptorQueue;
 import org.openphc.cce.insights.jooq.tables.RollupDeliveryCurrent;
 import org.openphc.cce.insights.jooq.tables.RollupDeliveryCurrentMv;
 import org.openphc.cce.insights.jooq.tables.RollupProtocolInstanceCurrent;
@@ -54,7 +93,11 @@ import org.openphc.cce.insights.jooq.tables.RollupProtocolInstanceCurrentMv;
 import org.openphc.cce.insights.jooq.tables.RollupStepCurrent;
 import org.openphc.cce.insights.jooq.tables.RollupStepCurrentMv;
 import org.openphc.cce.insights.jooq.tables.StepInstanceHistory;
+import org.openphc.cce.insights.jooq.tables.StepInstanceHistoryMv;
+import org.openphc.cce.insights.jooq.tables.StepInstanceHistoryQueue;
 import org.openphc.cce.insights.jooq.tables.StepInstances;
+import org.openphc.cce.insights.jooq.tables.StepInstancesMv;
+import org.openphc.cce.insights.jooq.tables.StepInstancesQueue;
 
 
 /**
@@ -76,9 +119,29 @@ public class CceAnalytics extends SchemaImpl {
     public final ActionDefinitions ACTION_DEFINITIONS = ActionDefinitions.ACTION_DEFINITIONS;
 
     /**
+     * The table <code>cce_analytics.action_definitions_mv</code>.
+     */
+    public final ActionDefinitionsMv ACTION_DEFINITIONS_MV = ActionDefinitionsMv.ACTION_DEFINITIONS_MV;
+
+    /**
+     * The table <code>cce_analytics.action_definitions_queue</code>.
+     */
+    public final ActionDefinitionsQueue ACTION_DEFINITIONS_QUEUE = ActionDefinitionsQueue.ACTION_DEFINITIONS_QUEUE;
+
+    /**
      * The table <code>cce_analytics.compliance_event_logs</code>.
      */
     public final ComplianceEventLogs COMPLIANCE_EVENT_LOGS = ComplianceEventLogs.COMPLIANCE_EVENT_LOGS;
+
+    /**
+     * The table <code>cce_analytics.compliance_event_logs_mv</code>.
+     */
+    public final ComplianceEventLogsMv COMPLIANCE_EVENT_LOGS_MV = ComplianceEventLogsMv.COMPLIANCE_EVENT_LOGS_MV;
+
+    /**
+     * The table <code>cce_analytics.compliance_event_logs_queue</code>.
+     */
+    public final ComplianceEventLogsQueue COMPLIANCE_EVENT_LOGS_QUEUE = ComplianceEventLogsQueue.COMPLIANCE_EVENT_LOGS_QUEUE;
 
     /**
      * The table <code>cce_analytics.destination_adaptor_mapping</code>.
@@ -86,9 +149,49 @@ public class CceAnalytics extends SchemaImpl {
     public final DestinationAdaptorMapping DESTINATION_ADAPTOR_MAPPING = DestinationAdaptorMapping.DESTINATION_ADAPTOR_MAPPING;
 
     /**
+     * The table <code>cce_analytics.destination_adaptor_mapping_mv</code>.
+     */
+    public final DestinationAdaptorMappingMv DESTINATION_ADAPTOR_MAPPING_MV = DestinationAdaptorMappingMv.DESTINATION_ADAPTOR_MAPPING_MV;
+
+    /**
+     * The table <code>cce_analytics.destination_adaptor_mapping_queue</code>.
+     */
+    public final DestinationAdaptorMappingQueue DESTINATION_ADAPTOR_MAPPING_QUEUE = DestinationAdaptorMappingQueue.DESTINATION_ADAPTOR_MAPPING_QUEUE;
+
+    /**
      * The table <code>cce_analytics.deviations</code>.
      */
     public final Deviations DEVIATIONS = Deviations.DEVIATIONS;
+
+    /**
+     * The table <code>cce_analytics.deviations_mv</code>.
+     */
+    public final DeviationsMv DEVIATIONS_MV = DeviationsMv.DEVIATIONS_MV;
+
+    /**
+     * The table <code>cce_analytics.deviations_queue</code>.
+     */
+    public final DeviationsQueue DEVIATIONS_QUEUE = DeviationsQueue.DEVIATIONS_QUEUE;
+
+    /**
+     * The table <code>cce_analytics.dict_action_definitions</code>.
+     */
+    public final DictActionDefinitions DICT_ACTION_DEFINITIONS = DictActionDefinitions.DICT_ACTION_DEFINITIONS;
+
+    /**
+     * The table <code>cce_analytics.dict_delivery_adaptor</code>.
+     */
+    public final DictDeliveryAdaptor DICT_DELIVERY_ADAPTOR = DictDeliveryAdaptor.DICT_DELIVERY_ADAPTOR;
+
+    /**
+     * The table <code>cce_analytics.dict_patient_facility</code>.
+     */
+    public final DictPatientFacility DICT_PATIENT_FACILITY = DictPatientFacility.DICT_PATIENT_FACILITY;
+
+    /**
+     * The table <code>cce_analytics.dict_protocol_definitions</code>.
+     */
+    public final DictProtocolDefinitions DICT_PROTOCOL_DEFINITIONS = DictProtocolDefinitions.DICT_PROTOCOL_DEFINITIONS;
 
     /**
      * The table <code>cce_analytics.facility</code>.
@@ -96,9 +199,29 @@ public class CceAnalytics extends SchemaImpl {
     public final Facility FACILITY = Facility.FACILITY;
 
     /**
+     * The table <code>cce_analytics.facility_mv</code>.
+     */
+    public final FacilityMv FACILITY_MV = FacilityMv.FACILITY_MV;
+
+    /**
+     * The table <code>cce_analytics.facility_queue</code>.
+     */
+    public final FacilityQueue FACILITY_QUEUE = FacilityQueue.FACILITY_QUEUE;
+
+    /**
      * The table <code>cce_analytics.inbound_event_logs</code>.
      */
     public final InboundEventLogs INBOUND_EVENT_LOGS = InboundEventLogs.INBOUND_EVENT_LOGS;
+
+    /**
+     * The table <code>cce_analytics.inbound_event_logs_mv</code>.
+     */
+    public final InboundEventLogsMv INBOUND_EVENT_LOGS_MV = InboundEventLogsMv.INBOUND_EVENT_LOGS_MV;
+
+    /**
+     * The table <code>cce_analytics.inbound_event_logs_queue</code>.
+     */
+    public final InboundEventLogsQueue INBOUND_EVENT_LOGS_QUEUE = InboundEventLogsQueue.INBOUND_EVENT_LOGS_QUEUE;
 
     /**
      * The table <code>cce_analytics.intelligence_deliveries</code>.
@@ -106,9 +229,29 @@ public class CceAnalytics extends SchemaImpl {
     public final IntelligenceDeliveries INTELLIGENCE_DELIVERIES = IntelligenceDeliveries.INTELLIGENCE_DELIVERIES;
 
     /**
+     * The table <code>cce_analytics.intelligence_deliveries_mv</code>.
+     */
+    public final IntelligenceDeliveriesMv INTELLIGENCE_DELIVERIES_MV = IntelligenceDeliveriesMv.INTELLIGENCE_DELIVERIES_MV;
+
+    /**
+     * The table <code>cce_analytics.intelligence_deliveries_queue</code>.
+     */
+    public final IntelligenceDeliveriesQueue INTELLIGENCE_DELIVERIES_QUEUE = IntelligenceDeliveriesQueue.INTELLIGENCE_DELIVERIES_QUEUE;
+
+    /**
      * The table <code>cce_analytics.intelligence_event_logs</code>.
      */
     public final IntelligenceEventLogs INTELLIGENCE_EVENT_LOGS = IntelligenceEventLogs.INTELLIGENCE_EVENT_LOGS;
+
+    /**
+     * The table <code>cce_analytics.intelligence_event_logs_mv</code>.
+     */
+    public final IntelligenceEventLogsMv INTELLIGENCE_EVENT_LOGS_MV = IntelligenceEventLogsMv.INTELLIGENCE_EVENT_LOGS_MV;
+
+    /**
+     * The table <code>cce_analytics.intelligence_event_logs_queue</code>.
+     */
+    public final IntelligenceEventLogsQueue INTELLIGENCE_EVENT_LOGS_QUEUE = IntelligenceEventLogsQueue.INTELLIGENCE_EVENT_LOGS_QUEUE;
 
     /**
      * The table <code>cce_analytics.mv_compliance_processing_quality</code>.
@@ -121,9 +264,65 @@ public class CceAnalytics extends SchemaImpl {
     public final MvComplianceProcessingQualityMv MV_COMPLIANCE_PROCESSING_QUALITY_MV = MvComplianceProcessingQualityMv.MV_COMPLIANCE_PROCESSING_QUALITY_MV;
 
     /**
+     * The table <code>cce_analytics.mv_daily_adoption_kpis</code>.
+     */
+    public final MvDailyAdoptionKpis MV_DAILY_ADOPTION_KPIS = MvDailyAdoptionKpis.MV_DAILY_ADOPTION_KPIS;
+
+    /**
+     * The table <code>cce_analytics.mv_daily_adoption_kpis_mv</code>.
+     */
+    public final MvDailyAdoptionKpisMv MV_DAILY_ADOPTION_KPIS_MV = MvDailyAdoptionKpisMv.MV_DAILY_ADOPTION_KPIS_MV;
+
+    /**
      * The table <code>cce_analytics.mv_daily_compliance_kpis</code>.
      */
     public final MvDailyComplianceKpis MV_DAILY_COMPLIANCE_KPIS = MvDailyComplianceKpis.MV_DAILY_COMPLIANCE_KPIS;
+
+    /**
+     * The table <code>cce_analytics.mv_daily_compliance_kpis_mv</code>.
+     */
+    public final MvDailyComplianceKpisMv MV_DAILY_COMPLIANCE_KPIS_MV = MvDailyComplianceKpisMv.MV_DAILY_COMPLIANCE_KPIS_MV;
+
+    /**
+     * The table <code>cce_analytics.mv_daily_deviation_kpis</code>.
+     */
+    public final MvDailyDeviationKpis MV_DAILY_DEVIATION_KPIS = MvDailyDeviationKpis.MV_DAILY_DEVIATION_KPIS;
+
+    /**
+     * The table <code>cce_analytics.mv_daily_deviation_kpis_mv</code>.
+     */
+    public final MvDailyDeviationKpisMv MV_DAILY_DEVIATION_KPIS_MV = MvDailyDeviationKpisMv.MV_DAILY_DEVIATION_KPIS_MV;
+
+    /**
+     * The table <code>cce_analytics.mv_daily_event_kpis</code>.
+     */
+    public final MvDailyEventKpis MV_DAILY_EVENT_KPIS = MvDailyEventKpis.MV_DAILY_EVENT_KPIS;
+
+    /**
+     * The table <code>cce_analytics.mv_daily_event_kpis_mv</code>.
+     */
+    public final MvDailyEventKpisMv MV_DAILY_EVENT_KPIS_MV = MvDailyEventKpisMv.MV_DAILY_EVENT_KPIS_MV;
+
+    /**
+     * The table <code>cce_analytics.mv_daily_facility_activity_summary</code>.
+     */
+    public final MvDailyFacilityActivitySummary MV_DAILY_FACILITY_ACTIVITY_SUMMARY = MvDailyFacilityActivitySummary.MV_DAILY_FACILITY_ACTIVITY_SUMMARY;
+
+    /**
+     * The table
+     * <code>cce_analytics.mv_daily_facility_activity_summary_mv</code>.
+     */
+    public final MvDailyFacilityActivitySummaryMv MV_DAILY_FACILITY_ACTIVITY_SUMMARY_MV = MvDailyFacilityActivitySummaryMv.MV_DAILY_FACILITY_ACTIVITY_SUMMARY_MV;
+
+    /**
+     * The table <code>cce_analytics.mv_daily_facility_kpis</code>.
+     */
+    public final MvDailyFacilityKpis MV_DAILY_FACILITY_KPIS = MvDailyFacilityKpis.MV_DAILY_FACILITY_KPIS;
+
+    /**
+     * The table <code>cce_analytics.mv_daily_facility_kpis_mv</code>.
+     */
+    public final MvDailyFacilityKpisMv MV_DAILY_FACILITY_KPIS_MV = MvDailyFacilityKpisMv.MV_DAILY_FACILITY_KPIS_MV;
 
     /**
      * The table <code>cce_analytics.mv_deviation_by_patient</code>.
@@ -241,9 +440,29 @@ public class CceAnalytics extends SchemaImpl {
     public final ProtocolDefinitions PROTOCOL_DEFINITIONS = ProtocolDefinitions.PROTOCOL_DEFINITIONS;
 
     /**
+     * The table <code>cce_analytics.protocol_definitions_mv</code>.
+     */
+    public final ProtocolDefinitionsMv PROTOCOL_DEFINITIONS_MV = ProtocolDefinitionsMv.PROTOCOL_DEFINITIONS_MV;
+
+    /**
+     * The table <code>cce_analytics.protocol_definitions_queue</code>.
+     */
+    public final ProtocolDefinitionsQueue PROTOCOL_DEFINITIONS_QUEUE = ProtocolDefinitionsQueue.PROTOCOL_DEFINITIONS_QUEUE;
+
+    /**
      * The table <code>cce_analytics.protocol_instance_history</code>.
      */
     public final ProtocolInstanceHistory PROTOCOL_INSTANCE_HISTORY = ProtocolInstanceHistory.PROTOCOL_INSTANCE_HISTORY;
+
+    /**
+     * The table <code>cce_analytics.protocol_instance_history_mv</code>.
+     */
+    public final ProtocolInstanceHistoryMv PROTOCOL_INSTANCE_HISTORY_MV = ProtocolInstanceHistoryMv.PROTOCOL_INSTANCE_HISTORY_MV;
+
+    /**
+     * The table <code>cce_analytics.protocol_instance_history_queue</code>.
+     */
+    public final ProtocolInstanceHistoryQueue PROTOCOL_INSTANCE_HISTORY_QUEUE = ProtocolInstanceHistoryQueue.PROTOCOL_INSTANCE_HISTORY_QUEUE;
 
     /**
      * The table <code>cce_analytics.protocol_instances</code>.
@@ -251,9 +470,29 @@ public class CceAnalytics extends SchemaImpl {
     public final ProtocolInstances PROTOCOL_INSTANCES = ProtocolInstances.PROTOCOL_INSTANCES;
 
     /**
+     * The table <code>cce_analytics.protocol_instances_mv</code>.
+     */
+    public final ProtocolInstancesMv PROTOCOL_INSTANCES_MV = ProtocolInstancesMv.PROTOCOL_INSTANCES_MV;
+
+    /**
+     * The table <code>cce_analytics.protocol_instances_queue</code>.
+     */
+    public final ProtocolInstancesQueue PROTOCOL_INSTANCES_QUEUE = ProtocolInstancesQueue.PROTOCOL_INSTANCES_QUEUE;
+
+    /**
      * The table <code>cce_analytics.receiver_adaptor</code>.
      */
     public final ReceiverAdaptor RECEIVER_ADAPTOR = ReceiverAdaptor.RECEIVER_ADAPTOR;
+
+    /**
+     * The table <code>cce_analytics.receiver_adaptor_mv</code>.
+     */
+    public final ReceiverAdaptorMv RECEIVER_ADAPTOR_MV = ReceiverAdaptorMv.RECEIVER_ADAPTOR_MV;
+
+    /**
+     * The table <code>cce_analytics.receiver_adaptor_queue</code>.
+     */
+    public final ReceiverAdaptorQueue RECEIVER_ADAPTOR_QUEUE = ReceiverAdaptorQueue.RECEIVER_ADAPTOR_QUEUE;
 
     /**
      * The table <code>cce_analytics.rollup_delivery_current</code>.
@@ -291,9 +530,29 @@ public class CceAnalytics extends SchemaImpl {
     public final StepInstanceHistory STEP_INSTANCE_HISTORY = StepInstanceHistory.STEP_INSTANCE_HISTORY;
 
     /**
+     * The table <code>cce_analytics.step_instance_history_mv</code>.
+     */
+    public final StepInstanceHistoryMv STEP_INSTANCE_HISTORY_MV = StepInstanceHistoryMv.STEP_INSTANCE_HISTORY_MV;
+
+    /**
+     * The table <code>cce_analytics.step_instance_history_queue</code>.
+     */
+    public final StepInstanceHistoryQueue STEP_INSTANCE_HISTORY_QUEUE = StepInstanceHistoryQueue.STEP_INSTANCE_HISTORY_QUEUE;
+
+    /**
      * The table <code>cce_analytics.step_instances</code>.
      */
     public final StepInstances STEP_INSTANCES = StepInstances.STEP_INSTANCES;
+
+    /**
+     * The table <code>cce_analytics.step_instances_mv</code>.
+     */
+    public final StepInstancesMv STEP_INSTANCES_MV = StepInstancesMv.STEP_INSTANCES_MV;
+
+    /**
+     * The table <code>cce_analytics.step_instances_queue</code>.
+     */
+    public final StepInstancesQueue STEP_INSTANCES_QUEUE = StepInstancesQueue.STEP_INSTANCES_QUEUE;
 
     /**
      * No further instances allowed
@@ -312,16 +571,47 @@ public class CceAnalytics extends SchemaImpl {
     public final List<Table<?>> getTables() {
         return Arrays.asList(
             ActionDefinitions.ACTION_DEFINITIONS,
+            ActionDefinitionsMv.ACTION_DEFINITIONS_MV,
+            ActionDefinitionsQueue.ACTION_DEFINITIONS_QUEUE,
             ComplianceEventLogs.COMPLIANCE_EVENT_LOGS,
+            ComplianceEventLogsMv.COMPLIANCE_EVENT_LOGS_MV,
+            ComplianceEventLogsQueue.COMPLIANCE_EVENT_LOGS_QUEUE,
             DestinationAdaptorMapping.DESTINATION_ADAPTOR_MAPPING,
+            DestinationAdaptorMappingMv.DESTINATION_ADAPTOR_MAPPING_MV,
+            DestinationAdaptorMappingQueue.DESTINATION_ADAPTOR_MAPPING_QUEUE,
             Deviations.DEVIATIONS,
+            DeviationsMv.DEVIATIONS_MV,
+            DeviationsQueue.DEVIATIONS_QUEUE,
+            DictActionDefinitions.DICT_ACTION_DEFINITIONS,
+            DictDeliveryAdaptor.DICT_DELIVERY_ADAPTOR,
+            DictPatientFacility.DICT_PATIENT_FACILITY,
+            DictProtocolDefinitions.DICT_PROTOCOL_DEFINITIONS,
             Facility.FACILITY,
+            FacilityMv.FACILITY_MV,
+            FacilityQueue.FACILITY_QUEUE,
             InboundEventLogs.INBOUND_EVENT_LOGS,
+            InboundEventLogsMv.INBOUND_EVENT_LOGS_MV,
+            InboundEventLogsQueue.INBOUND_EVENT_LOGS_QUEUE,
             IntelligenceDeliveries.INTELLIGENCE_DELIVERIES,
+            IntelligenceDeliveriesMv.INTELLIGENCE_DELIVERIES_MV,
+            IntelligenceDeliveriesQueue.INTELLIGENCE_DELIVERIES_QUEUE,
             IntelligenceEventLogs.INTELLIGENCE_EVENT_LOGS,
+            IntelligenceEventLogsMv.INTELLIGENCE_EVENT_LOGS_MV,
+            IntelligenceEventLogsQueue.INTELLIGENCE_EVENT_LOGS_QUEUE,
             MvComplianceProcessingQuality.MV_COMPLIANCE_PROCESSING_QUALITY,
             MvComplianceProcessingQualityMv.MV_COMPLIANCE_PROCESSING_QUALITY_MV,
+            MvDailyAdoptionKpis.MV_DAILY_ADOPTION_KPIS,
+            MvDailyAdoptionKpisMv.MV_DAILY_ADOPTION_KPIS_MV,
             MvDailyComplianceKpis.MV_DAILY_COMPLIANCE_KPIS,
+            MvDailyComplianceKpisMv.MV_DAILY_COMPLIANCE_KPIS_MV,
+            MvDailyDeviationKpis.MV_DAILY_DEVIATION_KPIS,
+            MvDailyDeviationKpisMv.MV_DAILY_DEVIATION_KPIS_MV,
+            MvDailyEventKpis.MV_DAILY_EVENT_KPIS,
+            MvDailyEventKpisMv.MV_DAILY_EVENT_KPIS_MV,
+            MvDailyFacilityActivitySummary.MV_DAILY_FACILITY_ACTIVITY_SUMMARY,
+            MvDailyFacilityActivitySummaryMv.MV_DAILY_FACILITY_ACTIVITY_SUMMARY_MV,
+            MvDailyFacilityKpis.MV_DAILY_FACILITY_KPIS,
+            MvDailyFacilityKpisMv.MV_DAILY_FACILITY_KPIS_MV,
             MvDeviationByPatient.MV_DEVIATION_BY_PATIENT,
             MvDeviationByPatientMv.MV_DEVIATION_BY_PATIENT_MV,
             MvDeviationByProtocol.MV_DEVIATION_BY_PROTOCOL,
@@ -345,9 +635,17 @@ public class CceAnalytics extends SchemaImpl {
             MvPractitionerSummary.MV_PRACTITIONER_SUMMARY,
             MvPractitionerSummaryMv.MV_PRACTITIONER_SUMMARY_MV,
             ProtocolDefinitions.PROTOCOL_DEFINITIONS,
+            ProtocolDefinitionsMv.PROTOCOL_DEFINITIONS_MV,
+            ProtocolDefinitionsQueue.PROTOCOL_DEFINITIONS_QUEUE,
             ProtocolInstanceHistory.PROTOCOL_INSTANCE_HISTORY,
+            ProtocolInstanceHistoryMv.PROTOCOL_INSTANCE_HISTORY_MV,
+            ProtocolInstanceHistoryQueue.PROTOCOL_INSTANCE_HISTORY_QUEUE,
             ProtocolInstances.PROTOCOL_INSTANCES,
+            ProtocolInstancesMv.PROTOCOL_INSTANCES_MV,
+            ProtocolInstancesQueue.PROTOCOL_INSTANCES_QUEUE,
             ReceiverAdaptor.RECEIVER_ADAPTOR,
+            ReceiverAdaptorMv.RECEIVER_ADAPTOR_MV,
+            ReceiverAdaptorQueue.RECEIVER_ADAPTOR_QUEUE,
             RollupDeliveryCurrent.ROLLUP_DELIVERY_CURRENT,
             RollupDeliveryCurrentMv.ROLLUP_DELIVERY_CURRENT_MV,
             RollupProtocolInstanceCurrent.ROLLUP_PROTOCOL_INSTANCE_CURRENT,
@@ -355,7 +653,11 @@ public class CceAnalytics extends SchemaImpl {
             RollupStepCurrent.ROLLUP_STEP_CURRENT,
             RollupStepCurrentMv.ROLLUP_STEP_CURRENT_MV,
             StepInstanceHistory.STEP_INSTANCE_HISTORY,
-            StepInstances.STEP_INSTANCES
+            StepInstanceHistoryMv.STEP_INSTANCE_HISTORY_MV,
+            StepInstanceHistoryQueue.STEP_INSTANCE_HISTORY_QUEUE,
+            StepInstances.STEP_INSTANCES,
+            StepInstancesMv.STEP_INSTANCES_MV,
+            StepInstancesQueue.STEP_INSTANCES_QUEUE
         );
     }
 }
