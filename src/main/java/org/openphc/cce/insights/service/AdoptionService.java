@@ -65,8 +65,8 @@ public class AdoptionService {
             }
         }
 
-        // Worst under-reporters first (largest positive gap at the top).
-        result.sort(Comparator.comparingLong(AdoptionKpiDto::getReportingGapPerDay).reversed());
+        // Highest adoption rate first.
+        result.sort(Comparator.comparingDouble(AdoptionKpiDto::getAdoptionRate).reversed());
         return result;
     }
 
