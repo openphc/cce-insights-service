@@ -54,8 +54,10 @@ public interface ProtocolInstanceRepository extends ReadOnlyRepository<ProtocolI
 
     /**
      * Distinct enrolled patients per facility via mv_patient_facility_latest.
-     * Returns rows of [facility_id(String), tracked_patients(long), non_compliant_patients(long)].
-     * When dates are provided, tracked = enrolled in range; non-compliant = deviation in range.
+     * Returns rows of [facility_id(String), tracked_patients(long), non_compliant_patients(long),
+     * deviations(long)]. When dates are provided, tracked = enrolled in range; non-compliant =
+     * enrolled-in-range patients with a deviation detected in range; deviations = deviations detected
+     * in range for that same cohort. All three share one cohort so a leaderboard row is consistent.
      */
     List<Object[]> countPatientComplianceByFacility(OffsetDateTime startDate, OffsetDateTime endDate);
 
