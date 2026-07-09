@@ -297,19 +297,23 @@ public class ProtocolInstanceRepositoryImpl
         String zeroUuid = "toUUID('00000000-0000-0000-0000-000000000000')";
         String detectedAt = "d." + DEVIATIONS.DETECTED_AT.getName();
 
-        String nonCompliantExpr = (startDate != null || endDate != null)
-                ? "uniqIf(pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName() + ", d.id != " + zeroUuid
-                    + (startDate != null ? " AND " + detectedAt + " >= parseDateTime64BestEffort('"
-                        + startDate + "')" : "")
-                    + (endDate != null ? " AND " + detectedAt + " <= parseDateTime64BestEffort('"
-                        + endDate + "')" : "")
-                    + ")"
-                : "uniqIf(pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName() + ", d.id != " + zeroUuid + ")";
+        // Date clause reused by the deviation aggregates so non-compliant patients AND the deviation
+        // count come from the SAME enrolled-in-range cohort as tracked (keeps the leaderboard row
+        // internally consistent — see FacilityRankingService).
+        String devDateClause =
+                (startDate != null ? " AND " + detectedAt + " >= parseDateTime64BestEffort('" + startDate + "')" : "")
+              + (endDate   != null ? " AND " + detectedAt + " <= parseDateTime64BestEffort('" + endDate   + "')" : "");
+        String nonCompliantExpr = "uniqIf(pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()
+                + ", d.id != " + zeroUuid + devDateClause + ")";
+        // Deviations DETECTED in range for this cohort (count of deviation rows, matches the column).
+        String deviationCountExpr = "uniqIf(d." + DEVIATIONS.ID.getName()
+                + ", d.id != " + zeroUuid + devDateClause + ")";
 
         return dsl.select(
                     DSL.field("pf.facility_id", String.class),
                     DSL.field("uniq(pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName() + ")", Long.class),
-                    DSL.field(DSL.sql(nonCompliantExpr), Long.class))
+                    DSL.field(DSL.sql(nonCompliantExpr), Long.class),
+                    DSL.field(DSL.sql(deviationCountExpr), Long.class))
                   .from(pi)
                   .join(pf).on(DSL.condition(
                           "pf.patient_id = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
@@ -324,7 +328,8 @@ public class ProtocolInstanceRepositoryImpl
                   .map(r -> new Object[]{
                           r.get(0, String.class),
                           toLong(r.get(1)),
-                          toLong(r.get(2))
+                          toLong(r.get(2)),
+                          toLong(r.get(3))
                   });
     }
 
