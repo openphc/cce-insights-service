@@ -44,6 +44,14 @@ public interface DeviationRepository extends ReadOnlyRepository<Deviation, UUID>
 
     List<Object[]> countDeviationsByFacility();
 
+    /**
+     * Deviations DETECTED within [startDate, endDate] per facility, attributed via the patient's
+     * current facility (mv_patient_facility_latest). Null bounds are open (all-time). Returns rows of
+     * [facility_id(String), deviation_count(long)]. Used to date-scope the Facility Ranking /
+     * Top-Bottom deviation column (the MV's total_deviations is all-time cumulative, not windowed).
+     */
+    List<Object[]> countDeviationsByFacility(OffsetDateTime startDate, OffsetDateTime endDate);
+
     long countDistinctPatientsWithDeviations();
 
     /** Distinct patients with at least one deviation detected within [startDate, endDate]. */

@@ -5,7 +5,10 @@ import lombok.RequiredArgsConstructor;
 import org.openphc.cce.insights.domain.entity.ProtocolDefinition;
 import org.openphc.cce.insights.domain.entity.ProtocolInstance;
 import org.openphc.cce.insights.domain.entity.StepInstance;
+import org.openphc.cce.insights.domain.entity.Deviation;
 import org.openphc.cce.insights.domain.enums.StepState;
+import org.openphc.cce.insights.domain.enums.CompletionStatus;
+import org.openphc.cce.insights.domain.enums.DeviationType;
 import org.openphc.cce.insights.domain.repository.*;
 import org.openphc.cce.insights.web.dto.ComplianceSummaryDto;
 
@@ -94,7 +97,10 @@ public class ComplianceSummaryService {
                     .build();
         }
 
-        long compliantPatients = toLong(dm[0]);
+        // Clamp compliant to enrollments: dm[0] is an all-time facility deviation-instance count and
+        // can exceed the period-scoped facility enrollment (totalEnrollments), which otherwise yields
+        // rates > 100% and negative non-compliant counts (mirrors the no-facility branch's Math.min).
+        long compliantPatients = Math.min(totalEnrollments, toLong(dm[0]));
         double complianceRate  = (double) compliantPatients / totalEnrollments;
 
         return ComplianceSummaryDto.builder()
@@ -124,81 +130,60 @@ public class ComplianceSummaryService {
                         "Protocol definition not found: " + protocolDefinitionId));
 
         boolean hasFacility = facilityId != null && !facilityId.isEmpty();
-        LocalDate snapshotDate = endDate != null ? endDate.toLocalDate()
-                : startDate != null ? startDate.toLocalDate()
-                : null;
-        long enrolledInPeriod = (startDate != null || endDate != null)
-                ? protocolInstanceRepository.findByProtocolDefinitionIdAndEnrolledBetween(
-                        protocolDefinitionId, startDate, endDate).stream()
-                        .map(pi -> pi.getPatientId())
-                        .filter(java.util.Objects::nonNull)
-                        .distinct()
-                        .count()
-                : -1L;
 
-        if (!hasFacility) {
-            // No facility filter — use pre-aggregated MV. Replaces 3 base-table queries:
-            // aggregateStepMetrics, aggregateDeviationMetrics, findByProtocolDefinitionId (statusBreakdown)
-            // snapshotDate: null = today's snapshot; past date = historical snapshot for that day
-            Object[] kpis = dailyKpiRepository.getComplianceKpisByProtocol(protocolDefinitionId, snapshotDate);
-            long totalEnrollments = toLong(kpis[9]);
-            if (totalEnrollments == 0) {
-                return buildEmptySummary(pd);
-            }
-            // Status breakdown comes from MV columns — no separate load needed
-            Map<String, Long> statusBreakdown = new LinkedHashMap<>();
-            statusBreakdown.put("active",    toLong(kpis[15]));
-            statusBreakdown.put("completed", toLong(kpis[16]));
-            statusBreakdown.put("withdrawn", toLong(kpis[17]));
-            statusBreakdown.put("expired",   toLong(kpis[18]));
-
-            long compliantPatients = toLong(kpis[10]);
-            long effectiveEnrollments = enrolledInPeriod >= 0 ? enrolledInPeriod : totalEnrollments;
-            long effectiveCompliant = enrolledInPeriod >= 0
-                    ? Math.min(effectiveEnrollments, compliantPatients)
-                    : compliantPatients;
-            return ComplianceSummaryDto.builder()
-                    .protocolDefinitionId(protocolDefinitionId)
-                    .protocolCanonical(pd.getUrl() + "|" + pd.getVersion())
-                    .totalEnrollments(effectiveEnrollments)
-                    .compliantPatients(effectiveCompliant)
-                    .statusBreakdown(statusBreakdown)
-                    .complianceRate(effectiveEnrollments > 0
-                            ? Math.round((double) effectiveCompliant / effectiveEnrollments * 1000.0) / 10.0
-                            : 0.0)
-                    .stepMetrics(ComplianceSummaryDto.StepMetrics.builder()
-                            .totalSteps(toLong(kpis[8])).completed(toLong(kpis[0]))
-                            .onTime(toLong(kpis[6])).late(toLong(kpis[7])).early(toLong(kpis[5]))
-                            .overdue(toLong(kpis[1])).missed(toLong(kpis[2])).due(toLong(kpis[3])).pending(toLong(kpis[4]))
-                            .build())
-                    .deviationCount(toLong(kpis[11]))
-                    .deviationBreakdown(Map.of(
-                            "overdue",        toLong(kpis[12]),
-                            "missed",         toLong(kpis[13]),
-                            "orderViolation", toLong(kpis[14])))
-                    .build();
+        // WINDOWED semantics for every card: patients ENROLLED within [startDate, endDate] (across
+        // all facilities, or the selected facility via mv_patient_facility_latest), plus their step
+        // state and the deviations detected within the range. Every card is derived from ONE scoped
+        // instance set, so the patient counts, transactions, and deviation cards are mutually
+        // consistent and all honour the date range. (The previous code mixed an MV daily-snapshot for
+        // All-Facilities steps with un-scoped all-time facility aggregates, which never agreed.)
+        List<ProtocolInstance> scoped = latestInstancePerPatient(
+                loadInstancesForPatientFilter(protocolDefinitionId, null, startDate, endDate, "enrollment"));
+        if (hasFacility) {
+            Set<String> patientsAtFacility = new HashSet<>(
+                    protocolInstanceRepository.findPatientIdsAtFacility(facilityId));
+            scoped = scoped.stream()
+                    .filter(pi -> patientsAtFacility.contains(pi.getPatientId()))
+                    .collect(Collectors.toList());
         }
-
-        // facilityId provided — mv_daily_compliance_kpis has no facility dimension, fall back to base tables
-        Object[] sm = stepInstanceRepository.aggregateStepMetricsByProtocolAndFacility(protocolDefinitionId, facilityId);
-        Object[] dm = deviationRepository.aggregateDeviationMetricsByProtocolAndFacility(protocolDefinitionId, facilityId);
-
-        long totalEnrollments = enrolledInPeriod >= 0 ? enrolledInPeriod : toLong(sm[9]);
+        long totalEnrollments = scoped.size();   // one row per patient (latest enrollment)
         if (totalEnrollments == 0) {
             return buildEmptySummary(pd);
         }
+        List<UUID> instanceIds = scoped.stream().map(ProtocolInstance::getId).collect(Collectors.toList());
 
-        // Status breakdown still needs the instance list for the facility-filtered case
-        Set<UUID> facilityInstanceIds = getFacilityInstanceIds(facilityId);
-        List<ProtocolInstance> instances = protocolInstanceRepository.findByProtocolDefinitionId(protocolDefinitionId)
-                .stream()
-                .filter(pi -> facilityInstanceIds.contains(pi.getId()))
+        // Step metrics — aggregated from the scoped instances' steps.
+        List<StepInstance> steps = stepInstanceRepository.findByProtocolInstanceIdIn(instanceIds);
+        long stepCompleted = steps.stream().filter(s -> s.getState() == StepState.COMPLETED || s.getState() == StepState.SKIPPED).count();
+        long stepOverdue   = steps.stream().filter(s -> s.getState() == StepState.OVERDUE).count();
+        long stepMissed    = steps.stream().filter(s -> s.getState() == StepState.MISSED).count();
+        long stepDue       = steps.stream().filter(s -> s.getState() == StepState.DUE).count();
+        long stepPending   = steps.stream().filter(s -> s.getState() == StepState.PENDING).count();
+        long stepEarly     = steps.stream().filter(s -> s.getCompletionStatus() == CompletionStatus.EARLY).count();
+        long stepOnTime    = steps.stream().filter(s -> s.getCompletionStatus() == CompletionStatus.ON_TIME).count();
+        long stepLate      = steps.stream().filter(s -> s.getCompletionStatus() == CompletionStatus.LATE).count();
+        long stepTotal     = steps.size();
+
+        // Deviations — same instances, detected WITHIN [startDate, endDate] (windowed), consistent
+        // with the windowed enrollment scoping of the patient set.
+        List<Deviation> devs = deviationRepository.findByProtocolInstanceIdIn(instanceIds).stream()
+                .filter(d -> inRange(d.getDetectedAt(), startDate, endDate))
                 .collect(Collectors.toList());
-        Map<String, Long> statusBreakdown = instances.stream()
-                .collect(Collectors.groupingBy(pi -> pi.getStatus().name().toLowerCase(), Collectors.counting()));
+        Map<UUID, Long> devCountByInstance = devs.stream()
+                .collect(Collectors.groupingBy(Deviation::getProtocolInstanceId, Collectors.counting()));
+        long overdueDevs = devs.stream().filter(d -> d.getDeviationType() == DeviationType.OVERDUE).count();
+        long missedDevs  = devs.stream().filter(d -> d.getDeviationType() == DeviationType.MISSED).count();
+        long orderDevs   = devs.stream().filter(d -> d.getDeviationType() == DeviationType.ORDER_VIOLATION).count();
 
-        long compliantPatients = toLong(dm[0]);
-        double complianceRate  = (double) compliantPatients / totalEnrollments;
+        // Patient compliance: compliant = distinct patients (scoped, one instance each) with zero
+        // deviations in the period -> compliant <= tracked by construction (rate bounded).
+        long compliantPatients = scoped.stream()
+                .filter(pi -> devCountByInstance.getOrDefault(pi.getId(), 0L) == 0L)
+                .count();
+        double complianceRate = (double) compliantPatients / totalEnrollments;
+
+        Map<String, Long> statusBreakdown = scoped.stream()
+                .collect(Collectors.groupingBy(pi -> pi.getStatus().name().toLowerCase(), Collectors.counting()));
 
         return ComplianceSummaryDto.builder()
                 .protocolDefinitionId(protocolDefinitionId)
@@ -208,15 +193,15 @@ public class ComplianceSummaryService {
                 .statusBreakdown(statusBreakdown)
                 .complianceRate(Math.round(complianceRate * 1000.0) / 10.0)
                 .stepMetrics(ComplianceSummaryDto.StepMetrics.builder()
-                        .totalSteps(toLong(sm[8])).completed(toLong(sm[0]))
-                        .onTime(toLong(sm[6])).late(toLong(sm[7])).early(toLong(sm[5]))
-                        .overdue(toLong(sm[1])).missed(toLong(sm[2])).due(toLong(sm[3])).pending(toLong(sm[4]))
+                        .totalSteps(stepTotal).completed(stepCompleted)
+                        .onTime(stepOnTime).late(stepLate).early(stepEarly)
+                        .overdue(stepOverdue).missed(stepMissed).due(stepDue).pending(stepPending)
                         .build())
-                .deviationCount(toLong(dm[1]))
+                .deviationCount((long) devs.size())
                 .deviationBreakdown(Map.of(
-                        "overdue",        toLong(dm[2]),
-                        "missed",         toLong(dm[3]),
-                        "orderViolation", toLong(dm[4])))
+                        "overdue",        overdueDevs,
+                        "missed",         missedDevs,
+                        "orderViolation", orderDevs))
                 .build();
     }
 
@@ -348,6 +333,14 @@ public class ComplianceSummaryService {
         return results;
     }
 
+    /** Inclusive [start,end] membership; null bounds are treated as open (used to date-scope deviations). */
+    private static boolean inRange(OffsetDateTime t, OffsetDateTime start, OffsetDateTime end) {
+        if (t == null) return false;
+        if (start != null && t.isBefore(start)) return false;
+        if (end != null && t.isAfter(end)) return false;
+        return true;
+    }
+
     @Cacheable(value = "analytics",
             key = "'facility-' + #facilityId + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all')")
     public FacilitySummaryDto getFacilityComplianceSummary(String facilityId,
@@ -431,15 +424,6 @@ public class ComplianceSummaryService {
                 .deviationCount(0)
                 .deviationBreakdown(Map.of("overdue", 0L, "missed", 0L, "orderViolation", 0L))
                 .build();
-    }
-
-    private Set<UUID> getFacilityInstanceIds(String facilityId) {
-        List<Object[]> rows = complianceEventLogRepository.findPatientsByFacility(facilityId);
-        Set<UUID> ids = new HashSet<>();
-        for (Object[] row : rows) {
-            ids.add((UUID) row[2]);
-        }
-        return ids;
     }
 
     private static long toLong(Object val) {

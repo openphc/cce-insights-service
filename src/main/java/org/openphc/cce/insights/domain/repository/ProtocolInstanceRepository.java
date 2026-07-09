@@ -70,4 +70,12 @@ public interface ProtocolInstanceRepository extends ReadOnlyRepository<ProtocolI
      */
     long countDistinctPatientsForFacility(String facilityId,
                                           OffsetDateTime startDate, OffsetDateTime endDate);
+
+    /**
+     * Distinct patient IDs whose CURRENT facility (mv_patient_facility_latest) is the given facility.
+     * This is the canonical "patients at a facility" definition used across the compliance page so
+     * every card scopes to the same patient set. Note: mv_patient_facility_latest holds only the
+     * latest facility per patient (no history), so this is current-facility membership.
+     */
+    List<String> findPatientIdsAtFacility(String facilityId);
 }
