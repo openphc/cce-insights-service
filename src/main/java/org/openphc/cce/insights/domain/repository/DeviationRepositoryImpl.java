@@ -476,6 +476,40 @@ public class DeviationRepositoryImpl
     }
 
     @Override
+    public List<Object[]> countDeviationsByFacility(OffsetDateTime startDate, OffsetDateTime endDate) {
+        // Date-scoped: deviations DETECTED within [startDate, endDate], attributed to a facility via
+        // the patient's current facility (mv_patient_facility_latest) — the same attribution the
+        // ranking uses for tracked patients. Null bounds are open (all-time).
+        var d  = finalAs(DEVIATIONS, "d");
+        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        var pf = DSL.table(DSL.sql("mv_patient_facility_latest pf" + finalClause()));
+        String detectedAt = "d." + DEVIATIONS.DETECTED_AT.getName();
+
+        org.jooq.Condition where = DSL.field("pf.facility_id").ne("");
+        if (startDate != null) {
+            where = where.and(DSL.condition(
+                    detectedAt + " >= parseDateTime64BestEffort(?)", startDate.toString()));
+        }
+        if (endDate != null) {
+            where = where.and(DSL.condition(
+                    detectedAt + " <= parseDateTime64BestEffort(?)", endDate.toString()));
+        }
+
+        return dsl.select(
+                    DSL.field("pf.facility_id", String.class),
+                    DSL.field("uniq(d." + DEVIATIONS.ID.getName() + ")", Long.class).as("deviation_count"))
+                  .from(d)
+                  .join(pi).on(DSL.condition(
+                          "d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                  .join(pf).on(DSL.condition(
+                          "pf.patient_id = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
+                  .where(where)
+                  .groupBy(DSL.field("pf.facility_id"))
+                  .fetch()
+                  .map(r -> new Object[]{r.get(0, String.class), r.get(1, Long.class)});
+    }
+
+    @Override
     public long countDistinctPatientsWithDeviations() {
         var d  = finalAs(DEVIATIONS, "d");
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");

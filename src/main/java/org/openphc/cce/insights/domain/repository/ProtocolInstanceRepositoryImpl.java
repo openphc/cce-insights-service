@@ -366,6 +366,19 @@ public class ProtocolInstanceRepositoryImpl
     }
 
     @Override
+    public List<String> findPatientIdsAtFacility(String facilityId) {
+        if (facilityId == null || facilityId.isEmpty()) {
+            return java.util.List.of();
+        }
+        // mv_patient_facility_latest is ReplacingMergeTree(last_seen) ORDER BY patient_id — one row
+        // per patient (current facility). FINAL dedups any un-merged rows so we read the latest.
+        return dsl.selectDistinct(DSL.field("patient_id", String.class))
+                  .from(DSL.table(DSL.sql("mv_patient_facility_latest" + finalClause())))
+                  .where(DSL.field("facility_id").eq(facilityId))
+                  .fetch(0, String.class);
+    }
+
+    @Override
     public List<ProtocolInstance> findByProtocolDefinitionIdWithActivityBetween(UUID protocolDefinitionId,
                                                                                  OffsetDateTime startDate,
                                                                                  OffsetDateTime endDate) {
