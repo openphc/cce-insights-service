@@ -5,10 +5,8 @@ import lombok.RequiredArgsConstructor;
 import org.openphc.cce.insights.domain.entity.ProtocolDefinition;
 import org.openphc.cce.insights.domain.entity.ProtocolInstance;
 import org.openphc.cce.insights.domain.entity.StepInstance;
-import org.openphc.cce.insights.domain.entity.Deviation;
 import org.openphc.cce.insights.domain.enums.StepState;
 import org.openphc.cce.insights.domain.enums.CompletionStatus;
-import org.openphc.cce.insights.domain.enums.DeviationType;
 import org.openphc.cce.insights.domain.repository.*;
 import org.openphc.cce.insights.web.dto.ComplianceSummaryDto;
 
@@ -60,11 +58,20 @@ public class ComplianceSummaryService {
                         .deviationCount(0).deviationBreakdown(Map.of())
                         .build();
             }
-            long compliantPatients = toLong(kpis[10]);
+            DeviationCounts dev = occurrenceDeviations(facilityId, startDate, endDate);
             long effectiveEnrollments = enrolledInPeriod >= 0 ? enrolledInPeriod : totalEnrollments;
-            long effectiveCompliant = enrolledInPeriod >= 0
-                    ? Math.min(effectiveEnrollments, compliantPatients)
-                    : compliantPatients;
+            // Compliant/non-compliant on the CLINICAL clock when a date range is set: non-compliant =
+            // cohort patients (enrolled in window) that have a deviation whose OCCURRENCE date is in the
+            // window; compliant = cohort − non-compliant. This replaces the mv_daily_compliance_kpis
+            // as-of, cumulative-deviation count (which double-counted historical deviations and was only
+            // reconciled to the cohort via a Math.min clamp). With no date range we keep the MV snapshot.
+            long effectiveCompliant;
+            if (enrolledInPeriod >= 0) {
+                long nonCompliant = deviationRepository.countDistinctPatientsWithDeviationsBetween(startDate, endDate);
+                effectiveCompliant = Math.max(0, effectiveEnrollments - nonCompliant);
+            } else {
+                effectiveCompliant = toLong(kpis[10]);   // no date filter → current-state snapshot
+            }
             return ComplianceSummaryDto.builder()
                     .totalEnrollments(effectiveEnrollments)
                     .compliantPatients(effectiveCompliant)
@@ -76,11 +83,15 @@ public class ComplianceSummaryService {
                             .onTime(toLong(kpis[6])).late(toLong(kpis[7])).early(toLong(kpis[5]))
                             .overdue(toLong(kpis[1])).missed(toLong(kpis[2])).due(toLong(kpis[3])).pending(toLong(kpis[4]))
                             .build())
-                    .deviationCount(toLong(kpis[11]))
+                    // Deviations from mv_daily_deviation_kpis (clinical OCCURRENCE date, in-window) —
+                    // same source/clock as the Deviations page, so the two reconcile. (The compliance
+                    // state snapshot's kpis[11..14] counted deviations cumulatively as-of the snapshot
+                    // day, which disagreed with the Deviations page; those indices are no longer used.)
+                    .deviationCount(dev.total())
                     .deviationBreakdown(Map.of(
-                            "overdue",        toLong(kpis[12]),
-                            "missed",         toLong(kpis[13]),
-                            "orderViolation", toLong(kpis[14])))
+                            "overdue",        dev.overdue(),
+                            "missed",         dev.missed(),
+                            "orderViolation", dev.orderViolation()))
                     .build();
         }
 
@@ -97,11 +108,20 @@ public class ComplianceSummaryService {
                     .build();
         }
 
-        // Clamp compliant to enrollments: dm[0] is an all-time facility deviation-instance count and
-        // can exceed the period-scoped facility enrollment (totalEnrollments), which otherwise yields
-        // rates > 100% and negative non-compliant counts (mirrors the no-facility branch's Math.min).
-        long compliantPatients = Math.min(totalEnrollments, toLong(dm[0]));
+        // Compliant/non-compliant on the CLINICAL clock: non-compliant = facility cohort patients
+        // (enrolled in window) with a deviation whose OCCURRENCE date is in the window; compliant =
+        // cohort − non-compliant. Replaces dm[0] (an all-time facility count that needed a Math.min
+        // clamp). With no date filter we keep the all-time snapshot.
+        long compliantPatients;
+        if (startDate != null || endDate != null) {
+            long nonCompliant = deviationRepository.countDistinctPatientsWithDeviationsBetween(
+                    facilityId, startDate, endDate);
+            compliantPatients = Math.max(0, totalEnrollments - nonCompliant);
+        } else {
+            compliantPatients = Math.min(totalEnrollments, toLong(dm[0]));
+        }
         double complianceRate  = (double) compliantPatients / totalEnrollments;
+        DeviationCounts dev = occurrenceDeviations(facilityId, startDate, endDate);
 
         return ComplianceSummaryDto.builder()
                 .totalEnrollments(totalEnrollments)
@@ -112,12 +132,39 @@ public class ComplianceSummaryService {
                         .onTime(toLong(sm[6])).late(toLong(sm[7])).early(toLong(sm[5]))
                         .overdue(toLong(sm[1])).missed(toLong(sm[2])).due(toLong(sm[3])).pending(toLong(sm[4]))
                         .build())
-                .deviationCount(toLong(dm[1]))
+                // Deviations from mv_daily_deviation_kpis (clinical occurrence date, in-window) —
+                // reconciles with the Deviations page; dm[1..4] (all-time base aggregate) no longer used.
+                .deviationCount(dev.total())
                 .deviationBreakdown(Map.of(
-                        "overdue",        toLong(dm[2]),
-                        "missed",         toLong(dm[3]),
-                        "orderViolation", toLong(dm[4])))
+                        "overdue",        dev.overdue(),
+                        "missed",         dev.missed(),
+                        "orderViolation", dev.orderViolation()))
                 .build();
+    }
+
+    /** Immutable holder for occurrence-in-window deviation counts (total + by-type). */
+    private record DeviationCounts(long total, long overdue, long missed, long orderViolation) {}
+
+    /**
+     * Deviation counts by CLINICAL occurrence date within [startDate, endDate], read from
+     * mv_daily_deviation_kpis via {@link DeviationRepository#countByTypeFiltered} — the SAME
+     * source and clock as the Deviations page, so the compliance-page deviation card reconciles
+     * with it. Null dates widen to all-time. Passing {@code null} protocol = all protocols.
+     */
+    private DeviationCounts occurrenceDeviations(String facilityId,
+                                                 OffsetDateTime startDate, OffsetDateTime endDate) {
+        long overdue = 0, missed = 0, orderViolation = 0, total = 0;
+        for (Object[] row : deviationRepository.countByTypeFiltered(null, facilityId, startDate, endDate)) {
+            long cnt = toLong(row[1]);
+            total += cnt;
+            switch ((String) row[0]) {
+                case "OVERDUE":         overdue = cnt;        break;
+                case "MISSED":          missed = cnt;         break;
+                case "ORDER_VIOLATION": orderViolation = cnt; break;
+                default: /* other/unknown types still counted in total */ break;
+            }
+        }
+        return new DeviationCounts(total, overdue, missed, orderViolation);
     }
 
     @Cacheable(value = "analytics",
@@ -164,16 +211,16 @@ public class ComplianceSummaryService {
         long stepLate      = steps.stream().filter(s -> s.getCompletionStatus() == CompletionStatus.LATE).count();
         long stepTotal     = steps.size();
 
-        // Deviations — same instances, detected WITHIN [startDate, endDate] (windowed), consistent
-        // with the windowed enrollment scoping of the patient set.
-        List<Deviation> devs = deviationRepository.findByProtocolInstanceIdIn(instanceIds).stream()
-                .filter(d -> inRange(d.getDetectedAt(), startDate, endDate))
-                .collect(Collectors.toList());
-        Map<UUID, Long> devCountByInstance = devs.stream()
-                .collect(Collectors.groupingBy(Deviation::getProtocolInstanceId, Collectors.counting()));
-        long overdueDevs = devs.stream().filter(d -> d.getDeviationType() == DeviationType.OVERDUE).count();
-        long missedDevs  = devs.stream().filter(d -> d.getDeviationType() == DeviationType.MISSED).count();
-        long orderDevs   = devs.stream().filter(d -> d.getDeviationType() == DeviationType.ORDER_VIOLATION).count();
+        // Deviations — same instances, counted on their CLINICAL OCCURRENCE date within
+        // [startDate, endDate] (occurredAt(), not system detected_at), consistent with the windowed
+        // enrollment scoping AND with mv_daily_deviation_kpis / the Deviations page (same clock).
+        List<Object[]> devRows = deviationRepository.findDeviationTypesByInstanceIdIn(
+                instanceIds, startDate, endDate);
+        Map<UUID, Long> devCountByInstance = devRows.stream()
+                .collect(Collectors.groupingBy(r -> (UUID) r[0], Collectors.counting()));
+        long overdueDevs = devRows.stream().filter(r -> "OVERDUE".equals(r[1])).count();
+        long missedDevs  = devRows.stream().filter(r -> "MISSED".equals(r[1])).count();
+        long orderDevs   = devRows.stream().filter(r -> "ORDER_VIOLATION".equals(r[1])).count();
 
         // Patient compliance: compliant = distinct patients (scoped, one instance each) with zero
         // deviations in the period -> compliant <= tracked by construction (rate bounded).
@@ -197,7 +244,7 @@ public class ComplianceSummaryService {
                         .onTime(stepOnTime).late(stepLate).early(stepEarly)
                         .overdue(stepOverdue).missed(stepMissed).due(stepDue).pending(stepPending)
                         .build())
-                .deviationCount((long) devs.size())
+                .deviationCount((long) devRows.size())
                 .deviationBreakdown(Map.of(
                         "overdue",        overdueDevs,
                         "missed",         missedDevs,
@@ -331,14 +378,6 @@ public class ComplianceSummaryService {
                     .build());
         }
         return results;
-    }
-
-    /** Inclusive [start,end] membership; null bounds are treated as open (used to date-scope deviations). */
-    private static boolean inRange(OffsetDateTime t, OffsetDateTime start, OffsetDateTime end) {
-        if (t == null) return false;
-        if (start != null && t.isBefore(start)) return false;
-        if (end != null && t.isAfter(end)) return false;
-        return true;
     }
 
     @Cacheable(value = "analytics",

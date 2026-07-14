@@ -33,6 +33,7 @@ public class DeviationAnalyticsService {
                 .deviationType((String) row[6])
                 .detectedAt(DateUtil.toOffsetDateTime(row[7]))
                 .facilityId((String) row[8])
+                .occurredAt(DateUtil.toOffsetDateTime(row[9]))
                 .build()).collect(Collectors.toList());
     }
 

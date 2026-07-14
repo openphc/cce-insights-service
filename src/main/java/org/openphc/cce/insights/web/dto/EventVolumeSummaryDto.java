@@ -14,6 +14,7 @@ public class EventVolumeSummaryDto {
     private List<ResourceTypeCountDto> byResourceType;
     private List<FacilityCount> byFacility;
     private List<SourceCount> bySource;
+    private long pipelineLossCount;   // accepted events (event_time) with no compliance row; date-filtered
 
     @Data
     @Builder

@@ -9,11 +9,13 @@ import org.openphc.cce.insights.web.dto.DashboardComplianceSummaryDto;
 import org.openphc.cce.insights.web.dto.DashboardOverviewDto;
 import org.openphc.cce.insights.web.dto.FacilityRankingDto;
 import org.openphc.cce.insights.web.dto.PractitionerRankingDto;
+import org.openphc.cce.insights.web.dto.ReferralsKpiDto;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -179,5 +181,51 @@ public class DashboardService {
         for (FacilityRankingDto f : facilities) {
             f.setPatientsFromHIE(facilityHIEPatients.getOrDefault(f.getFacilityId(), 0L));
         }
+    }
+
+    /**
+     * Referrals KPI — total count of referral forms successfully received by HIE
+     * plus a per-facility breakdown. Uses inbound event {@code event_time} for the
+     * date range (matches the "event_time for every page metric" convention).
+     * When a facility is passed, the response is scoped to that facility only.
+     */
+    @Cacheable(value = "metrics",
+            key = "'dashboard-referrals-' + (#facilityId ?: 'all') + '-' + #startDate + '-' + #endDate")
+    public ReferralsKpiDto getReferralsKpi(String facilityId,
+                                            OffsetDateTime startDate,
+                                            OffsetDateTime endDate) {
+        boolean hasFacility = facilityId != null && !facilityId.isEmpty();
+
+        // Facility-wise counts from inbound_event_logs.facility_id (event payload facility,
+        // same clock as event_time). Materialise into a map for reference-list join below.
+        Map<String, Long> countsByFacility = new LinkedHashMap<>();
+        for (Object[] row : inboundEventRepository.countReferralsReceivedByHIEGroupedByFacility(
+                startDate, endDate)) {
+            countsByFacility.put((String) row[0], ((Number) row[1]).longValue());
+        }
+
+        // Total — single COUNT() query so the total ignores facilities missing from the
+        // reference list (defensive: a stray facility_id in an event should still be counted).
+        long total = inboundEventRepository.countReferralsReceivedByHIE(
+                facilityId, startDate, endDate);
+
+        // Anchor to the facility reference list so every in-scope facility shows up (0 if
+        // none), consistent with FacilityRankingService.getRankings().
+        List<ReferralsKpiDto.FacilityReferralCountDto> byFacility = new ArrayList<>();
+        for (Object[] ref : dailyKpiRepository.getFacilityReference()) {
+            String fid  = (String) ref[0];
+            if (hasFacility && !facilityId.equals(fid)) continue;
+            String name = (String) ref[1];
+            byFacility.add(ReferralsKpiDto.FacilityReferralCountDto.builder()
+                    .facilityId(fid)
+                    .facilityName(name)
+                    .count(countsByFacility.getOrDefault(fid, 0L))
+                    .build());
+        }
+
+        return ReferralsKpiDto.builder()
+                .totalReferralsReceived(total)
+                .byFacility(byFacility)
+                .build();
     }
 }

@@ -184,8 +184,8 @@ Always read with `FINAL` to see the deduplicated, delete-purged view.
 
 ### 1.11 Daily KPI Materialized Views (schema/07)
 
-Six APPEND-mode refreshable MVs that snapshot compliance, facility, and pipeline KPIs every 30
-minutes. Backing tables use `ReplacingMergeTree(refreshed_at)` with `snapshot_date` as the first
+Five APPEND-mode refreshable MVs that snapshot compliance, adoption, deviation, event pipeline, and
+referral KPIs every 30 minutes. Backing tables use `ReplacingMergeTree(refreshed_at)` with `snapshot_date` as the first
 ORDER BY key, so within a day multiple refresh rows deduplicate to the latest (use `FINAL`), and
 across days all snapshots are preserved.
 
@@ -203,25 +203,10 @@ Always filter with `FINAL` and `WHERE snapshot_date = today()` for the current d
 | `total_deviations`, `overdue_deviations`, `missed_deviations`, `order_violation_deviations` | Deviation breakdown |
 | `step_total`, `step_completed`, `step_overdue`, `step_missed`, `step_due`, `step_pending`, `step_on_time`, `step_early`, `step_late` | Step state and timing metrics |
 
-**`mv_daily_facility_kpis`** — one row per `(snapshot_date, facility_id)`
-
-| Column | Description |
-|--------|-------------|
-| `snapshot_date` | Calendar day |
-| `facility_id` | FOSA facility ID |
-| `tracked_patients`, `compliant_patients`, `non_compliant_patients`, `compliance_rate_pct` | Facility compliance |
-| `total_deviations` | Deviation count at this facility |
-| `event_count` | HIE transmissions received on this day |
-
-**`mv_daily_facility_activity_summary`** — one row per `snapshot_date` (global summary)
-
-| Column | Description |
-|--------|-------------|
-| `snapshot_date` | Calendar day |
-| `total_in_scope` | Total facilities in `facility` |
-| `active_facilities` | Facilities with ≥1 successful HIE submission (`inbound_event_logs.status = 'ACCEPTED'`) on this day |
-| `inactive_facilities` | In-scope facilities with no events on this day |
-| `active_facility_rate_pct` | `active_facilities / total_in_scope × 100` |
+> **Removed:** `mv_daily_facility_kpis` and `mv_daily_facility_activity_summary` were
+> dropped. The Facilities ranking is now computed live from the enrolled-patient cohort
+> joined to `inbound_event_logs`, and the active-facility tiles read
+> `mv_event_volume_hourly` (event_time-keyed) — see §3.9 and §3.13a.
 
 **`mv_daily_adoption_kpis`** — one row per `(snapshot_date, facility_id)`, joined with `facility`
 
@@ -258,6 +243,18 @@ Always filter with `FINAL` and `WHERE snapshot_date = today()` for the current d
 | `matched_count`, `zero_match_count`, `duplicate_count` | Processing status breakdown |
 | `matched_rate_pct`, `zero_match_rate_pct` | Processing quality rates |
 | `pipeline_loss_count` | `total_events − total_processed` |
+
+**`mv_daily_referral_kpis`** — one row per `(event_time day, facility_id)`
+
+| Column | Description |
+|--------|-------------|
+| `snapshot_date` | Clinical `event_time` day of the referral |
+| `facility_id` | FOSA facility ID |
+| `referral_count` | ACCEPTED inbound events (by `event_time`) that completed a *Referral Initiated* step on this day |
+
+> Keyed on clinical `event_time` (not `received_at`), so it is a functional/clinical
+> metric. Backs the `GET /v1/insights/dashboard/referrals` KPI (total + per-facility
+> breakdown).
 
 ## 2. Enum Values
 
@@ -447,7 +444,10 @@ tracked_patients     = uniq(protocol_instance.patient_id) joined with mv_patient
 compliance_rate      = (tracked − non_compliant) / tracked × 100 per facility
                        (non_compliant = uniq patients with any deviation in period)
 
-active_deviations    = SUM(daily total_deviations) from mv_daily_facility_kpis FINAL
+active_deviations    = uniq patients with any deviation in period, computed live from the
+                       same enrolled-patient cohort as compliance_rate (shared cohort keeps
+                       deviations consistent with the rate; the former
+                       mv_daily_facility_kpis source was dropped)
 
 total_events         = uniq inbound_event_logs.id with status='ACCEPTED' in the period,
                        intersected with the facility reference list

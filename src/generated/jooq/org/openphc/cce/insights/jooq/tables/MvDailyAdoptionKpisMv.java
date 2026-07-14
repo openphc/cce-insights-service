@@ -4,7 +4,6 @@
 package org.openphc.cce.insights.jooq.tables;
 
 
-import java.time.LocalDate;
 import java.util.Collection;
 
 import org.jooq.Condition;
@@ -21,7 +20,6 @@ import org.jooq.Table;
 import org.jooq.TableField;
 import org.jooq.TableOptions;
 import org.jooq.impl.DSL;
-import org.jooq.impl.SQLDataType;
 import org.jooq.impl.TableImpl;
 import org.openphc.cce.insights.jooq.CceAnalytics;
 
@@ -52,7 +50,7 @@ public class MvDailyAdoptionKpisMv extends TableImpl<Record> {
      * The column
      * <code>cce_analytics.mv_daily_adoption_kpis_mv.snapshot_date</code>.
      */
-    public final TableField<Record, LocalDate> SNAPSHOT_DATE = createField(DSL.name("snapshot_date"), SQLDataType.LOCALDATE.nullable(false), this, "");
+    public final TableField<Record, Object> SNAPSHOT_DATE = createField(DSL.name("snapshot_date"), org.jooq.impl.SQLDataType.OTHER, this, "");
 
     /**
      * The column

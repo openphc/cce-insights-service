@@ -24,16 +24,14 @@ public class EventVolumeService {
             key = "'vol-summary-' + (#facilityId ?: 'all') + '-' + (#source ?: 'all') + '-' + #startDate + '-' + #endDate")
     public EventVolumeSummaryDto getSummary(String facilityId, String source,
                                              OffsetDateTime startDate, OffsetDateTime endDate) {
-        List<Object[]> byFacility = complianceEventLogRepository.countByFacilityFiltered(
-                facilityId, source, null, startDate, endDate);
-        List<Object[]> byResourceType = complianceEventLogRepository.countByResourceType(
-                facilityId, source, startDate, endDate);
-        // Source counts from inbound_event — captures ALL received events, not just compliance-matched
-        List<Object[]> bySource = inboundEventRepository.countBySource(facilityId, startDate, endDate);
-        List<Object[]> byProcessingStatus = complianceEventLogRepository.countByProcessingStatus(
-                facilityId, startDate, endDate);
-
-        long totalEvents = byResourceType.stream().mapToLong(r -> ((Number) r[1]).longValue()).sum();
+        // Volume + facility/source from the event_time event-volume MV; total/matched/zeromatch/
+        // duplicate/pipeline-loss from the event_time processing MV — SAME inbound event set, so the
+        // rates reconcile with Total and every card is clinical (event_time) + consistent.
+        List<Object[]> byFacility = inboundEventRepository.eventVolumeByFacilityAndType(facilityId, source, null, startDate, endDate);
+        List<Object[]> bySource = inboundEventRepository.eventVolumeBySource(facilityId, startDate, endDate);
+        Object[] proc = inboundEventRepository.eventProcessingKpis(facilityId, startDate, endDate);
+        long totalEvents  = ((Number) proc[0]).longValue();
+        long pipelineLoss = ((Number) proc[4]).longValue();
 
         List<EventVolumeSummaryDto.FacilityCount> facilityTop = new ArrayList<>();
         Map<String, Long> facilityTotals = new LinkedHashMap<>();
@@ -57,30 +55,33 @@ public class EventVolumeService {
                         .build())
                 .collect(Collectors.toList());
 
-        // Build processing status breakdown with counts and percentages
-        Map<String, EventVolumeSummaryDto.StatusCount> statusBreakdown = buildProcessingStatusBreakdown(byProcessingStatus);
+        // Processing breakdown from the same MV; percentages are share of total_events (so they reconcile).
+        Map<String, EventVolumeSummaryDto.StatusCount> statusBreakdown = new LinkedHashMap<>();
+        statusBreakdown.put("matched",   statusCount(((Number) proc[1]).longValue(), totalEvents));
+        statusBreakdown.put("zeroMatch", statusCount(((Number) proc[2]).longValue(), totalEvents));
+        statusBreakdown.put("duplicate", statusCount(((Number) proc[3]).longValue(), totalEvents));
 
         return EventVolumeSummaryDto.builder()
                 .totalEvents(totalEvents)
                 .processingStatusBreakdown(statusBreakdown)
                 .byFacility(facilityTop)
                 .bySource(sourceCounts)
+                .pipelineLossCount(pipelineLoss)
                 .build();
     }
 
     @Cacheable(value = "analytics", key = "'event-kpis'")
     public EventKpiDto getEventKpis() {
-        // Reads from mv_daily_event_kpis (all-time totals, refreshed every 30 min).
-        // Use this for the events page header cards; use getSummary() for date-filtered breakdowns.
-        Object[] row = dailyKpiRepository.getEventKpis();
+        // All-time event_time processing totals from mv_daily_event_kpis. The UI now reads the
+        // date-filtered pipeline loss from getSummary(); this endpoint remains for the cumulative view.
+        Object[] p = inboundEventRepository.eventProcessingKpis(null, null, null);
+        long total = ((Number) p[0]).longValue(), matched = ((Number) p[1]).longValue();
+        long zero = ((Number) p[2]).longValue(), dup = ((Number) p[3]).longValue(), loss = ((Number) p[4]).longValue();
         return EventKpiDto.builder()
-                .totalEvents(((Number) row[0]).longValue())
-                .matchedCount(((Number) row[1]).longValue())
-                .zeroMatchCount(((Number) row[2]).longValue())
-                .duplicateCount(((Number) row[3]).longValue())
-                .matchedRatePct(((Number) row[4]).doubleValue())
-                .zeroMatchRatePct(((Number) row[5]).doubleValue())
-                .pipelineLossCount(((Number) row[6]).longValue())
+                .totalEvents(total).matchedCount(matched).zeroMatchCount(zero).duplicateCount(dup)
+                .matchedRatePct(total > 0 ? Math.round((double) matched / total * 1000.0) / 10.0 : 0.0)
+                .zeroMatchRatePct(total > 0 ? Math.round((double) zero / total * 1000.0) / 10.0 : 0.0)
+                .pipelineLossCount(loss)
                 .build();
     }
 
@@ -105,6 +106,11 @@ public class EventVolumeService {
         return breakdown;
     }
 
+    private EventVolumeSummaryDto.StatusCount statusCount(long count, long total) {
+        double pct = total > 0 ? Math.round((double) count / total * 1000.0) / 10.0 : 0.0;
+        return EventVolumeSummaryDto.StatusCount.builder().count(count).percentage(pct).build();
+    }
+
     private String mapStatusKey(String dbStatus) {
         if (dbStatus == null) return "unknown";
         switch (dbStatus.toUpperCase()) {
@@ -119,7 +125,7 @@ public class EventVolumeService {
             key = "'vol-restype-' + (#facilityId ?: 'all') + '-' + (#source ?: 'all') + '-' + #startDate + '-' + #endDate")
     public List<ResourceTypeCountDto> getByResourceType(String facilityId, String source,
                                                         OffsetDateTime startDate, OffsetDateTime endDate) {
-        return complianceEventLogRepository.countByResourceType(facilityId, source, startDate, endDate).stream()
+        return inboundEventRepository.eventVolumeByResourceType(facilityId, source, startDate, endDate).stream()
                 .map(row -> ResourceTypeCountDto.builder()
                         .resourceType((String) row[0])
                         .count(((Number) row[1]).longValue())
@@ -131,7 +137,7 @@ public class EventVolumeService {
             key = "'vol-facility-' + (#facilityId ?: 'all') + '-' + (#source ?: 'all') + '-' + (#resourceType ?: 'all') + '-' + #startDate + '-' + #endDate")
     public List<FacilityEventCountDto> getByFacility(String facilityId, String source, String resourceType,
                                                      OffsetDateTime startDate, OffsetDateTime endDate) {
-        List<Object[]> rows = complianceEventLogRepository.countByFacilityFiltered(
+        List<Object[]> rows = inboundEventRepository.eventVolumeByFacilityAndType(
                 facilityId, source, resourceType, startDate, endDate);
         // rows: [facility_id, resource_type, count] — aggregate by facility
         Map<String, List<Object[]>> grouped = new LinkedHashMap<>();
@@ -158,10 +164,8 @@ public class EventVolumeService {
     public EventVolumeTrendDto getTrends(String interval, OffsetDateTime startDate,
                                           OffsetDateTime endDate, String facilityId, String source) {
         String dbInterval = DateUtil.mapInterval(interval);
-        // When filtering by source, use inbound_event to capture ALL received events (not just compliance-matched)
-        List<Object[]> rows = (source != null && !source.isBlank())
-                ? inboundEventRepository.findEventTrends(dbInterval, facilityId, source, startDate, endDate)
-                : complianceEventLogRepository.findEventTrends(dbInterval, facilityId, source, null, startDate, endDate);
+        // Clinical event volume from the event_time event-volume MV (consistent with the cards).
+        List<Object[]> rows = inboundEventRepository.eventVolumeTrends(dbInterval, facilityId, source, startDate, endDate);
 
         // rows: [period, resource_type, count] — aggregate by period
         Map<String, Map<String, Long>> periodMap = new LinkedHashMap<>();

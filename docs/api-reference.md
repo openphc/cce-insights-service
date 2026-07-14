@@ -1751,6 +1751,42 @@ Dashboard. All sections respect the global `facilityId` / `startDate` / `endDate
 
 ---
 
+### 15.3 GET `/v1/insights/dashboard/referrals`
+
+Referrals KPI — total count of referral forms successfully received by HIE for the
+selected date range, plus a per-facility breakdown. Counts **ACCEPTED** inbound events
+(scoped by clinical `event_time`) that completed a *Referral Initiated* step, backed by
+the `mv_daily_referral_kpis` materialized view.
+
+**Required Scope:** `dashboard:read`
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `facilityId` | String | — | Filter by facility FOSA ID |
+| `startDate` | ISO 8601 (`OffsetDateTime`) | — | Start of date range — scoped by inbound event `event_time` |
+| `endDate` | ISO 8601 (`OffsetDateTime`) | — | End of date range — scoped by inbound event `event_time` |
+
+**Response: `200 OK`** — `ApiResponse<ReferralsKpiDto>`
+
+```json
+{
+  "data": {
+    "totalReferralsReceived": 1240,
+    "byFacility": [
+      { "facilityId": "0002", "facilityName": "Kigali South HC", "count": 480 },
+      { "facilityId": "0015", "facilityName": "Muhima HC", "count": 320 }
+    ]
+  }
+}
+```
+
+> `byFacility` returns one entry per facility in the reference list (`count` is `0` when a
+> facility received no referrals in the period).
+
+---
+
 ## 16. All Protocols Compliance Summary
 
 ### 16.1 GET `/v1/insights/protocols/compliance-summary`

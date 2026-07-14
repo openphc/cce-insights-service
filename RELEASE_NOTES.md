@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+### Referrals KPI (new)
+
+- **`GET /v1/insights/dashboard/referrals`** — new dashboard endpoint returning
+  `ReferralsKpiDto` (`totalReferralsReceived` + `byFacility[]` of
+  `{ facilityId, facilityName, count }`). Counts **ACCEPTED** inbound events (scoped by
+  clinical `event_time`) that completed a *Referral Initiated* step, backed by the new
+  `mv_daily_referral_kpis` materialized view (event_time day × facility; `referral_count`).
+  Accepts `facilityId`, `startDate`, `endDate` (`OffsetDateTime`).
+
+### Metric Time Semantics
+
+- Documented the two-clock rule now applied consistently across pages: **functional**
+  (clinical/business) KPIs — adoption, compliance, deviations, event volume, referrals,
+  patient cohorts — are measured on clinical `event_time`, so ingestion lag never shifts
+  the numbers; **technical/operational** metrics (the Ingestion page) are measured on
+  processing `received_at`. Every page is clinical EXCEPT Ingestion. Compliance/Patients
+  cohorts date-filter on `enrolled_at`, which the compliance-service now sets to clinical
+  time (pre-existing rows remain processing-time until re-snapshot/replay).
+
+### Materialized View Inventory
+
+- **Added** `mv_daily_referral_kpis` (schema/07, event_time-keyed) backing the Referrals KPI.
+- **Removed** `mv_daily_facility_kpis` and `mv_daily_facility_activity_summary`. The
+  Facilities ranking is now computed live from the enrolled-patient cohort joined to
+  `inbound_event_logs`, and the active-facility tiles read `mv_event_volume_hourly`
+  (event_time-keyed). The daily-summary MVs read by this service are now
+  `mv_daily_compliance_kpis`, `mv_daily_event_kpis`, `mv_daily_deviation_kpis`,
+  `mv_daily_adoption_kpis`, and `mv_daily_referral_kpis`.
+
 ### Soft-Delete Phantom Row Fix
 
 - **`_is_deleted = 0` filter** added to all 14 query methods in `ProtocolInstanceRepositoryImpl`. ClickHouse `ReplacingMergeTree(_version, _is_deleted)` tables receive Debezium CDC tombstone rows (`_is_deleted=1`) when a patient enrollment is deleted in Postgres. Without explicit filtering, these phantom rows appear in compliance counts, patient lists, and enrollment trends until background merges run. The fix is a `notDeleted()` helper that appends `_is_deleted = 0` as the first WHERE condition on every query against `protocol_instances`, independently of whether the `FINAL` clause is enabled.

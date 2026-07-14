@@ -186,7 +186,7 @@ public class IngestionAnalyticsService {
     @Cacheable(value = "metrics", key = "'pipeline-loss-' + #facilityId + '-' + #startDate + '-' + #endDate")
     public PipelineLossDto getPipelineLoss(String facilityId,
                                             OffsetDateTime startDate, OffsetDateTime endDate) {
-        long totalAccepted = inboundEventRepository.countAccepted(facilityId, startDate, endDate);
+        long totalAccepted = inboundEventRepository.countAcceptedByReceivedAt(facilityId, startDate, endDate);
         long lostCount = inboundEventRepository.countPipelineLoss(facilityId, startDate, endDate);
         long inEventLog = totalAccepted - lostCount;
 
