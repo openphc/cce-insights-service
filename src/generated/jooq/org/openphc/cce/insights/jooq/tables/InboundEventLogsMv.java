@@ -21,6 +21,7 @@ import org.jooq.Table;
 import org.jooq.TableField;
 import org.jooq.TableOptions;
 import org.jooq.impl.DSL;
+import org.jooq.impl.DefaultDataType;
 import org.jooq.impl.SQLDataType;
 import org.jooq.impl.TableImpl;
 import org.openphc.cce.insights.jooq.CceAnalytics;
@@ -101,6 +102,11 @@ public class InboundEventLogsMv extends TableImpl<Record> {
      * The column <code>cce_analytics.inbound_event_logs_mv.updated_at</code>.
      */
     public final TableField<Record, Object> UPDATED_AT = createField(DSL.name("updated_at"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
+
+    /**
+     * The column <code>cce_analytics.inbound_event_logs_mv.event_time</code>.
+     */
+    public final TableField<Record, Object> EVENT_TIME = createField(DSL.name("event_time"), DefaultDataType.getDefaultDataType("Nullable)"), this, "");
 
     /**
      * The column <code>cce_analytics.inbound_event_logs_mv._version</code>.

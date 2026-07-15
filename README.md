@@ -1,6 +1,6 @@
 # CCE Insights Service
 
-**Read-only compliance analytics API** for the Clinical Care Engine (CCE) platform. Provides 33 REST endpoints serving protocol adherence metrics, deviation analytics, event volume trends, ingestion pipeline monitoring, patient risk analysis, intelligence delivery tracking, and lookup/filter data for dashboards.
+**Read-only compliance analytics API** for the Clinical Care Engine (CCE) platform. Provides 34 REST endpoints serving protocol adherence metrics, deviation analytics, event volume trends, ingestion pipeline monitoring, patient risk analysis, intelligence delivery tracking, referral KPIs, and lookup/filter data for dashboards.
 
 ## Architecture
 
@@ -31,12 +31,12 @@ Analytics UI → CCE Gateway (OAuth) → CCE Insights Service → PostgreSQL (cc
 docker compose up -d
 ```
 
-## API Endpoints (33)
+## API Endpoints (34)
 
 | Group | Endpoints | Path Prefix |
 |-------|-----------|-------------|
 | Compliance Summaries | 4 | `/v1/insights/protocols/`, `/v1/insights/facilities/` |
-| Dashboard | 2 | `/v1/insights/dashboard/` |
+| Dashboard | 3 | `/v1/insights/dashboard/` |
 | Patient Compliance | 5 | `/v1/insights/patients/` |
 | Deviations | 4 | `/v1/insights/deviations/` |
 | Intelligence | 1 | `/v1/insights/intelligence/` |

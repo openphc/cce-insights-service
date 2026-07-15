@@ -5,7 +5,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Read-only access to the six refreshable daily KPI materialized views
+ * Read-only access to the refreshable daily KPI materialized views
  * (schema/07-daily-summary-aggregates.sql) and the facility
  * static table (schema/08-reference-tables.sql).
  *
@@ -15,7 +15,8 @@ import java.util.UUID;
 public interface DailyKpiRepository {
 
     /**
-     * mv_daily_facility_activity_summary — single row (today's snapshot).
+     * Active-facility summary for today, derived live from the event_time-keyed
+     * mv_event_volume_hourly (a facility is active if it has ≥1 accepted event today).
      * Returns: [total_in_scope(long), active_facilities(long),
      *           inactive_facilities(long), active_facility_rate_pct(double)]
      */
@@ -27,14 +28,6 @@ public interface DailyKpiRepository {
      * Returns same indices as {@link #getFacilityActivitySummary()}.
      */
     Object[] getFacilityActivitySummaryByDateRange(LocalDate startDate, LocalDate endDate);
-
-    /**
-     * mv_daily_facility_kpis — one row per facility_id.
-     * Returns: [facility_id(String), tracked_patients(long), compliant_patients(long),
-     *           non_compliant_patients(long), compliance_rate_pct(double),
-     *           total_deviations(long), event_count(long)]
-     */
-    List<Object[]> getFacilityKpis();
 
     /**
      * mv_daily_adoption_kpis — today's snapshot, one row per facility_id.
@@ -73,17 +66,6 @@ public interface DailyKpiRepository {
     Object[] getComplianceKpisByProtocol(UUID protocolDefinitionId, LocalDate snapshotDate);
 
     /**
-     * mv_daily_facility_kpis — date-range-aware version.
-     * Returns one row per facility aggregated over [startDate, endDate]:
-     *   tracked/compliant/non_compliant = latest snapshot in the range (argMax), after collapsing protocols per day
-     *   compliance_rate_pct             = recomputed from those end-of-period values
-     *   total_deviations                = latest snapshot in the range (argMax)
-     *   event_count                     = SUM of daily events over the range
-     * Same column indices as {@link #getFacilityKpis()}.
-     */
-    List<Object[]> getFacilityKpisByDateRange(LocalDate startDate, LocalDate endDate);
-
-    /**
      * mv_daily_adoption_kpis — multi-day aggregation for a reporting period.
      * Returns: [facility_id(String), expected_patients_per_day(long),
      *           sum_actual_patients(double), adoption_rate_pct(double)]
@@ -91,28 +73,9 @@ public interface DailyKpiRepository {
      */
     List<Object[]> getAdoptionKpisByDateRange(LocalDate startDate, LocalDate endDate);
 
-    /**
-     * mv_daily_event_kpis — single row (total event processing summary, all time).
-     * Returns: [0] total_events, [1] matched_count, [2] zero_match_count,
-     *          [3] duplicate_count, [4] matched_rate_pct, [5] zero_match_rate_pct,
-     *          [6] pipeline_loss_count
-     */
-    Object[] getEventKpis();
+    // Event-processing KPI reads live in InboundEventRepositoryImpl.eventProcessingKpis now (it reads the
+    // redesigned event_time × facility mv_daily_event_kpis).
 
-    /**
-     * mv_daily_deviation_kpis — filtered by optional protocol (null = all protocols).
-     * Returns: [0] total_deviations, [1] overdue_count,
-     *          [2] missed_count, [3] order_violation_count
-     */
-    Object[] getDeviationKpis(UUID protocolDefinitionId);
-
-    /**
-     * mv_daily_deviation_kpis — aggregated over [startDate, endDate].
-     * Returns same indices as {@link #getDeviationKpis(UUID)}.
-     */
-    Object[] getDeviationKpisByDateRange(UUID protocolDefinitionId, LocalDate startDate, LocalDate endDate);
-
-    /** @deprecated use {@link #getDeviationKpis(UUID)} with null */
-    @Deprecated
-    Object[] getDeviationKpisAll();
+    // Deviation daily-KPI reads live in DeviationRepositoryImpl now (they read the redesigned
+    // occurrence-keyed mv_daily_deviation_kpis directly). The old snapshot-based methods were removed.
 }

@@ -60,6 +60,11 @@ public class MvDailyEventKpis extends TableImpl<Record> {
     public final TableField<Record, Object> REFRESHED_AT = createField(DSL.name("refreshed_at"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
 
     /**
+     * The column <code>cce_analytics.mv_daily_event_kpis.facility_id</code>.
+     */
+    public final TableField<Record, Object> FACILITY_ID = createField(DSL.name("facility_id"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
+
+    /**
      * The column <code>cce_analytics.mv_daily_event_kpis.total_events</code>.
      */
     public final TableField<Record, Object> TOTAL_EVENTS = createField(DSL.name("total_events"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
@@ -80,18 +85,6 @@ public class MvDailyEventKpis extends TableImpl<Record> {
      * <code>cce_analytics.mv_daily_event_kpis.duplicate_count</code>.
      */
     public final TableField<Record, Object> DUPLICATE_COUNT = createField(DSL.name("duplicate_count"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
-
-    /**
-     * The column
-     * <code>cce_analytics.mv_daily_event_kpis.matched_rate_pct</code>.
-     */
-    public final TableField<Record, Object> MATCHED_RATE_PCT = createField(DSL.name("matched_rate_pct"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
-
-    /**
-     * The column
-     * <code>cce_analytics.mv_daily_event_kpis.zero_match_rate_pct</code>.
-     */
-    public final TableField<Record, Object> ZERO_MATCH_RATE_PCT = createField(DSL.name("zero_match_rate_pct"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
 
     /**
      * The column

@@ -112,10 +112,10 @@ public class StepInstanceRepositoryImpl
                 .from(inboundEventLogs)
                 .where(DSL.field("iel." + INBOUND_EVENT_LOGS.PRACTITIONER_REF.getName()).ne(""))
                 .and(DSL.condition(
-                        "iel." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
+                        "iel." + INBOUND_EVENT_LOGS.EVENT_TIME.getName() + " >= parseDateTime64BestEffort(?)",
                         dtStart(startDate)))
                 .and(DSL.condition(
-                        "iel." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
+                        "iel." + INBOUND_EVENT_LOGS.EVENT_TIME.getName() + " <= parseDateTime64BestEffort(?)",
                         dtEnd(endDate)))
                 .and(DSL.condition(
                         "? = '' OR iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?",
@@ -198,15 +198,6 @@ public class StepInstanceRepositoryImpl
                 r.get(STEP_INSTANCES.ACTION_ID.getName(), String.class),
                 r.get("reached_count",   Long.class),
                 r.get("completed_count", Long.class)
-        };
-    }
-
-    /** Maps a referral-event Record (facility_id, outbound, inbound) to Object[]. */
-    private static Object[] toReferralRow(Record r) {
-        return new Object[]{
-                r.get("facility_id",     String.class),
-                r.get("outbound_events", Long.class),
-                r.get("inbound_events",  Long.class)
         };
     }
 
@@ -456,34 +447,6 @@ public class StepInstanceRepositoryImpl
                 .groupBy(DSL.field("pf.facility_id"))
                 .fetch()
                 .map(r -> toComplianceRow(r, "facility_id"));
-    }
-
-    @Override
-    public List<Object[]> findReferralEventCountsByFacility() {
-        var stepInstances = finalAs(STEP_INSTANCES, "si");
-        var protocolInstances = finalAs(PROTOCOL_INSTANCES, "pi");
-        var patientFacility = MV_PATIENT_FACILITY_LATEST.as("pf");
-        String actionId = "si." + STEP_INSTANCES.ACTION_ID.getName();
-
-        return dsl.select(
-                    DSL.field("pf.facility_id").as("facility_id"),
-                    DSL.field("uniqIf(si.id, endsWith(" + actionId + ", '-referral'))",
-                            Long.class).as("outbound_events"),
-                    DSL.field("uniqIf(si.id, endsWith(" + actionId + ", '-referral-ack'))",
-                            Long.class).as("inbound_events")
-                )
-                .from(stepInstances)
-                .join(protocolInstances).on(DSL.condition(
-                        "si." + STEP_INSTANCES.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
-                .join(patientFacility).on(DSL.condition(
-                        "pf.patient_id = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
-                .where(DSL.field("pf.facility_id").ne(""))
-                .and(DSL.condition(
-                        "(endsWith(" + actionId + ", '-referral') OR endsWith(" + actionId + ", '-referral-ack'))"))
-                .and(DSL.field("si." + STEP_INSTANCES.STATE.getName()).eq("COMPLETED"))
-                .groupBy(DSL.field("pf.facility_id"))
-                .fetch()
-                .map(StepInstanceRepositoryImpl::toReferralRow);
     }
 
     @Override

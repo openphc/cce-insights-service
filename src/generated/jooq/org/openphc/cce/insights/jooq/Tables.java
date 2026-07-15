@@ -42,10 +42,8 @@ import org.openphc.cce.insights.jooq.tables.MvDailyDeviationKpis;
 import org.openphc.cce.insights.jooq.tables.MvDailyDeviationKpisMv;
 import org.openphc.cce.insights.jooq.tables.MvDailyEventKpis;
 import org.openphc.cce.insights.jooq.tables.MvDailyEventKpisMv;
-import org.openphc.cce.insights.jooq.tables.MvDailyFacilityActivitySummary;
-import org.openphc.cce.insights.jooq.tables.MvDailyFacilityActivitySummaryMv;
-import org.openphc.cce.insights.jooq.tables.MvDailyFacilityKpis;
-import org.openphc.cce.insights.jooq.tables.MvDailyFacilityKpisMv;
+import org.openphc.cce.insights.jooq.tables.MvDailyReferralKpis;
+import org.openphc.cce.insights.jooq.tables.MvDailyReferralKpisMv;
 import org.openphc.cce.insights.jooq.tables.MvDeviationByPatient;
 import org.openphc.cce.insights.jooq.tables.MvDeviationByPatientMv;
 import org.openphc.cce.insights.jooq.tables.MvDeviationByProtocol;
@@ -291,25 +289,14 @@ public class Tables {
     public static final MvDailyEventKpisMv MV_DAILY_EVENT_KPIS_MV = MvDailyEventKpisMv.MV_DAILY_EVENT_KPIS_MV;
 
     /**
-     * The table <code>cce_analytics.mv_daily_facility_activity_summary</code>.
+     * The table <code>cce_analytics.mv_daily_referral_kpis</code>.
      */
-    public static final MvDailyFacilityActivitySummary MV_DAILY_FACILITY_ACTIVITY_SUMMARY = MvDailyFacilityActivitySummary.MV_DAILY_FACILITY_ACTIVITY_SUMMARY;
+    public static final MvDailyReferralKpis MV_DAILY_REFERRAL_KPIS = MvDailyReferralKpis.MV_DAILY_REFERRAL_KPIS;
 
     /**
-     * The table
-     * <code>cce_analytics.mv_daily_facility_activity_summary_mv</code>.
+     * The table <code>cce_analytics.mv_daily_referral_kpis_mv</code>.
      */
-    public static final MvDailyFacilityActivitySummaryMv MV_DAILY_FACILITY_ACTIVITY_SUMMARY_MV = MvDailyFacilityActivitySummaryMv.MV_DAILY_FACILITY_ACTIVITY_SUMMARY_MV;
-
-    /**
-     * The table <code>cce_analytics.mv_daily_facility_kpis</code>.
-     */
-    public static final MvDailyFacilityKpis MV_DAILY_FACILITY_KPIS = MvDailyFacilityKpis.MV_DAILY_FACILITY_KPIS;
-
-    /**
-     * The table <code>cce_analytics.mv_daily_facility_kpis_mv</code>.
-     */
-    public static final MvDailyFacilityKpisMv MV_DAILY_FACILITY_KPIS_MV = MvDailyFacilityKpisMv.MV_DAILY_FACILITY_KPIS_MV;
+    public static final MvDailyReferralKpisMv MV_DAILY_REFERRAL_KPIS_MV = MvDailyReferralKpisMv.MV_DAILY_REFERRAL_KPIS_MV;
 
     /**
      * The table <code>cce_analytics.mv_deviation_by_patient</code>.

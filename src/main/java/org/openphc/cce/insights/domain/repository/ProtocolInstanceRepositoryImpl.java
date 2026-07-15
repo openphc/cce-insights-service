@@ -17,6 +17,7 @@ import java.util.UUID;
 
 import static org.openphc.cce.insights.jooq.Tables.DEVIATIONS;
 import static org.openphc.cce.insights.jooq.Tables.PROTOCOL_INSTANCES;
+import static org.openphc.cce.insights.jooq.Tables.STEP_INSTANCES;
 
 @Repository
 public class ProtocolInstanceRepositoryImpl
@@ -294,15 +295,24 @@ public class ProtocolInstanceRepositoryImpl
         // alias must come BEFORE FINAL: "table alias FINAL" is valid; "table FINAL alias" is not
         var pf = DSL.table(DSL.sql("mv_patient_facility_latest pf" + finalClause()));
         var d  = finalAs(DEVIATIONS, "d");
+        var si = finalAs(STEP_INSTANCES, "si");
         String zeroUuid = "toUUID('00000000-0000-0000-0000-000000000000')";
-        String detectedAt = "d." + DEVIATIONS.DETECTED_AT.getName();
+        // Clinical OCCURRENCE date of the deviation (when it happened) from the linked step, keyed by
+        // type — NOT detected_at (when our system flagged it). Mirrors DeviationRepositoryImpl.occurredAt().
+        String devType = "d." + DEVIATIONS.DEVIATION_TYPE.getName();
+        String occurredAt = "coalesce(multiIf("
+                + devType + " = 'OVERDUE', si." + STEP_INSTANCES.OVERDUE_DATE.getName() + ", "
+                + devType + " = 'MISSED', si." + STEP_INSTANCES.MISSED_DATE.getName() + ", "
+                + devType + " = 'ORDER_VIOLATION', si." + STEP_INSTANCES.COMPLETED_AT.getName() + ", "
+                + "CAST(NULL AS Nullable(DateTime64(6)))), si." + STEP_INSTANCES.DUE_DATE.getName()
+                + ", d." + DEVIATIONS.DETECTED_AT.getName() + ")";
 
         // Date clause reused by the deviation aggregates so non-compliant patients AND the deviation
         // count come from the SAME enrolled-in-range cohort as tracked (keeps the leaderboard row
         // internally consistent — see FacilityRankingService).
         String devDateClause =
-                (startDate != null ? " AND " + detectedAt + " >= parseDateTime64BestEffort('" + startDate + "')" : "")
-              + (endDate   != null ? " AND " + detectedAt + " <= parseDateTime64BestEffort('" + endDate   + "')" : "");
+                (startDate != null ? " AND " + occurredAt + " >= parseDateTime64BestEffort('" + startDate + "')" : "")
+              + (endDate   != null ? " AND " + occurredAt + " <= parseDateTime64BestEffort('" + endDate   + "')" : "");
         String nonCompliantExpr = "uniqIf(pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()
                 + ", d.id != " + zeroUuid + devDateClause + ")";
         // Deviations DETECTED in range for this cohort (count of deviation rows, matches the column).
@@ -319,6 +329,8 @@ public class ProtocolInstanceRepositoryImpl
                           "pf.patient_id = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
                   .leftJoin(d).on(DSL.condition(
                           "d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                  .leftJoin(si).on(DSL.condition(
+                          "d." + DEVIATIONS.STEP_INSTANCE_ID.getName() + " = si.id"))
                   .where(notDeleted())
                   .and(DSL.field("pf.facility_id").ne(""))
                   .and(enrollmentBetween(startDate, endDate))

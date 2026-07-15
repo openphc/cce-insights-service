@@ -4,7 +4,6 @@
 package org.openphc.cce.insights.jooq.tables;
 
 
-import java.time.LocalDate;
 import java.util.Collection;
 
 import org.jooq.Condition;
@@ -21,7 +20,6 @@ import org.jooq.Table;
 import org.jooq.TableField;
 import org.jooq.TableOptions;
 import org.jooq.impl.DSL;
-import org.jooq.impl.SQLDataType;
 import org.jooq.impl.TableImpl;
 import org.openphc.cce.insights.jooq.CceAnalytics;
 
@@ -52,7 +50,7 @@ public class MvDailyEventKpisMv extends TableImpl<Record> {
      * The column
      * <code>cce_analytics.mv_daily_event_kpis_mv.snapshot_date</code>.
      */
-    public final TableField<Record, LocalDate> SNAPSHOT_DATE = createField(DSL.name("snapshot_date"), SQLDataType.LOCALDATE.nullable(false), this, "");
+    public final TableField<Record, Object> SNAPSHOT_DATE = createField(DSL.name("snapshot_date"), org.jooq.impl.SQLDataType.OTHER, this, "");
 
     /**
      * The column
@@ -61,46 +59,39 @@ public class MvDailyEventKpisMv extends TableImpl<Record> {
     public final TableField<Record, Object> REFRESHED_AT = createField(DSL.name("refreshed_at"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
 
     /**
+     * The column <code>cce_analytics.mv_daily_event_kpis_mv.facility_id</code>.
+     */
+    public final TableField<Record, Object> FACILITY_ID = createField(DSL.name("facility_id"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
+
+    /**
      * The column
      * <code>cce_analytics.mv_daily_event_kpis_mv.total_events</code>.
      */
-    public final TableField<Record, Object> TOTAL_EVENTS = createField(DSL.name("total_events"), org.jooq.impl.SQLDataType.OTHER, this, "");
+    public final TableField<Record, Object> TOTAL_EVENTS = createField(DSL.name("total_events"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
 
     /**
      * The column
      * <code>cce_analytics.mv_daily_event_kpis_mv.matched_count</code>.
      */
-    public final TableField<Record, Object> MATCHED_COUNT = createField(DSL.name("matched_count"), org.jooq.impl.SQLDataType.OTHER, this, "");
+    public final TableField<Record, Object> MATCHED_COUNT = createField(DSL.name("matched_count"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
 
     /**
      * The column
      * <code>cce_analytics.mv_daily_event_kpis_mv.zero_match_count</code>.
      */
-    public final TableField<Record, Object> ZERO_MATCH_COUNT = createField(DSL.name("zero_match_count"), org.jooq.impl.SQLDataType.OTHER, this, "");
+    public final TableField<Record, Object> ZERO_MATCH_COUNT = createField(DSL.name("zero_match_count"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
 
     /**
      * The column
      * <code>cce_analytics.mv_daily_event_kpis_mv.duplicate_count</code>.
      */
-    public final TableField<Record, Object> DUPLICATE_COUNT = createField(DSL.name("duplicate_count"), org.jooq.impl.SQLDataType.OTHER, this, "");
-
-    /**
-     * The column
-     * <code>cce_analytics.mv_daily_event_kpis_mv.matched_rate_pct</code>.
-     */
-    public final TableField<Record, Object> MATCHED_RATE_PCT = createField(DSL.name("matched_rate_pct"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
-
-    /**
-     * The column
-     * <code>cce_analytics.mv_daily_event_kpis_mv.zero_match_rate_pct</code>.
-     */
-    public final TableField<Record, Object> ZERO_MATCH_RATE_PCT = createField(DSL.name("zero_match_rate_pct"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
+    public final TableField<Record, Object> DUPLICATE_COUNT = createField(DSL.name("duplicate_count"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
 
     /**
      * The column
      * <code>cce_analytics.mv_daily_event_kpis_mv.pipeline_loss_count</code>.
      */
-    public final TableField<Record, Object> PIPELINE_LOSS_COUNT = createField(DSL.name("pipeline_loss_count"), org.jooq.impl.SQLDataType.OTHER, this, "");
+    public final TableField<Record, Object> PIPELINE_LOSS_COUNT = createField(DSL.name("pipeline_loss_count"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
 
     private MvDailyEventKpisMv(Name alias, Table<Record> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);

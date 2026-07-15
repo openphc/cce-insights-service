@@ -27,7 +27,7 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
         return useFinal ? " FINAL" : "";
     }
 
-    // ── mv_daily_facility_activity_summary ───────────────────────────────────
+    // ── active-facility summary (live from mv_event_volume_hourly) ────────────
     // Per requirements: a facility is active if it has transmitted ANY successful
     // HIE submission in the period (regardless of compliance match). We therefore
     // count distinct facility_ids in inbound_event_logs (status='ACCEPTED'), not
@@ -45,12 +45,13 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
                              .from(DSL.table(DSL.sql("facility" + finalClause())))
                              .where(DSL.field("_is_deleted").eq(0));
 
+        // MV-first: Active Facilities = distinct facilities with clinical activity today, read from
+        // the event_time-keyed event-volume MV (mv_event_volume_hourly holds only ACCEPTED events).
         Long activeFacilities = dsl.select(DSL.field("uniq(facility_id)", Long.class))
-            .from(DSL.table(DSL.sql("inbound_event_logs" + finalClause())))
-            .where(DSL.field("status").eq("ACCEPTED"))
-            .and(DSL.field("facility_id").ne(""))
+            .from(DSL.table("mv_event_volume_hourly"))
+            .where(DSL.field("facility_id").ne(""))
             .and(DSL.field("facility_id").in(facilityIds))
-            .and(DSL.condition("toDate(received_at) = today()"))
+            .and(DSL.condition("toDate(hour) = today()"))
             .fetchOne(0, Long.class);
 
         long active = totalInScope == 0 ? 0L : (activeFacilities == null ? 0L : activeFacilities);
@@ -59,7 +60,7 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
         return new Object[]{totalInScope, active, inactive, rate};
     }
 
-    // ── mv_daily_facility_activity_summary (date range) ─────────────────────
+    // ── active-facility summary, date range (live from mv_event_volume_hourly) ─
     // "Active" = facility with ≥1 successful HIE submission anywhere in the range.
 
     @Override
@@ -74,13 +75,14 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
                              .from(DSL.table(DSL.sql("facility" + finalClause())))
                              .where(DSL.field("_is_deleted").eq(0));
 
+        // MV-first: Active = distinct facilities with clinical activity in the range, from the
+        // event_time-keyed event-volume MV (see getFacilityActivitySummary()).
         Long activeFacilities = dsl.select(DSL.field("uniq(facility_id)", Long.class))
-            .from(DSL.table(DSL.sql("inbound_event_logs" + finalClause())))
-            .where(DSL.field("status").eq("ACCEPTED"))
-            .and(DSL.field("facility_id").ne(""))
+            .from(DSL.table("mv_event_volume_hourly"))
+            .where(DSL.field("facility_id").ne(""))
             .and(DSL.field("facility_id").in(facilityIds))
-            .and(DSL.condition("toDate(received_at) >= ?", startDate))
-            .and(DSL.condition("toDate(received_at) <= ?", endDate))
+            .and(DSL.condition("toDate(hour) >= ?", startDate))
+            .and(DSL.condition("toDate(hour) <= ?", endDate))
             .fetchOne(0, Long.class);
 
         long active = totalInScope == 0 ? 0L : (activeFacilities == null ? 0L : activeFacilities);
@@ -88,42 +90,6 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
         double rate = totalInScope > 0 ? Math.round((double) active / totalInScope * 1000.0) / 10.0 : 0.0;
 
         return new Object[]{totalInScope, active, inactive, rate};
-    }
-
-    // ── mv_daily_facility_kpis ───────────────────────────────────────────────
-
-    @Override
-    public List<Object[]> getFacilityKpis() {
-        // MV has one row per (facility_id, protocol_definition_id, snapshot_date).
-        // GROUP BY facility_id to collapse multi-protocol rows into a single per-facility result.
-        String complianceExpr =
-            "toFloat64(round(sum(compliant_patients) / nullIf(sum(tracked_patients), 0) * 100, 1))";
-        var facilityIds = dsl.select(DSL.field("facility_id"))
-                             .from(DSL.table(DSL.sql("facility" + finalClause())))
-                             .where(DSL.field("_is_deleted").eq(0));
-        return dsl.select(
-                    DSL.field("facility_id",                               String.class),
-                    DSL.sum(DSL.field("tracked_patients",       Long.class)),
-                    DSL.sum(DSL.field("compliant_patients",     Long.class)),
-                    DSL.sum(DSL.field("non_compliant_patients", Long.class)),
-                    DSL.field(DSL.sql(complianceExpr)),
-                    DSL.sum(DSL.field("total_deviations",       Long.class)),
-                    DSL.sum(DSL.field("event_count",            Long.class)))
-                  .from(DSL.table(DSL.sql("mv_daily_facility_kpis" + finalClause())))
-                  .where(DSL.sql("snapshot_date = today()"))
-                  .and(DSL.field("facility_id").in(facilityIds))
-                  .groupBy(DSL.field("facility_id"))
-                  .orderBy(DSL.field(DSL.sql(complianceExpr)).desc())
-                  .fetch()
-                  .map(r -> new Object[]{
-                      r.get(0, String.class),
-                      toLong(r.get(1)),
-                      toLong(r.get(2)),
-                      toLong(r.get(3)),
-                      toDouble(r.get(4)),
-                      toLong(r.get(5)),
-                      toLong(r.get(6))
-                  });
     }
 
     // ── mv_daily_adoption_kpis ───────────────────────────────────────────────
@@ -253,62 +219,6 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
         };
     }
 
-    // ── mv_daily_facility_kpis (date range) ──────────────────────────────────
-
-    @Override
-    public List<Object[]> getFacilityKpisByDateRange(LocalDate startDate, LocalDate endDate) {
-        // MV stores one row per (facility_id, protocol_definition_id, snapshot_date).
-        // Step 1: collapse protocols into daily per-facility totals.
-        // Step 2: aggregate over the reporting period:
-        //   tracked/compliant/non_compliant/deviations = values at the latest snapshot in range
-        //     (stock metrics — must NOT be summed across days, unlike adoption actual_patients)
-        //   compliance_rate = recomputed from those end-of-period values
-        //   event_count     = SUM of daily events across the range
-        var facilityIds = dsl.select(DSL.field("facility_id"))
-                             .from(DSL.table(DSL.sql("facility" + finalClause())))
-                             .where(DSL.field("_is_deleted").eq(0));
-
-        var dailyTable = dsl.select(
-                    DSL.field("facility_id", String.class),
-                    DSL.field("snapshot_date", LocalDate.class),
-                    DSL.sum(DSL.field("tracked_patients", Long.class)).as("daily_tracked"),
-                    DSL.sum(DSL.field("compliant_patients", Long.class)).as("daily_compliant"),
-                    DSL.sum(DSL.field("non_compliant_patients", Long.class)).as("daily_non_compliant"),
-                    DSL.sum(DSL.field("total_deviations", Long.class)).as("daily_deviations"),
-                    DSL.sum(DSL.field("event_count", Long.class)).as("daily_events"))
-                  .from(DSL.table(DSL.sql("mv_daily_facility_kpis" + finalClause())))
-                  .where(DSL.field("snapshot_date", LocalDate.class).between(startDate).and(endDate))
-                  .and(DSL.field("facility_id").in(facilityIds))
-                  .groupBy(DSL.field("facility_id"), DSL.field("snapshot_date"))
-                  .asTable("daily");
-
-        String complianceExpr =
-            "toFloat64(round(argMax(daily_compliant, snapshot_date) /" +
-            " nullIf(argMax(daily_tracked, snapshot_date), 0) * 100, 1))";
-
-        return dsl.select(
-                    DSL.field(DSL.name("daily", "facility_id"), String.class),
-                    DSL.field(DSL.sql("argMax(daily_tracked, snapshot_date)"), Long.class),
-                    DSL.field(DSL.sql("argMax(daily_compliant, snapshot_date)"), Long.class),
-                    DSL.field(DSL.sql("argMax(daily_non_compliant, snapshot_date)"), Long.class),
-                    DSL.field(DSL.sql(complianceExpr)),
-                    DSL.field(DSL.sql("argMax(daily_deviations, snapshot_date)"), Long.class),
-                    DSL.sum(DSL.field(DSL.name("daily", "daily_events"), Long.class)))
-                  .from(dailyTable)
-                  .groupBy(DSL.field(DSL.name("daily", "facility_id")))
-                  .orderBy(DSL.field(DSL.sql(complianceExpr)).desc())
-                  .fetch()
-                  .map(r -> new Object[]{
-                      r.get(0, String.class),
-                      toLong(r.get(1)),
-                      toLong(r.get(2)),
-                      toLong(r.get(3)),
-                      toDouble(r.get(4)),
-                      toLong(r.get(5)),
-                      toLong(r.get(6))
-                  });
-    }
-
     // ── mv_daily_adoption_kpis (date range) ──────────────────────────────────
 
     @Override
@@ -354,81 +264,12 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
                   });
     }
 
-    // ── mv_daily_event_kpis ──────────────────────────────────────────────────
+    // mv_daily_event_kpis reads moved to InboundEventRepositoryImpl.eventProcessingKpis (it reads the
+    // redesigned event_time × facility MV). The old snapshot getEventKpis here was removed.
 
-    @Override
-    public Object[] getEventKpis() {
-        var row = dsl.select(
-                    DSL.field("total_events",        Long.class),
-                    DSL.field("matched_count",       Long.class),
-                    DSL.field("zero_match_count",    Long.class),
-                    DSL.field("duplicate_count",     Long.class),
-                    DSL.field("matched_rate_pct",    Double.class),
-                    DSL.field("zero_match_rate_pct", Double.class),
-                    DSL.field("pipeline_loss_count", Long.class))
-                  .from(DSL.table(DSL.sql("mv_daily_event_kpis" + finalClause())))
-                  .where(DSL.sql("snapshot_date = today()"))
-                  .limit(1)
-                  .fetchOne();
-        if (row == null) return new Object[]{0L, 0L, 0L, 0L, 0.0, 0.0, 0L};
-        return new Object[]{
-            toLong(row.get(0)),   toLong(row.get(1)),   toLong(row.get(2)),   toLong(row.get(3)),
-            toDouble(row.get(4)), toDouble(row.get(5)), toLong(row.get(6))
-        };
-    }
-
-    // ── mv_daily_deviation_kpis ───────────────────────────────────────────────
-
-    @Override
-    public Object[] getDeviationKpis(UUID protocolDefinitionId) {
-        var where = DSL.condition("snapshot_date = today()");
-        if (protocolDefinitionId != null) {
-            where = where.and(DSL.condition(
-                    "protocol_definition_id = toUUID(?)", protocolDefinitionId.toString()));
-        }
-        var row = dsl.select(
-                    DSL.sum(DSL.field("total_deviations",      Long.class)),
-                    DSL.sum(DSL.field("overdue_count",         Long.class)),
-                    DSL.sum(DSL.field("missed_count",          Long.class)),
-                    DSL.sum(DSL.field("order_violation_count", Long.class)))
-                  .from(DSL.table(DSL.sql("mv_daily_deviation_kpis" + finalClause())))
-                  .where(where)
-                  .fetchOne();
-        if (row == null) return new Object[]{0L, 0L, 0L, 0L};
-        return new Object[]{
-            toLong(row.get(0)), toLong(row.get(1)),
-            toLong(row.get(2)), toLong(row.get(3))
-        };
-    }
-
-    @Override
-    public Object[] getDeviationKpisByDateRange(UUID protocolDefinitionId,
-                                                 LocalDate startDate, LocalDate endDate) {
-        var where = DSL.field("snapshot_date", LocalDate.class).between(startDate).and(endDate);
-        if (protocolDefinitionId != null) {
-            where = where.and(DSL.condition(
-                    "protocol_definition_id = toUUID(?)", protocolDefinitionId.toString()));
-        }
-        var row = dsl.select(
-                    DSL.sum(DSL.field("total_deviations",      Long.class)),
-                    DSL.sum(DSL.field("overdue_count",         Long.class)),
-                    DSL.sum(DSL.field("missed_count",          Long.class)),
-                    DSL.sum(DSL.field("order_violation_count", Long.class)))
-                  .from(DSL.table(DSL.sql("mv_daily_deviation_kpis" + finalClause())))
-                  .where(where)
-                  .fetchOne();
-        if (row == null) return new Object[]{0L, 0L, 0L, 0L};
-        return new Object[]{
-            toLong(row.get(0)), toLong(row.get(1)),
-            toLong(row.get(2)), toLong(row.get(3))
-        };
-    }
-
-    @Override
-    @Deprecated
-    public Object[] getDeviationKpisAll() {
-        return getDeviationKpis(null);
-    }
+    // NOTE: the deviation daily-KPI reads moved to DeviationRepositoryImpl (countByTypeFiltered /
+    // findDeviationTrends / findDeviationsByAction), which read the redesigned occurrence-keyed
+    // mv_daily_deviation_kpis directly. The old snapshot-based getDeviationKpis* here were dead.
 
     // ── helpers ──────────────────────────────────────────────────────────────
 

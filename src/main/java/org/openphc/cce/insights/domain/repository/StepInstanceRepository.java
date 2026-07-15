@@ -26,8 +26,6 @@ public interface StepInstanceRepository extends ReadOnlyRepository<StepInstance,
 
     List<Object[]> findStepComplianceByFacility();
 
-    List<Object[]> findReferralEventCountsByFacility();
-
     List<Object[]> findStepComplianceByPractitioner();
 
     List<Object[]> findStepComplianceByPractitionerFiltered(OffsetDateTime startDate,

@@ -6,7 +6,6 @@ package org.openphc.cce.insights.jooq.tables;
 
 import java.time.LocalDate;
 import java.util.Collection;
-import java.util.UUID;
 
 import org.jooq.Condition;
 import org.jooq.Field;
@@ -67,31 +66,42 @@ public class MvDailyDeviationKpis extends TableImpl<Record> {
      * The column
      * <code>cce_analytics.mv_daily_deviation_kpis.protocol_definition_id</code>.
      */
-    public final TableField<Record, UUID> PROTOCOL_DEFINITION_ID = createField(DSL.name("protocol_definition_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<Record, Object> PROTOCOL_DEFINITION_ID = createField(DSL.name("protocol_definition_id"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
 
     /**
      * The column
-     * <code>cce_analytics.mv_daily_deviation_kpis.total_deviations</code>.
+     * <code>cce_analytics.mv_daily_deviation_kpis.protocol_canonical</code>.
      */
-    public final TableField<Record, Object> TOTAL_DEVIATIONS = createField(DSL.name("total_deviations"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
+    public final TableField<Record, Object> PROTOCOL_CANONICAL = createField(DSL.name("protocol_canonical"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
 
     /**
      * The column
-     * <code>cce_analytics.mv_daily_deviation_kpis.overdue_count</code>.
+     * <code>cce_analytics.mv_daily_deviation_kpis.facility_id</code>.
      */
-    public final TableField<Record, Object> OVERDUE_COUNT = createField(DSL.name("overdue_count"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
+    public final TableField<Record, Object> FACILITY_ID = createField(DSL.name("facility_id"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
+
+    /**
+     * The column <code>cce_analytics.mv_daily_deviation_kpis.action_id</code>.
+     */
+    public final TableField<Record, Object> ACTION_ID = createField(DSL.name("action_id"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
 
     /**
      * The column
-     * <code>cce_analytics.mv_daily_deviation_kpis.missed_count</code>.
+     * <code>cce_analytics.mv_daily_deviation_kpis.deviation_type</code>.
      */
-    public final TableField<Record, Object> MISSED_COUNT = createField(DSL.name("missed_count"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
+    public final TableField<Record, Object> DEVIATION_TYPE = createField(DSL.name("deviation_type"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
 
     /**
      * The column
-     * <code>cce_analytics.mv_daily_deviation_kpis.order_violation_count</code>.
+     * <code>cce_analytics.mv_daily_deviation_kpis.deviation_count</code>.
      */
-    public final TableField<Record, Object> ORDER_VIOLATION_COUNT = createField(DSL.name("order_violation_count"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
+    public final TableField<Record, Object> DEVIATION_COUNT = createField(DSL.name("deviation_count"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
+
+    /**
+     * The column
+     * <code>cce_analytics.mv_daily_deviation_kpis.affected_patients_state</code>.
+     */
+    public final TableField<Record, Object> AFFECTED_PATIENTS_STATE = createField(DSL.name("affected_patients_state"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
 
     private MvDailyDeviationKpis(Name alias, Table<Record> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);

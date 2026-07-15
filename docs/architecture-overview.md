@@ -207,11 +207,13 @@ dsl.select(DSL.field(STEP_INSTANCES.STATE.getName()))
 | `mv_facility_summary` | AggregatingMV | Pre-aggregated facility summaries |
 | `facility` | ReplacingMergeTree | Static in-scope facility list + expected daily patient throughput (schema/08) — denominator for facility activity and adoption metrics |
 | `mv_daily_compliance_kpis` | ReplacingMergeTree | Daily compliance KPI snapshots per protocol (schema/07, APPEND-mode refresh) |
-| `mv_daily_facility_kpis` | ReplacingMergeTree | Daily facility compliance + event count snapshots (schema/07) |
-| `mv_daily_facility_activity_summary` | ReplacingMergeTree | Daily global facility activity cards: total_in_scope, active, inactive, rate (schema/07) |
-| `mv_daily_adoption_kpis` | ReplacingMergeTree | Daily e-Buzima adoption per facility: actual vs expected patients (schema/07) |
-| `mv_daily_deviation_kpis` | ReplacingMergeTree | Daily deviation header cards per protocol (schema/07) |
-| `mv_daily_event_kpis` | ReplacingMergeTree | Daily event pipeline summary: totals, rates, pipeline loss (schema/07) |
+| `mv_daily_adoption_kpis` | ReplacingMergeTree | Daily e-Buzima adoption per facility: actual vs expected patients (schema/07, `event_time` day) |
+| `mv_daily_deviation_kpis` | ReplacingMergeTree | Daily deviation header cards per protocol (schema/07, clinical occurrence date) |
+| `mv_daily_event_kpis` | ReplacingMergeTree | Daily event pipeline summary: totals, rates, pipeline loss (schema/07, `event_time` day) |
+| `mv_daily_referral_kpis` | ReplacingMergeTree | Daily referral KPI snapshots (`event_time` day × facility; `referral_count`) — backs the Referrals dashboard KPI (schema/07) |
+| `mv_event_volume_hourly` | AggregatingMV | Hourly ACCEPTED event volume keyed by `event_time` — backs the active-facility tiles and Events page cards |
+
+> **Removed (schema/07):** `mv_daily_facility_kpis` and `mv_daily_facility_activity_summary` were dropped. The Facilities ranking is now computed live from the enrolled-patient cohort joined to `inbound_event_logs`, and the active-facility tiles read `mv_event_volume_hourly` (event_time-keyed).
 
 > **FINAL clause:** ClickHouse `ReplacingMergeTree` tables may have duplicate rows until background merges complete. The `FINAL` modifier forces deduplication at query time. All queries against `mv_daily_*` tables and `facility` must use `FINAL` — these are always queried with explicit `FINAL` in `DailyKpiRepositoryImpl`.
 
@@ -370,8 +372,21 @@ materialized views (schema/03, schema/06, schema/07) rather than scanning base t
 |---|---|---|
 | Compliance / facility / deviation header cards | `mv_daily_*` (schema/07) | 30-min refresh, snapshot_date filter |
 | Protocol timelines, drill-downs | base tables + schema/06 rollups | Live, FINAL |
-| Facility adoption / activity | `mv_daily_facility_activity_summary`, `mv_daily_adoption_kpis` | Requires `facility` seeded |
+| Facility adoption | `mv_daily_adoption_kpis` | Requires `facility` seeded |
+| Facility activity tiles | `mv_event_volume_hourly` (event_time) | Active-facility count intersected with facility reference list |
+| Referrals KPI | `mv_daily_referral_kpis` (event_time) | Total + per-facility referral counts |
 | Event volume, ingestion, trends | `mv_event_volume_hourly`, `compliance_event_logs`, `inbound_event_logs` | Live or hourly MVs |
+
+### Metric time semantics
+
+**Metric time semantics** — two clocks, chosen by metric type:
+
+- **Functional metrics** — clinical/business KPIs (adoption, compliance, deviations, event volume, referrals, patient cohorts). Measured on **clinical `event_time`**: when the clinical act actually happened, as carried on the inbound event. Every page's date filter scopes these by `event_time`, so ingestion lag (offline sync, batch upload, retries, DLQ replay) never shifts the numbers.
+- **Technical / operational metrics** — the Ingestion page (pipeline health / ingestion throughput). Measured on **processing / system time** (`received_at`).
+
+Rule of thumb: "when did it happen clinically?" → `event_time`; "when did our system handle it?" → `received_at`. Every page is clinical EXCEPT Ingestion, which is the sole system-time view.
+
+> **Compliance / Patients cohorts** date-filter on `enrolled_at`, which the compliance-service now sets to clinical time (so it is functional/clinical going forward; pre-existing rows remain processing-time until a re-snapshot/replay).
 
 ---
 

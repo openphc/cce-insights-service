@@ -26,7 +26,7 @@ public class FacilityActivityController {
      * With startDate+endDate: counts facilities with ≥1 successful HIE submission in the period.
      * With facilityId: reports the single-facility tile (1 in-scope; 1 active/inactive depending on
      *   whether that facility transmitted in the period).
-     * Without filters: falls back to today's snapshot from mv_daily_facility_activity_summary.
+     * Without filters: falls back to today's active-facility count from mv_event_volume_hourly.
      */
     @GetMapping("/activity-summary")
     public ResponseEntity<ApiResponse<FacilityActivitySummaryDto>> getActivitySummary(

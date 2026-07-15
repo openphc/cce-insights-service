@@ -24,12 +24,12 @@ public class FacilityRankingService {
 
     /**
      * Returns facility rankings for all in-scope facilities from the reference table.
-     * Compliance metrics (rate, deviations) come from mv_daily_facility_kpis.
-     * Tracked patients use the enrolled-patient cohort via mv_patient_facility_latest.
+     * Compliance metrics (rate, deviations) and tracked patients come live from the
+     * enrolled-patient cohort via mv_patient_facility_latest (scoped by the date range).
      * Events are sourced from inbound_event_logs (status=ACCEPTED) so the column
      * matches the Active Facilities tile and the Events → By Facility table —
-     * matched-event-only counting in mv_daily_facility_kpis under-reported facilities
-     * that submitted accepted-but-not-compliance-matched events.
+     * matched-event-only counting under-reported facilities that submitted
+     * accepted-but-not-compliance-matched events.
      */
     @Cacheable(value = "analytics",
             key = "'rankings-' + (#facilityId ?: 'all') + '-' + #sortBy + '-' + #order + '-' + #limit + '-' + #startDate + '-' + #endDate")
@@ -44,7 +44,7 @@ public class FacilityRankingService {
         // tracked patients, non-compliant patients, AND deviations all come from countPatientCompliance-
         // ByFacility (row = [facilityId, tracked, nonCompliant, deviations]). Sharing one cohort keeps the
         // row consistent — deviations track the filter and can never disagree with the compliance rate.
-        // (The all-time mv_daily_facility_kpis snapshot is intentionally not read here.)
+        // (Compliance is computed live from the cohort here, not from a daily snapshot MV.)
         Map<String, long[]> patientsByFacility = new LinkedHashMap<>();
         boolean hasDateRange = startDate != null || endDate != null;
         OffsetDateTime enrollStart = hasDateRange ? toRangeStart(startDate, end) : null;
@@ -58,10 +58,17 @@ public class FacilityRankingService {
             });
         }
 
+        // Events (period) per facility — one grouped read of the event_time event-volume MV
+        // (replaces N per-facility countAccepted calls). Same clock/scope as the Active tile.
+        Map<String, Long> eventsByFacility = new LinkedHashMap<>();
+        for (Object[] r : inboundEventRepository.eventCountByFacilityFromMv(enrollStart, enrollEnd)) {
+            eventsByFacility.put((String) r[0], ((Number) r[1]).longValue());
+        }
+
         boolean hasFacility = facilityId != null && !facilityId.isEmpty();
 
         // Anchor to the facility reference list so every in-scope facility appears,
-        // even when it has no row in mv_daily_facility_kpis yet.
+        // even when it has no enrolled-patient cohort rows yet.
         List<FacilityRankingDto> rankings = new ArrayList<>();
         for (Object[] ref : dailyKpiRepository.getFacilityReference()) {
             String fid = (String) ref[0];
@@ -69,9 +76,8 @@ public class FacilityRankingService {
             String facilityName = (String) ref[1];
             long[] patients = patientsByFacility.getOrDefault(fid, new long[]{0L, 0L, 0L});
             long deviations = patients[2];
-            // Source totalEvents from inbound_event_logs (accepted) — aligns with
-            // Active Facilities tile and Events → By Facility table.
-            long inboundEvents = inboundEventRepository.countAccepted(fid, enrollStart, enrollEnd);
+            // Events (period) from the event_time event-volume MV — aligns with the Active tile.
+            long inboundEvents = eventsByFacility.getOrDefault(fid, 0L);
             rankings.add(toRankingDto(fid, facilityName, patients[0], patients[1], deviations, inboundEvents));
         }
 

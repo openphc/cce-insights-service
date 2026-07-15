@@ -54,17 +54,35 @@ public interface DeviationRepository extends ReadOnlyRepository<Deviation, UUID>
 
     long countDistinctPatientsWithDeviations();
 
-    /** Distinct patients with at least one deviation detected within [startDate, endDate]. */
+    /**
+     * Distinct patients who (a) enrolled within [startDate, endDate] AND (b) have at least one
+     * deviation whose CLINICAL OCCURRENCE date (occurredAt(), not detected_at) falls in that window.
+     * This is the "non-compliant" cohort count for the compliance summary. Null bounds open.
+     */
     long countDistinctPatientsWithDeviationsBetween(OffsetDateTime startDate, OffsetDateTime endDate);
+
+    /** Facility-scoped variant of {@link #countDistinctPatientsWithDeviationsBetween} — patients
+     *  attributed to {@code facilityId} via mv_patient_facility_latest. */
+    long countDistinctPatientsWithDeviationsBetween(String facilityId,
+                                                    OffsetDateTime startDate, OffsetDateTime endDate);
 
     // Batch load full Deviation objects for a set of protocol instances
     List<Deviation> findByProtocolInstanceIdIn(List<UUID> ids);
 
     // Batch count — returns [protocolInstanceId, count] per instance; replaces per-instance calls.
-    // When startDate/endDate are set, counts only deviations with detected_at in range (matches dashboard).
+    // When startDate/endDate are set, counts only deviations whose CLINICAL OCCURRENCE date
+    // (occurredAt(), not system detected_at) falls in range — matches the Deviations page.
     List<Object[]> countDeviationsByProtocolInstanceIdIn(List<UUID> ids,
                                                          OffsetDateTime startDate,
                                                          OffsetDateTime endDate);
+
+    // Returns one row per deviation [protocolInstanceId(UUID), deviationType(String)] for the given
+    // instances, filtered by CLINICAL OCCURRENCE date in [startDate, endDate] (occurredAt(), not
+    // detected_at). Lets the caller derive the per-instance compliance split AND the by-type
+    // breakdown on the clinical clock, consistent with mv_daily_deviation_kpis / the Deviations page.
+    List<Object[]> findDeviationTypesByInstanceIdIn(List<UUID> ids,
+                                                    OffsetDateTime startDate,
+                                                    OffsetDateTime endDate);
 
     // Returns one row per protocol: [protocolDefinitionId, totalDeviations]
     List<Object[]> findDeviationCountsByFacilityGroupedByProtocol(String facilityId);
