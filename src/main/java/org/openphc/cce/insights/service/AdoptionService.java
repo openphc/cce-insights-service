@@ -81,12 +81,15 @@ public class AdoptionService {
                                             double adoptionRatePct, long calendarDays) {
         long actualVisitsPerDay = (long) Math.ceil(sumActual / (double) calendarDays);
         long reportingGapPerDay = expectedPerDay == 0 ? 0L : expectedPerDay - actualVisitsPerDay;
+        // No expected baseline AND no actual visits → 0% (an inactive/unbaselined facility hasn't
+        // "adopted"); never report a vacuous 100%.
+        double adoptionRate = (expectedPerDay == 0 && actualVisitsPerDay == 0) ? 0.0 : adoptionRatePct;
         return AdoptionKpiDto.builder()
                 .facilityId(facilityId)
                 .facilityName(facilityName)
                 .expectedVisitsPerDay(expectedPerDay)
                 .actualVisitsPerDay(actualVisitsPerDay)
-                .adoptionRate(adoptionRatePct)
+                .adoptionRate(adoptionRate)
                 .reportingGapPerDay(reportingGapPerDay)
                 .build();
     }
@@ -98,7 +101,9 @@ public class AdoptionService {
                 .facilityName(facilityName)
                 .expectedVisitsPerDay(expected)
                 .actualVisitsPerDay(0L)
-                .adoptionRate(expected == 0 ? 100.0 : 0.0)
+                // No adoption row → 0 actual visits → 0% (whether or not an expected baseline exists);
+                // never a vacuous 100% for a facility with no expected baseline.
+                .adoptionRate(0.0)
                 .reportingGapPerDay(expected == 0 ? 0L : expected)
                 .build();
     }
