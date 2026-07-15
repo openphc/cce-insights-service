@@ -96,15 +96,16 @@ class AdoptionServiceTest {
     }
 
     @Test
-    void getAdoptionKpis_zeroExpectedBaselineReportsFullAdoptionAndNoGap() {
-        // A facility with no expected baseline must not show a negative/percentage-of-zero artefact.
+    void getAdoptionKpis_zeroExpectedAndZeroActualReportsZeroAdoptionAndNoGap() {
+        // A facility with neither an expected baseline nor any actual visits is 0% adopted — not a
+        // vacuous 100%. (No negative/percentage-of-zero artefact either; gap stays 0.)
         when(repo.getAdoptionKpis()).thenReturn(List.of());
         when(repo.getFacilityReference()).thenReturn(List.<Object[]>of(ref("F-Z", "Zulu", 0)));
 
         AdoptionKpiDto dto = service.getAdoptionKpis().get(0);
 
         assertThat(dto.getActualVisitsPerDay()).isZero();
-        assertThat(dto.getAdoptionRate()).isEqualTo(100.0);
+        assertThat(dto.getAdoptionRate()).isEqualTo(0.0);
         assertThat(dto.getReportingGapPerDay()).isZero();
     }
 }
