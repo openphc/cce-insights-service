@@ -50,7 +50,7 @@ The **CCE Insights Service** is a stateless, read-only Spring Boot service that 
 | `CACHE_TTL_METRICS` | `15` | No | Metrics cache TTL (minutes) |
 | `SPRING_PROFILES_ACTIVE` | — | No | `docker` for containers, `local` for dev |
 
-> **Security:** Never commit credentials. Use environment variables, secrets managers, or Kubernetes Secrets. `.env.example` in the repo root still shows PostgreSQL-era placeholder values — use the ClickHouse defaults above instead.
+> **Security:** Never commit credentials. Use environment variables, secrets managers, or Kubernetes Secrets.
 
 ---
 
