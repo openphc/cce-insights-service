@@ -524,16 +524,17 @@ percentage = category_count / total_patients_at_facility * 100
 
 Per the e-Buzima requirements: a facility is active if it has transmitted **any successful
 HIE submission** in the reporting period — regardless of whether the events matched a
-protocol step. Counts therefore come from `inbound_event_logs`, not the compliance MV.
+protocol step. Counts come live from `mv_event_volume_hourly` (event_time-keyed,
+ACCEPTED-only), not the compliance MV.
 
 ```
 total_in_scope       = COUNT(*) FROM facility FINAL WHERE _is_deleted = 0
 
-active_facilities    = uniq(facility_id) FROM inbound_event_logs FINAL
-                       WHERE status = 'ACCEPTED'
+active_facilities    = uniq(facility_id) FROM mv_event_volume_hourly
+                       WHERE facility_id != ''
                          AND facility_id IN (facility reference)
-                         AND received_at BETWEEN startDate AND endDate
-                       (today() when no range)
+                         AND toDate(hour) BETWEEN startDate AND endDate
+                       (toDate(hour) = today() when no range)
 
 inactive_facilities  = total_in_scope − active_facilities
 
@@ -548,7 +549,27 @@ active_facility_rate = active_facilities / total_in_scope × 100
 > `mv_daily_facility_kpis.event_count`, which only counted compliance-matched events. A
 > facility that submitted accepted-but-unmatched HIE events (e.g. for unknown patients)
 > appeared as inactive while still showing non-zero events on the Events tab. The
-> definition above replaces that path so all activity surfaces agree.
+> definition above (now backed by `mv_event_volume_hourly` rather than
+> `inbound_event_logs`) replaces that path so all activity surfaces agree.
+
+**RI-29 drill-down detail** (`GET /v1/insights/facilities/activity-detail`, one row per
+in-scope facility — see API reference §9.3):
+
+```
+active[facility]        = facility_id ∈ active_facilities (same definition as above,
+                           scoped to [startDate, endDate])
+
+last_activity[facility] = toString(max(toDate(hour))) FROM mv_event_volume_hourly
+                           WHERE facility_id = :facility_id AND toDate(hour) <= endDate
+                           (NO lower bound — unlike `active`, which IS bounded by startDate)
+```
+
+> `last_activity` deliberately has no start-date floor: an inactive-in-period facility
+> that transmitted before the window still shows its true last-seen day instead of a
+> blank. It is `null` only for a facility never active up to `endDate`. The per-facility
+> rows (facility name, district, active flag, last activity) are combined in Java rather
+> than via a `LEFT JOIN`, to avoid ClickHouse filling unmatched join columns with
+> zero-value defaults instead of `NULL`.
 
 ### 3.13b e-Buzima Adoption Formulas (mv_daily_adoption_kpis)
 
@@ -576,10 +597,18 @@ actualVisitsPerDay    = round(total_actual / calendar_days)
 expectedVisitsPerDay  = max(expected_patients_per_day)
 reportingGapPerDay    = expectedVisitsPerDay − actualVisitsPerDay
 adoptionRate (%)      = total_actual / (expectedVisitsPerDay × calendar_days) × 100
+                        (forced to 0 when expectedVisitsPerDay = 0 AND actualVisitsPerDay = 0)
 ```
 
 > Days without an MV row contribute `0` to the daily average — that prevents a facility
 > with sparse reporting from being over-credited.
+>
+> **Zero-baseline override:** a facility with no expected baseline and no actual visits
+> reports `adoptionRate = 0.0`, never a vacuous `100.0` — an unbaselined, inactive
+> facility hasn't "adopted" anything. Separately, a facility with **no adoption row at
+> all** for the period (`emptyAdoptionDto`) always reports `adoptionRate = 0.0` too,
+> regardless of whether it has an expected baseline (previously this case returned
+> `100.0` when `expected = 0`, which read as a false "fully adopted").
 
 ### 3.14 Repeat Deviation Formulas
 

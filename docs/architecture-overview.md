@@ -219,7 +219,34 @@ dsl.select(DSL.field(STEP_INSTANCES.STATE.getName()))
 
 > **Soft-delete awareness (`_is_deleted = 0`):** The `protocol_instances` table uses `ReplacingMergeTree(_version, _is_deleted)`. Debezium CDC propagates Postgres deletes as new rows with `_is_deleted=1` rather than physical deletions. Until ClickHouse background merges run (which can be delayed on low-traffic UAT environments), both the original row and the tombstone row co-exist. All `ProtocolInstanceRepositoryImpl` queries include an explicit `_is_deleted = 0` filter as the first `WHERE` condition so deleted protocol instances never appear in compliance analytics regardless of whether `FINAL` has merged the data. The `CLICKHOUSE_USE_FINAL` flag (default `false` on UAT) provides an additional safeguard but is not relied upon as the primary guard.
 
+> **Chunked `IN (...)` clauses (`max_query_size`):** jOOQ's `.in(List<...>)` binds one
+> parameter per element. Building `protocol_instance_id IN (...)` from an unbounded id
+> list (e.g. every enrolled patient across a wide date range) can produce thousands of
+> bind params, blowing past ClickHouse's `max_query_size` (default 262144 bytes) and
+> surfacing as a generic `transport error: 400` / 503 to the caller. `AbstractClickHouseRepository.chunkIds(List)`
+> splits any id list into batches of ≤1000 before building an `IN` clause; callers issue
+> one query per chunk and concatenate results (safe here because each id lands in
+> exactly one chunk, so `groupBy`-per-id aggregations never need re-merging across
+> chunks). Used by `StepInstanceRepositoryImpl.findByProtocolInstanceIdIn` and the three
+> id-scoped lookups in `DeviationRepositoryImpl`. Any new query built from an
+> externally-sized id list should go through this helper rather than calling `.in(...)`
+> directly.
+
 ### 4.3 Key Query Patterns
+
+> **⚠ Stale — PostgreSQL-era pseudocode.** The SQL below (and in §9/§10) predates the
+> ClickHouse migration: it uses PostgreSQL-only syntax (`EXTRACT(EPOCH FROM ...)`,
+> `PERCENTILE_CONT(...) WITHIN GROUP`, `FILTER (WHERE ...)`, `->>'...'` JSONB access,
+> `::float` casts) and singular table names (`protocol_instance`, `step_instance`,
+> `event_log`) that no longer exist — the real ClickHouse tables are plural
+> (`protocol_instances`, `step_instances`, `compliance_event_logs`, ...) and queried via
+> jOOQ, not raw SQL. It's kept here to show the original *intent* of each metric: for the
+> actual, current query for any given metric, read the corresponding method in
+> `src/main/java/org/openphc/cce/insights/domain/repository/*RepositoryImpl.java` — those
+> use ClickHouse idioms like `finalAs(...)`/`FINAL`, `toUUID(?)`,
+> `parseDateTime64BestEffort(?)`, and `medianIf(...)`/`avgIf(...)`/`countIf(...)` instead
+> of the constructs below. See the "FINAL clause", "Soft-delete awareness", and "Chunked
+> `IN (...)`" callouts above for the patterns that **do** reflect current behavior.
 
 **Protocol Compliance Summary:**
 ```sql
@@ -415,7 +442,7 @@ Rule of thumb: "when did it happen clinically?" → `event_time`; "when did our 
 
 | Indicator | Details |
 |---|---|
-| `db` (auto) | PostgreSQL connectivity |
+| `db` (auto) | ClickHouse connectivity |
 | `diskSpace` (auto) | Disk space availability |
 
 ---
@@ -424,12 +451,16 @@ Rule of thumb: "when did it happen clinically?" → `event_time`; "when did our 
 
 - **Stateless:** No local state, no Kafka consumer groups — can be scaled horizontally without coordination.
 - **Deployment:** 2+ instances behind a load balancer for high availability.
-- **Database connection pool:** Size per instance should account for total instances × pool size ≤ PostgreSQL `max_connections` allocation for analytics.
-- **Read replicas (future):** Phase 2 can point the Insights Service at a PostgreSQL read replica to eliminate any impact on the Compliance Service's write performance.
+- **Database connection pool:** Size per instance should account for total instances × pool size ≤ ClickHouse `max_concurrent_queries` allocation for analytics.
+- **ClickHouse scaling:** the underlying `cce_analytics` ClickHouse deployment (single node, `Distributed` cluster, or replicas behind a load balancer) is provisioned and scaled separately from this service — see the infra/deploy-scripts repo.
 
 ---
 
 ## 9. Additional Query Patterns
+
+> **⚠ Stale — PostgreSQL-era pseudocode**, same caveat as §4.3 above: syntax and table
+> names here predate the ClickHouse migration and no longer match the real queries in
+> `domain/repository/*RepositoryImpl.java`. Kept for original intent only.
 
 These are the SQL patterns for the protocol analytics, deviation analytics, facility ranking, event processing quality, and patient risk endpoints.
 

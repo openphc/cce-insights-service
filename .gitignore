@@ -45,5 +45,9 @@ build/
 .DS_Store
 Thumbs.db
 
+bin/
+
+.claude/
+
 # Local reference documents. Never commit them.
 artifacts/
