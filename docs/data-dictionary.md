@@ -184,8 +184,10 @@ Always read with `FINAL` to see the deduplicated, delete-purged view.
 
 ### 1.11 Daily KPI Materialized Views (schema/07)
 
-Five APPEND-mode refreshable MVs that snapshot compliance, adoption, deviation, event pipeline, and
-referral KPIs every 30 minutes. Backing tables use `ReplacingMergeTree(refreshed_at)` with `snapshot_date` as the first
+Five refreshable MVs that snapshot compliance, adoption, deviation, event pipeline, and
+referral KPIs every 30 seconds. (Compliance is APPEND-mode now()-snapshots; adoption, deviation,
+event and referral are event_time-keyed full-recompute over a 12-month rolling window, so backdated
+events self-heal.) Backing tables use `ReplacingMergeTree(refreshed_at)` with `snapshot_date` as the first
 ORDER BY key, so within a day multiple refresh rows deduplicate to the latest (use `FINAL`), and
 across days all snapshots are preserved.
 
@@ -250,11 +252,15 @@ Always filter with `FINAL` and `WHERE snapshot_date = today()` for the current d
 |--------|-------------|
 | `snapshot_date` | Clinical `event_time` day of the referral |
 | `facility_id` | FOSA facility ID |
-| `referral_count` | ACCEPTED inbound events (by `event_time`) that completed a *Referral Initiated* step on this day |
+| `referral_count` | **Referrals received by HIE** — ACCEPTED inbound referral events on this day. Prod: an `Encounter` whose `Encounter.type[].coding[].display = 'TRANSFER_ENCOUNTER'` (ingestion-based, match-independent). Dev/demo fallback: an accepted event that completed a Referral step (the demo referral is a markerless `ServiceRequest`). Deduped so prod never double-counts. |
+| `matched_count` | Of those received, the ones matched to (that completed) a Referral step — the **"compliant"** referrals. Non-compliant = `referral_count − matched_count`. |
 
-> Keyed on clinical `event_time` (not `received_at`), so it is a functional/clinical
-> metric. Backs the `GET /v1/insights/dashboard/referrals` KPI (total + per-facility
-> breakdown).
+> Keyed on clinical `event_time` (not `received_at`), so it is a functional/clinical metric.
+> **Ingestion-based** (RI-35): counts every accepted transfer the HIE received, independent of whether
+> the compliance engine matched it — so it no longer under-reports (transfers for not-yet-enrolled
+> patients) or lags behind step matching / CDC. Backs the `GET /v1/insights/dashboard/referrals` KPI:
+> Received by HIE, Compliant (matched), Non-Compliant (received − matched) and Referral Compliance Rate
+> (matched ÷ received), plus a per-facility breakdown with district.
 
 ## 2. Enum Values
 

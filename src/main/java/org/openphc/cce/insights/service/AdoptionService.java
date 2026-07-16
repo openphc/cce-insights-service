@@ -53,15 +53,16 @@ public class AdoptionService {
             String facilityId = (String) ref[0];
             String facilityName = (String) ref[1];
             long expectedFromRef = ((Number) ref[2]).longValue();
+            String district = ref.length > 3 ? (String) ref[3] : "";
             Object[] row = adoptionById.get(facilityId);
             if (row != null) {
                 long expectedFromMv = ((Number) row[1]).longValue();
                 double sumActual = ((Number) row[2]).doubleValue();
                 double adoptionRate = ((Number) row[3]).doubleValue();
-                result.add(buildDto(facilityId, facilityName, expectedFromMv,
+                result.add(buildDto(facilityId, facilityName, district, expectedFromMv,
                         sumActual, adoptionRate, calendarDays));
             } else {
-                result.add(emptyAdoptionDto(facilityId, facilityName, expectedFromRef));
+                result.add(emptyAdoptionDto(facilityId, facilityName, district, expectedFromRef));
             }
         }
 
@@ -76,7 +77,7 @@ public class AdoptionService {
      *   reportingGapPerDay = expected − actualVisitsPerDay
      * UI just renders these — no client-side rounding can drift.
      */
-    private static AdoptionKpiDto buildDto(String facilityId, String facilityName,
+    private static AdoptionKpiDto buildDto(String facilityId, String facilityName, String district,
                                             long expectedPerDay, double sumActual,
                                             double adoptionRatePct, long calendarDays) {
         long actualVisitsPerDay = (long) Math.ceil(sumActual / (double) calendarDays);
@@ -87,6 +88,7 @@ public class AdoptionService {
         return AdoptionKpiDto.builder()
                 .facilityId(facilityId)
                 .facilityName(facilityName)
+                .district(district)
                 .expectedVisitsPerDay(expectedPerDay)
                 .actualVisitsPerDay(actualVisitsPerDay)
                 .adoptionRate(adoptionRate)
@@ -95,10 +97,12 @@ public class AdoptionService {
     }
 
     /** Matches mv_daily_adoption_kpis behaviour when expected baseline is zero. */
-    private static AdoptionKpiDto emptyAdoptionDto(String facilityId, String facilityName, long expected) {
+    private static AdoptionKpiDto emptyAdoptionDto(String facilityId, String facilityName,
+                                                   String district, long expected) {
         return AdoptionKpiDto.builder()
                 .facilityId(facilityId)
                 .facilityName(facilityName)
+                .district(district)
                 .expectedVisitsPerDay(expected)
                 .actualVisitsPerDay(0L)
                 // No adoption row → 0 actual visits → 0% (whether or not an expected baseline exists);

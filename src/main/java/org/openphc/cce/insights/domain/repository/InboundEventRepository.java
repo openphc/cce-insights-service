@@ -65,11 +65,9 @@ public interface InboundEventRepository extends ReadOnlyRepository<InboundEvent,
     List<Object[]> countBySource(String facilityId, OffsetDateTime startDate, OffsetDateTime endDate);
 
     /**
-     * Total count of referral forms successfully received by HIE, event_time-keyed.
-     * A "referral form successfully received" is an {@code inbound_event_logs} row with
-     * {@code status='ACCEPTED'} whose matched step's {@code action_id} ends with
-     * {@code -referral} (Referral Initiated step; not {@code -referral-ack} or
-     * {@code -referral-consultation}).
+     * Total count of referrals RECEIVED by HIE, event_time-keyed (mv_daily_referral_kpis.referral_count).
+     * A "referral received" is an ACCEPTED inbound event that is either a prod TRANSFER_ENCOUNTER
+     * Encounter or a dev/demo event that completed a Referral step (see schema/07 section 7).
      *
      * @param facilityId optional single-facility scope (event payload facility_id)
      */
@@ -77,8 +75,16 @@ public interface InboundEventRepository extends ReadOnlyRepository<InboundEvent,
                                      OffsetDateTime startDate, OffsetDateTime endDate);
 
     /**
-     * Same definition as {@link #countReferralsReceivedByHIE}, grouped by
-     * {@code inbound_event_logs.facility_id}. Rows: {@code [facility_id, count]}.
+     * Total count of "compliant" referrals (mv_daily_referral_kpis.matched_count): received referrals
+     * that were matched to (completed) a Referral step in a tracked care journey. Non-compliant =
+     * received - matched. Same scope/keys as {@link #countReferralsReceivedByHIE}.
+     */
+    long countReferralsMatched(String facilityId,
+                               OffsetDateTime startDate, OffsetDateTime endDate);
+
+    /**
+     * Referral counts grouped by {@code inbound_event_logs.facility_id}.
+     * Rows: {@code [facility_id(String), received(Long), matched(Long)]}.
      */
     List<Object[]> countReferralsReceivedByHIEGroupedByFacility(OffsetDateTime startDate,
                                                                 OffsetDateTime endDate);

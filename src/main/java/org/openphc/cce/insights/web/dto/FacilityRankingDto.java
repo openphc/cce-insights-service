@@ -9,6 +9,8 @@ public class FacilityRankingDto {
     private int rank;
     private String facilityId;
     private String facilityName;
+    /** Facility's district (may be empty). Enables the district filter in the compliance drill-down. */
+    private String district;
     private long totalEnrollments;
     private long compliantPatients;
     private long nonCompliantPatients;

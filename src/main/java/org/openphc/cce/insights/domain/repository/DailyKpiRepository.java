@@ -53,7 +53,8 @@ public interface DailyKpiRepository {
 
     /**
      * facility FINAL — one row per facility_id, ordered by facility_name.
-     * Returns: [facility_id(String), facility_name(String), expected_patients_per_day(long)]
+     * Returns: [facility_id(String), facility_name(String), expected_patients_per_day(long),
+     *           district_name(String, may be empty)]
      */
     List<Object[]> getFacilityReference();
 

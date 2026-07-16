@@ -555,20 +555,33 @@ public class InboundEventRepositoryImpl
     // ══════════════════════════════════════════════════════════════════════════════
     // Referrals KPI (event_time-keyed) — reads mv_daily_referral_kpis (schema/07).
     //
-    // A "referral form received by HIE" is an ACCEPTED inbound event that completed a Referral
-    // Initiated step. The MV bakes in the join path (step_instances → compliance_event_logs →
-    // inbound_event_logs; completed_by_event_id is the COMPLIANCE log id, not the inbound id) and
-    // the action_id pattern ^(.+-referral|referral)$ — Dev/Demo "…-referral" AND UAT/Prod bare
-    // "referral" — keyed on the event_time day × facility with the 12-month rolling window. So these
-    // reads are simple snapshot_date-range sums, consistent with every other daily-summary card.
+    // A "referral received by HIE" is an ACCEPTED inbound event counted once per accepted row (RI-35):
+    //   (A) PROD: an Encounter with Encounter.type[].coding[].display = 'TRANSFER_ENCOUNTER' —
+    //       ingestion-based, independent of compliance matching, so it no longer under-reports
+    //       (transfers for not-yet-enrolled patients) or lags behind step matching / CDC; plus
+    //   (B) DEV/DEMO fallback: accepted events that completed a Referral step (the demo referral is a
+    //       markerless ServiceRequest, identifiable only via the match) — deduped so prod never
+    //       double-counts. The MV bakes in both branches. Keyed on event_time day × facility with the
+    //       12-month rolling window, so these reads are simple snapshot_date-range sums.
     // ══════════════════════════════════════════════════════════════════════════════
 
     @Override
     public long countReferralsReceivedByHIE(String facilityId,
                                             OffsetDateTime startDate, OffsetDateTime endDate) {
+        return referralTotal("sum(referral_count)", facilityId, startDate, endDate);
+    }
+
+    @Override
+    public long countReferralsMatched(String facilityId,
+                                      OffsetDateTime startDate, OffsetDateTime endDate) {
+        return referralTotal("sum(matched_count)", facilityId, startDate, endDate);
+    }
+
+    private long referralTotal(String aggregate, String facilityId,
+                               OffsetDateTime startDate, OffsetDateTime endDate) {
         String fid = str(facilityId);
         var mv = DSL.table(DSL.sql("mv_daily_referral_kpis" + finalClause()));
-        Long r = dsl.select(DSL.field("sum(referral_count)", Long.class))
+        Long r = dsl.select(DSL.field(aggregate, Long.class))
                     .from(mv)
                     .where(DSL.condition("? = '' OR facility_id = ?", fid, fid))
                     .and(DSL.condition("? != '1' OR snapshot_date >= toDate(parseDateTime64BestEffort(?))",
@@ -585,7 +598,8 @@ public class InboundEventRepositoryImpl
         var mv = DSL.table(DSL.sql("mv_daily_referral_kpis" + finalClause()));
         return dsl.select(
                     DSL.field("facility_id", String.class),
-                    DSL.field("sum(referral_count)", Long.class).as("cnt"))
+                    DSL.field("sum(referral_count)", Long.class).as("received"),
+                    DSL.field("sum(matched_count)", Long.class).as("matched"))
                   .from(mv)
                   .where(DSL.field("facility_id").ne(""))
                   .and(DSL.condition("? != '1' OR snapshot_date >= toDate(parseDateTime64BestEffort(?))",
@@ -594,6 +608,6 @@ public class InboundEventRepositoryImpl
                           endDate == null ? "0" : "1", dtEnd(endDate)))
                   .groupBy(DSL.field("facility_id"))
                   .fetch()
-                  .map(r -> new Object[]{r.get(0, String.class), r.get(1, Long.class)});
+                  .map(r -> new Object[]{r.get(0, String.class), r.get(1, Long.class), r.get(2, Long.class)});
     }
 }

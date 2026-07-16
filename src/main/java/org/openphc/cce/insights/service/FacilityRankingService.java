@@ -74,11 +74,12 @@ public class FacilityRankingService {
             String fid = (String) ref[0];
             if (hasFacility && !facilityId.equals(fid)) continue;
             String facilityName = (String) ref[1];
+            String district = ref.length > 3 ? (String) ref[3] : "";
             long[] patients = patientsByFacility.getOrDefault(fid, new long[]{0L, 0L, 0L});
             long deviations = patients[2];
             // Events (period) from the event_time event-volume MV — aligns with the Active tile.
             long inboundEvents = eventsByFacility.getOrDefault(fid, 0L);
-            rankings.add(toRankingDto(fid, facilityName, patients[0], patients[1], deviations, inboundEvents));
+            rankings.add(toRankingDto(fid, facilityName, district, patients[0], patients[1], deviations, inboundEvents));
         }
 
         Comparator<FacilityRankingDto> comparator = switch (sortBy != null ? sortBy : "complianceRate") {
@@ -99,6 +100,7 @@ public class FacilityRankingService {
                     .rank(rank++)
                     .facilityId(dto.getFacilityId())
                     .facilityName(dto.getFacilityName())
+                    .district(dto.getDistrict())
                     .totalEnrollments(dto.getTotalEnrollments())
                     .compliantPatients(dto.getCompliantPatients())
                     .nonCompliantPatients(dto.getNonCompliantPatients())
@@ -110,7 +112,7 @@ public class FacilityRankingService {
         return ranked;
     }
 
-    private static FacilityRankingDto toRankingDto(String facilityId, String facilityName,
+    private static FacilityRankingDto toRankingDto(String facilityId, String facilityName, String district,
                                                     long tracked, long nonCompliant,
                                                     long activeDeviations, long inboundEvents) {
         long compliant = Math.max(0, tracked - nonCompliant);
@@ -120,6 +122,7 @@ public class FacilityRankingService {
         return FacilityRankingDto.builder()
                 .facilityId(facilityId)
                 .facilityName(facilityName)
+                .district(district)
                 .totalEnrollments(tracked)
                 .compliantPatients(compliant)
                 .nonCompliantPatients(nonCompliant)
