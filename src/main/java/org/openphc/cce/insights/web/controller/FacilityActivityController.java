@@ -3,6 +3,7 @@ package org.openphc.cce.insights.web.controller;
 import lombok.RequiredArgsConstructor;
 import org.openphc.cce.insights.service.FacilityActivityService;
 import org.openphc.cce.insights.web.dto.ApiResponse;
+import org.openphc.cce.insights.web.dto.FacilityActivityItemDto;
 import org.openphc.cce.insights.web.dto.FacilityActivitySummaryDto;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
@@ -12,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
+import java.util.List;
 
 @RestController
 @RequestMapping("/v1/insights/facilities")
@@ -51,5 +53,23 @@ public class FacilityActivityController {
             dto = facilityActivityService.getActivitySummary();
         }
         return ResponseEntity.ok(ApiResponse.ok(dto));
+    }
+
+    /**
+     * GET /v1/insights/facilities/activity-detail
+     *
+     * Drill-down behind the Active/Inactive facility cards (RI-29): every in-scope facility with
+     * its active/inactive flag, district, and last-activity day for the selected range. The UI
+     * partitions by {@code active}; counts reconcile with /activity-summary. Missing dates default
+     * to today (same behaviour as the summary endpoint).
+     */
+    @GetMapping("/activity-detail")
+    public ResponseEntity<ApiResponse<List<FacilityActivityItemDto>>> getActivityDetail(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        LocalDate start = startDate != null ? startDate : endDate != null ? endDate : LocalDate.now();
+        LocalDate end   = endDate   != null ? endDate   : startDate != null ? startDate : LocalDate.now();
+        return ResponseEntity.ok(ApiResponse.ok(
+                facilityActivityService.getFacilityActivityDetail(start, end)));
     }
 }

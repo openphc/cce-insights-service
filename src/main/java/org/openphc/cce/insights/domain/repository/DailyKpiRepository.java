@@ -30,6 +30,19 @@ public interface DailyKpiRepository {
     Object[] getFacilityActivitySummaryByDateRange(LocalDate startDate, LocalDate endDate);
 
     /**
+     * Drill-down detail behind the Active/Inactive facility cards: one row per in-scope facility,
+     * flagged active/inactive for [startDate, endDate] using the SAME definition as the summary
+     * (active = ≥1 ACCEPTED event in mv_event_volume_hourly within the range).
+     * last_activity is the most recent event day UP TO endDate (no start bound), so an inactive
+     * facility that transmitted before the window still shows its last-seen date; null only if the
+     * facility was never active up to endDate.
+     * Returns rows of: [facility_id(String), facility_name(String), district_name(String),
+     *                   last_activity(String, yyyy-MM-dd or null if never active), active(int 0/1)]
+     * Unordered — the service applies the display order (district ↑, facility ↑, last-activity ↓).
+     */
+    List<Object[]> getFacilityActivityDetail(LocalDate startDate, LocalDate endDate);
+
+    /**
      * mv_daily_adoption_kpis — today's snapshot, one row per facility_id.
      * Returns: [facility_id(String), expected_patients_per_day(long),
      *           sum_actual_patients(double), adoption_rate_pct(double)]

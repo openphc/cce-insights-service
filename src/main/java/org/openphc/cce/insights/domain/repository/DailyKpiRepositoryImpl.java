@@ -92,6 +92,59 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
         return new Object[]{totalInScope, active, inactive, rate};
     }
 
+    // ── active/inactive facility drill-down detail (per in-scope facility) ─────
+
+    @Override
+    public List<Object[]> getFacilityActivityDetail(LocalDate startDate, LocalDate endDate) {
+        // ACTIVE = facility with ≥1 ACCEPTED event WITHIN [startDate, endDate] — the summary card's
+        // definition (mv_event_volume_hourly, event_time-keyed). This determines active/inactive.
+        java.util.Set<String> activeInPeriod = new java.util.HashSet<>();
+        dsl.select(DSL.field("facility_id", String.class))
+           .from(DSL.table("mv_event_volume_hourly"))
+           .where(DSL.field("facility_id").ne(""))
+           .and(DSL.condition("toDate(hour) >= ?", startDate))
+           .and(DSL.condition("toDate(hour) <= ?", endDate))
+           .groupBy(DSL.field("facility_id"))
+           .fetch()
+           .forEach(r -> activeInPeriod.add(r.get(0, String.class)));
+
+        // LAST ACTIVITY = most recent event day UP TO the end of the window (no start bound), so an
+        // inactive facility that transmitted BEFORE the period still shows its real last-seen date
+        // rather than a blank. Only facilities that were never active (up to endDate) stay null.
+        java.util.Map<String, String> lastActivityByFacility = new java.util.HashMap<>();
+        dsl.select(
+                DSL.field("facility_id", String.class),
+                DSL.field(DSL.sql("toString(max(toDate(hour)))"), String.class))
+           .from(DSL.table("mv_event_volume_hourly"))
+           .where(DSL.field("facility_id").ne(""))
+           .and(DSL.condition("toDate(hour) <= ?", endDate))
+           .groupBy(DSL.field("facility_id"))
+           .fetch()
+           .forEach(r -> lastActivityByFacility.put(r.get(0, String.class), r.get(1, String.class)));
+
+        // One row per in-scope facility. Java-side combine (rather than a LEFT JOIN) avoids
+        // ClickHouse's join-fills-defaults-not-nulls gotcha.
+        List<Object[]> out = new java.util.ArrayList<>();
+        dsl.select(
+                DSL.field("facility_id", String.class),
+                DSL.field("facility_name", String.class),
+                DSL.field("district_name", String.class))
+           .from(DSL.table(DSL.sql("facility" + finalClause())))
+           .where(DSL.field("_is_deleted").eq(0))
+           .fetch()   // display order (district, facility, last-activity) is applied in the service layer
+           .forEach(r -> {
+               String fid = r.get(0, String.class);
+               out.add(new Object[]{
+                   fid,
+                   r.get(1, String.class),
+                   r.get(2, String.class),
+                   lastActivityByFacility.get(fid),   // last-seen day ≤ endDate, or null if never active
+                   activeInPeriod.contains(fid) ? 1 : 0
+               });
+           });
+        return out;
+    }
+
     // ── mv_daily_adoption_kpis ───────────────────────────────────────────────
 
     @Override
