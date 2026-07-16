@@ -222,11 +222,15 @@ public class StepInstanceRepositoryImpl
         if (ids == null || ids.isEmpty()) return List.of();
         List<String> idStrings = ids.stream().map(UUID::toString).collect(java.util.stream.Collectors.toList());
         var si = finalAs(STEP_INSTANCES, "si");
-        return dsl.select(DSL.asterisk())
-                  .from(si)
-                  .where(DSL.field("si." + STEP_INSTANCES.PROTOCOL_INSTANCE_ID.getName()).in(idStrings))
-                  .fetch()
-                  .map(this::toStepInstance);
+        List<StepInstance> result = new java.util.ArrayList<>();
+        for (List<String> chunk : chunkIds(idStrings)) {
+            result.addAll(dsl.select(DSL.asterisk())
+                    .from(si)
+                    .where(DSL.field("si." + STEP_INSTANCES.PROTOCOL_INSTANCE_ID.getName()).in(chunk))
+                    .fetch()
+                    .map(this::toStepInstance));
+        }
+        return result;
     }
 
     @Override

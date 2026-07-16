@@ -4,6 +4,11 @@ All endpoints are accessed through the **CCE Gateway Service** (not directly by 
 
 > **Naming:** This service is referred to as "Analytics Service" in the CCE Solution Design v0.3. Implementation uses **Insights Service** (`cce-insights-service`).
 
+> **`complianceRate` scale:** every `complianceRate` (and `overallComplianceRate`) field
+> across this API is a **percentage, 0–100, rounded to one decimal** (e.g. `72.0` means
+> 72%) — never a 0–1 fraction. This applies uniformly across compliance summaries,
+> patient lists, facility ranking, practitioner ranking, and the dashboard.
+
 ---
 
 ## 1. Compliance Summaries
@@ -42,7 +47,8 @@ Aggregate compliance metrics for a specific protocol across all enrolled patient
       "withdrawn": 8,
       "expired": 8
     },
-    "complianceRate": 0.72,
+    "complianceRate": 72.0,
+    "compliantPatients": 178,
     "stepMetrics": {
       "totalSteps": 1240,
       "completed": 680,
@@ -51,6 +57,7 @@ Aggregate compliance metrics for a specific protocol across all enrolled patient
       "early": 40,
       "overdue": 180,
       "missed": 90,
+      "due": 20,
       "pending": 290
     },
     "deviationCount": 270,
@@ -80,7 +87,7 @@ Facility-level compliance metrics across all protocols.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `protocolDefinitionId` | UUID | — | Filter by specific protocol |
+| `protocolDefinitionId` | UUID | — | Accepted but **not currently applied** — the response is never filtered by protocol (all protocols always included in `protocolBreakdown`) |
 | `startDate` | ISO 8601 | — | When set, `totalPatients` counts distinct patients enrolled at this facility in the period |
 | `endDate` | ISO 8601 | — | End of date range |
 
@@ -92,20 +99,20 @@ Facility-level compliance metrics across all protocols.
     "facilityId": "0002",
     "totalPatients": 156,
     "totalEnrollments": 312,
-    "overallComplianceRate": 0.68,
+    "overallComplianceRate": 68.0,
     "protocolBreakdown": [
       {
         "protocolDefinitionId": "550e8400-e29b-41d4-a716-446655440000",
         "protocolCanonical": "http://openphc.org/fhir/PlanDefinition/anc-high-risk|2.1",
         "enrollments": 89,
-        "complianceRate": 0.74,
+        "complianceRate": 74.0,
         "activeDeviations": 12
       },
       {
         "protocolDefinitionId": "660e8400-e29b-41d4-a716-446655440000",
         "protocolCanonical": "http://openphc.org/fhir/PlanDefinition/child-immunization|1.0",
         "enrollments": 223,
-        "complianceRate": 0.65,
+        "complianceRate": 65.0,
         "activeDeviations": 34
       }
     ]
@@ -146,7 +153,7 @@ deduplicated to **one row per patient** (most recent enrollment in the filtered 
       "protocolCanonical": "http://openphc.org/fhir/PlanDefinition/anc-high-risk|2.1",
       "enrolledAt": "2026-01-15T10:00:00Z",
       "status": "active",
-      "complianceRate": 0.50,
+      "complianceRate": 50.0,
       "complianceCategory": "at_risk",
       "stepsCompleted": 3,
       "totalSteps": 6,
@@ -198,7 +205,7 @@ Full compliance timeline for a patient across all enrolled protocols. Combines e
         "protocolInstanceId": "660e8400-e29b-41d4-a716-446655440001",
         "protocolCanonical": "http://openphc.org/fhir/PlanDefinition/anc-high-risk|2.1",
         "status": "active",
-        "complianceRate": 0.50,
+        "complianceRate": 50.0,
         "timeline": [
           {
             "timestamp": "2026-01-15T10:00:00Z",
@@ -256,7 +263,7 @@ List all protocol instances for a patient.
       ],
       "enrolledAt": "2026-01-15T10:00:00Z",
       "status": "active",
-      "complianceRate": 0.50,
+      "complianceRate": 50.0,
       "stepsCompleted": 3,
       "totalSteps": 6
     }
@@ -280,7 +287,7 @@ Detailed tracking for a specific protocol instance with all step instances.
     "protocolCanonical": "http://openphc.org/fhir/PlanDefinition/anc-high-risk|2.1",
     "status": "active",
     "enrolledAt": "2026-01-15T10:00:00Z",
-    "complianceRate": 0.50,
+    "complianceRate": 50.0,
     "steps": [
       {
         "stepInstanceId": "770e8400-e29b-41d4-a716-446655440001",
@@ -418,6 +425,43 @@ All deviations for a patient across all protocol enrollments, ordered by detecti
 
 ---
 
+### 2.6 GET `/v1/insights/patients/{patientId}/intelligence-deliveries`
+
+All `intelligence_delivery` records for a patient — the notification/escalation delivery history for that patient's protocol actions. Matches `patientId` bare or prefixed as `Patient/{patientId}`.
+
+**Required Scope:** `dashboard:read`
+
+**Path Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `patientId` | String | Patient identifier |
+
+**Response: `200 OK`**
+
+```json
+{
+  "data": [
+    {
+      "id": "aa0e8400-e29b-41d4-a716-446655440001",
+      "actionType": "NOTIFY",
+      "status": "DELIVERED",
+      "severity": "warning",
+      "destination": "rhie-mediator",
+      "protocolCanonical": "http://openphc.org/fhir/PlanDefinition/anc-high-risk|2.1",
+      "actionId": "anc-visit-2-referral-escalation",
+      "attemptCount": 1,
+      "createdAt": "2026-02-20T00:00:10Z",
+      "deliveredAt": "2026-02-20T00:00:12Z"
+    }
+  ]
+}
+```
+
+> Response entries are plain maps (no dedicated DTO) with the fields shown above.
+
+---
+
 ## 3. Deviations & Intelligence
 
 ### 3.1 GET `/v1/insights/deviations`
@@ -435,9 +479,9 @@ List deviations with filtering, sorting, and pagination.
 | `protocolDefinitionId` | UUID | — | Filter by protocol |
 | `startDate` | ISO 8601 | — | Deviation detected after |
 | `endDate` | ISO 8601 | — | Deviation detected before |
-| `sort` | String | `detected_at:desc` | Sort field and direction |
-| `limit` | Integer | `50` | Page size (max 200) |
-| `cursor` | String | — | Pagination cursor |
+| `limit` | Integer | `50` | Max rows returned |
+
+> No `sort` or `cursor` param exists — results are not paginated (no `pagination` block in the response); `limit` simply caps the row count.
 
 **Response: `200 OK`**
 
@@ -453,16 +497,16 @@ List deviations with filtering, sorting, and pagination.
       "actionId": "anc-visit-2",
       "deviationType": "OVERDUE",
       "detectedAt": "2026-02-20T00:00:05Z",
+      "occurredAt": "2026-02-20T00:00:00Z",
       "facilityId": "0002"
     }
-  ],
-  "pagination": {
-    "limit": 50,
-    "next_cursor": "eyJpZCI6NDU2fQ==",
-    "has_more": false
-  }
+  ]
 }
 ```
+
+> `occurredAt` is the clinical occurrence date (when the deviation actually happened,
+> derived from the linked step's engine-computed dates); `detectedAt` is when the system
+> flagged it (processing time). They usually match but can differ for backfilled data.
 
 ### 3.2 GET `/v1/insights/deviations/trends`
 
@@ -491,18 +535,21 @@ Deviation trends aggregated by time period.
         "period": "2026-02-17",
         "overdue": 12,
         "missed": 3,
+        "orderViolation": 0,
         "total": 15
       },
       {
         "period": "2026-02-24",
         "overdue": 8,
         "missed": 5,
+        "orderViolation": 0,
         "total": 13
       },
       {
         "period": "2026-03-03",
         "overdue": 15,
         "missed": 2,
+        "orderViolation": 0,
         "total": 17
       }
     ]
@@ -548,6 +595,36 @@ Intelligence delivery summary — counts by status, action type, destination, se
 > `/v1/insights/deviations/intelligence-summary`. The two endpoints serve different
 > purposes — this one tracks delivery success of intelligence actions to receiver
 > adaptors; the deviation endpoint summarises deviation counts in time windows.
+
+---
+
+### 3.4 GET `/v1/insights/deviations/kpis`
+
+Total deviation counts, optionally scoped by protocol, facility, and detection date range. Counts distinct rows in the `deviations` table directly — this **supersedes summing `mv_daily_deviation_kpis` snapshot rows**, which inflated totals by re-counting the same active deviation on every day it appeared in the snapshot.
+
+**Required Scope:** `dashboard:read`
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `protocolDefinitionId` | UUID | — | Filter by protocol |
+| `facilityId` | String | — | Filter by facility (via `mv_patient_facility_latest`) |
+| `startDate` | ISO 8601 (`OffsetDateTime`) | — | Deviation detected after |
+| `endDate` | ISO 8601 (`OffsetDateTime`) | — | Deviation detected before |
+
+**Response: `200 OK`**
+
+```json
+{
+  "data": {
+    "totalDeviations": 270,
+    "overdueCount": 180,
+    "missedCount": 82,
+    "orderViolationCount": 8
+  }
+}
+```
 
 ---
 
@@ -598,7 +675,8 @@ High-level event volume summary with breakdowns by resource type, facility, and 
     "bySource": [
       { "source": "rhie-mediator", "count": 8400 },
       { "source": "ebuzima/kigali-south", "count": 4080 }
-    ]
+    ],
+    "pipelineLossCount": 30
   }
 }
 ```
@@ -616,7 +694,7 @@ Event volume trends over time, grouped by aggregation interval.
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `interval` | String | `weekly` | Aggregation: `daily`, `weekly`, `monthly` |
-| `resourceType` | String | — | Filter by FHIR resource type (e.g., `Encounter`) |
+| `resourceType` | String | — | Accepted but **not currently applied** — the parameter is read but never passed to the service, so it has no filtering effect |
 | `facilityId` | String | — | Filter by facility FOSA ID |
 | `source` | String | — | Filter by source system |
 | `startDate` | ISO 8601 | 30 days ago | Start of date range |
@@ -734,8 +812,8 @@ Event counts grouped by facility, with resource type breakdown per facility.
 | `resourceType` | String | — | Filter by FHIR resource type |
 | `startDate` | ISO 8601 | — | Start of date range |
 | `endDate` | ISO 8601 | — | End of date range |
-| `limit` | Integer | `50` | Page size (max 200) |
-| `cursor` | String | — | Pagination cursor |
+
+> No `limit` or `cursor` param exists — the endpoint returns every in-scope facility, no pagination.
 
 **Response: `200 OK`**
 
@@ -764,11 +842,32 @@ Event counts grouped by facility, with resource type breakdown per facility.
         { "resourceType": "ServiceRequest", "count": 220 }
       ]
     }
-  ],
-  "pagination": {
-    "limit": 50,
-    "next_cursor": null,
-    "has_more": false
+  ]
+}
+```
+
+---
+
+### 4.5 GET `/v1/insights/events/kpis`
+
+All-time, unfiltered event processing totals from `mv_daily_event_kpis` — the cumulative counterpart to the date-filtered `/events/summary`.
+
+**Required Scope:** `dashboard:read`
+
+**Query Parameters:** none
+
+**Response: `200 OK`**
+
+```json
+{
+  "data": {
+    "totalEvents": 128400,
+    "matchedCount": 102300,
+    "zeroMatchCount": 24600,
+    "duplicateCount": 1500,
+    "matchedRatePct": 79.7,
+    "zeroMatchRatePct": 19.2,
+    "pipelineLossCount": 310
   }
 }
 ```
@@ -831,6 +930,8 @@ All error responses follow the standard CCE envelope:
 | GET | `/actuator/health/liveness` | Kubernetes liveness probe |
 | GET | `/actuator/health/readiness` | Kubernetes readiness probe |
 | GET | `/actuator/prometheus` | Prometheus metrics scrape |
+| GET | `/actuator/info` | Build/app info |
+| GET | `/actuator/metrics` | Micrometer metric names/values |
 
 ---
 
@@ -906,7 +1007,7 @@ Per-step completion rates, average time-to-complete, and timeliness distribution
 **Computed fields:**
 - `completionRate` = `completedCount / totalInstances`
 - `avgDaysToComplete` = AVG of `(completed_at - due_date)` in days, only for completed steps with a `due_date`
-- `medianDaysToComplete` = Median of the same set (using PostgreSQL `PERCENTILE_CONT(0.5)`)
+- `medianDaysToComplete` = Median of the same set (using ClickHouse `medianIf(...)`)
 
 ---
 
@@ -1084,8 +1185,8 @@ Facility leaderboard ranked by compliance rate, deviation count, or event volume
 | `order` | String | `desc` | `asc` (worst first) or `desc` (best first) |
 | `startDate` | ISO 8601 | — | Date range start |
 | `endDate` | ISO 8601 | — | Date range end |
-| `limit` | Integer | `50` | Page size (max 200) |
-| `cursor` | String | — | Pagination cursor |
+| `limit` | Integer | `50` | Max rows returned |
+| `cursor` | String | — | Accepted but **not currently applied** — never forwarded to the service; only `limit` has any effect. No `pagination` block in the response. |
 
 > **Field semantics:** `totalEvents` is sourced from `inbound_event_logs` (status =
 > `ACCEPTED`) in the period, intersected with the facility reference list — matches the
@@ -1106,9 +1207,10 @@ Facility leaderboard ranked by compliance rate, deviation count, or event volume
       "totalEnrollments": 89,
       "compliantPatients": 73,
       "nonCompliantPatients": 16,
-      "complianceRate": 0.82,
+      "complianceRate": 82.0,
       "activeDeviations": 5,
-      "totalEvents": 2800
+      "totalEvents": 2800,
+      "patientsFromHIE": 41
     },
     {
       "rank": 2,
@@ -1118,18 +1220,102 @@ Facility leaderboard ranked by compliance rate, deviation count, or event volume
       "totalEnrollments": 156,
       "compliantPatients": 115,
       "nonCompliantPatients": 41,
-      "complianceRate": 0.74,
+      "complianceRate": 74.0,
       "activeDeviations": 12,
-      "totalEvents": 3200
+      "totalEvents": 3200,
+      "patientsFromHIE": 58
+    },
+    {
+      "rank": 3,
+      "facilityId": "0008",
+      "facilityName": "Nyamirambo HC",
+      "district": "Kicukiro",
+      "totalEnrollments": 62,
+      "compliantPatients": 36,
+      "nonCompliantPatients": 26,
+      "complianceRate": 58.0,
+      "activeDeviations": 22,
+      "totalEvents": 2100,
+      "patientsFromHIE": 19
     }
-  ],
-  "pagination": {
-    "limit": 50,
-    "next_cursor": null,
-    "has_more": false
+  ]
+}
+```
+
+---
+
+### 9.2 GET `/v1/insights/facilities/activity-summary`
+
+Active/inactive facility summary tile, derived live from `mv_event_volume_hourly`.
+
+**Required Scope:** `dashboard:read`
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `facilityId` | String | — | Single-facility tile: reports 1 in-scope facility, active/inactive per whether it transmitted in the period |
+| `startDate` | ISO 8601 | — | Start of date range — counts facilities with ≥1 successful HIE submission in the period |
+| `endDate` | ISO 8601 | — | End of date range |
+
+> Without any filters, falls back to today's active-facility count.
+
+**Response: `200 OK`**
+
+```json
+{
+  "data": {
+    "totalInScope": 25,
+    "activeFacilities": 19,
+    "inactiveFacilities": 6,
+    "activeFacilityRate": 76.0
   }
 }
 ```
+
+---
+
+### 9.3 GET `/v1/insights/facilities/activity-detail`
+
+Drill-down behind the Active/Inactive facility cards (RI-29): one row per in-scope facility, flagged active/inactive for the selected range using the same definition as `/activity-summary`. The UI partitions rows by `active`; counts reconcile with the summary tile.
+
+**Required Scope:** `dashboard:read`
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `startDate` | ISO 8601 | today | Start of date range |
+| `endDate` | ISO 8601 | today | End of date range |
+
+**Response: `200 OK`**
+
+```json
+{
+  "data": [
+    {
+      "facilityId": "0002",
+      "facilityName": "Kigali South HC",
+      "district": "Kigali",
+      "lastActivity": "2026-03-14",
+      "active": true
+    },
+    {
+      "facilityId": "0031",
+      "facilityName": "Kabuga HC",
+      "district": "Gasabo",
+      "lastActivity": "2026-01-02",
+      "active": false
+    }
+  ]
+}
+```
+
+> `lastActivity` is the most recent event day up to `endDate` (no lower bound), so an
+> inactive facility that transmitted before the window still shows its true last-seen
+> date rather than a blank; it is `null` only if the facility was never active up to
+> `endDate`. Sort order is district ↑, facility name ↑, then most-recent activity first
+> (applied by the service, not the database).
 
 ---
 
@@ -1146,11 +1332,11 @@ Most commonly deviated-from protocol steps, grouped by `actionId`. Identifies sy
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `protocolDefinitionId` | UUID | — | Filter by protocol |
-| `deviationType` | String | — | Filter: `overdue`, `missed` |
-| `facilityId` | String | — | Filter by facility |
-| `startDate` | ISO 8601 | — | Deviations detected after |
-| `endDate` | ISO 8601 | — | Deviations detected before |
-| `limit` | Integer | `20` | Page size (max 100) |
+| `startDate` | ISO 8601 (`OffsetDateTime`) | — | Deviations detected after |
+| `endDate` | ISO 8601 (`OffsetDateTime`) | — | Deviations detected before |
+
+> No `deviationType`, `facilityId`, or `limit` param exists on this endpoint — every
+> in-scope action is returned (sorted by `totalDeviations` desc), no pagination.
 
 **Response: `200 OK`**
 
@@ -1164,6 +1350,7 @@ Most commonly deviated-from protocol steps, grouped by `actionId`. Identifies sy
       "totalDeviations": 85,
       "overdueCount": 62,
       "missedCount": 23,
+      "orderViolationCount": 0,
       "affectedPatients": 72
     },
     {
@@ -1173,6 +1360,7 @@ Most commonly deviated-from protocol steps, grouped by `actionId`. Identifies sy
       "totalDeviations": 58,
       "overdueCount": 40,
       "missedCount": 18,
+      "orderViolationCount": 0,
       "affectedPatients": 55
     }
   ]
@@ -1192,9 +1380,10 @@ Percentage of `OVERDUE` steps that eventually reach `COMPLETED` (recovered) vs. 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `protocolDefinitionId` | UUID | — | Filter by protocol |
-| `facilityId` | String | — | Filter by facility |
-| `startDate` | ISO 8601 | — | Deviations detected after |
-| `endDate` | ISO 8601 | — | Deviations detected before |
+| `startDate` | ISO 8601 (`OffsetDateTime`) | — | Deviations detected after |
+| `endDate` | ISO 8601 (`OffsetDateTime`) | — | Deviations detected before |
+
+> No `facilityId` param exists on this endpoint.
 
 **Response: `200 OK`**
 
@@ -1245,10 +1434,11 @@ Concentration of `at_risk` and `non_compliant` patients by facility. Directs fie
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `protocolDefinitionId` | UUID | — | Restrict to patients enrolled in this protocol |
-| `startDate` | ISO 8601 | — | Restrict the cohort to enrollments enrolled in [start, end] |
-| `endDate` | ISO 8601 | — | End of enrollment window |
-| `limit` | Integer | `50` | Page size (max 200) |
-| `cursor` | String | — | Pagination cursor |
+| `startDate` | ISO 8601 (`OffsetDateTime`) | — | Restrict the cohort to enrollments enrolled in [start, end] |
+| `endDate` | ISO 8601 (`OffsetDateTime`) | — | End of enrollment window |
+
+> `limit` and `cursor` params are accepted but **not currently applied** — every in-scope
+> facility is always returned, no pagination.
 
 **Response: `200 OK`**
 
@@ -1269,12 +1459,7 @@ Concentration of `at_risk` and `non_compliant` patients by facility. Directs fie
       "atRisk": { "count": 38, "percentage": 24.4 },
       "nonCompliant": { "count": 23, "percentage": 14.7 }
     }
-  ],
-  "pagination": {
-    "limit": 50,
-    "next_cursor": null,
-    "has_more": false
-  }
+  ]
 }
 ```
 
@@ -1302,10 +1487,11 @@ Patients with deviations across multiple protocols or multiple steps within the 
 | `minDeviations` | Integer | `3` | Minimum deviation count to include |
 | `facilityId` | String | — | Filter by facility |
 | `protocolDefinitionId` | UUID | — | Filter by protocol |
-| `startDate` | ISO 8601 | — | Deviations detected after |
-| `endDate` | ISO 8601 | — | Deviations detected before |
-| `limit` | Integer | `50` | Page size (max 200) |
-| `cursor` | String | — | Pagination cursor |
+| `startDate` | ISO 8601 (`OffsetDateTime`) | — | Deviations detected after |
+| `endDate` | ISO 8601 (`OffsetDateTime`) | — | Deviations detected before |
+
+> `limit` and `cursor` params are accepted but **not currently applied** — every
+> qualifying patient is always returned, no pagination.
 
 **Response: `200 OK`**
 
@@ -1335,12 +1521,82 @@ Patients with deviations across multiple protocols or multiple steps within the 
         }
       ]
     }
-  ],
-  "pagination": {
-    "limit": 50,
-    "next_cursor": null,
-    "has_more": false
-  }
+  ]
+}
+```
+
+---
+
+## 12. Adoption Metrics
+
+Per-facility e-Buzima adoption tracking against the agreed expected-visit baseline. Backed by `mv_daily_adoption_kpis` and the static `facility` reference list (managed by programme staff via the compliance service).
+
+### 12.1 GET `/v1/insights/facilities/adoption`
+
+Per-facility e-Buzima adoption KPIs, sorted by `reportingGapPerDay` desc (worst under-reporters first).
+
+**Required Scope:** `dashboard:read`
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `facilityId` | String | — | Narrow to a single facility (consistent with the global filter elsewhere) |
+| `startDate` | ISO 8601 (`LocalDate`) | — | Start of date range — with `endDate`, aggregates across the range using calendar-day averages |
+| `endDate` | ISO 8601 (`LocalDate`) | — | End of date range |
+
+> Without date params, returns today's single-day snapshot. With `startDate`+`endDate`:
+> `periodRate = SUM(actual_patients) / (expected_per_day × calendar_days) × 100`;
+> `actualVisitsPerDay`/`reportingGapPerDay` are daily averages over the range. See
+> data-dictionary §3.13b for the full formula, including the zero-baseline handling.
+
+**Response: `200 OK`**
+
+```json
+{
+  "data": [
+    {
+      "facilityId": "0031",
+      "facilityName": "Kabuga HC",
+      "expectedVisitsPerDay": 12,
+      "actualVisitsPerDay": 3,
+      "adoptionRate": 25.0,
+      "reportingGapPerDay": 9
+    },
+    {
+      "facilityId": "0002",
+      "facilityName": "Kigali South HC",
+      "expectedVisitsPerDay": 10,
+      "actualVisitsPerDay": 9,
+      "adoptionRate": 90.0,
+      "reportingGapPerDay": 1
+    }
+  ]
+}
+```
+
+> `adoptionRate` is `0.0` (never a vacuous `100.0`) whenever a facility has both no
+> expected baseline and no actual visits, and also whenever it has no adoption row at
+> all for the period (regardless of whether it has an expected baseline).
+
+---
+
+### 12.2 GET `/v1/insights/facilities/reference`
+
+The agreed facility list with expected patient volumes, sourced from `facility` (managed by programme staff via the compliance service). Used by admin screens to view/verify the adoption baseline.
+
+**Required Scope:** `dashboard:read`
+
+**Query Parameters:** none
+
+**Response: `200 OK`**
+
+```json
+{
+  "data": [
+    { "facilityId": "0002", "facilityName": "Kigali South HC", "expectedVisitsPerDay": 10 },
+    { "facilityId": "0031", "facilityName": "Kabuga HC", "expectedVisitsPerDay": 12 }
+  ]
 }
 ```
 
@@ -1561,11 +1817,7 @@ Returns all protocol definitions for use in dropdown filters.
 
 **Required Scope:** `dashboard:read`
 
-**Query Parameters:**
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `status` | String | — | Filter by protocol status (e.g., `active`) |
+**Query Parameters:** none
 
 **Response: `200 OK`**
 
@@ -1576,18 +1828,23 @@ Returns all protocol definitions for use in dropdown filters.
       "id": "550e8400-e29b-41d4-a716-446655440001",
       "url": "https://fhir.openphc.org/PlanDefinition/anc-contact-schedule",
       "version": "1.0.0",
-      "name": "ANC Contact Schedule",
-      "status": "active"
+      "canonical": "https://fhir.openphc.org/PlanDefinition/anc-contact-schedule|1.0.0",
+      "status": "active",
+      "title": "ANC Contact Schedule"
     }
   ]
 }
 ```
 
+> There is no `name` field. `title` is extracted from the JSONB definition's
+> `title` attribute, falling back to the URL's last path segment when absent.
+> `canonical` is `url + "|" + version` (not a stored column).
+
 ---
 
 ### 14.2 GET `/v1/insights/lookups/facilities`
 
-Returns distinct facility IDs from event data.
+Returns the facility reference list (id + name), sourced from `facility`.
 
 **Required Scope:** `dashboard:read`
 
@@ -1596,9 +1853,9 @@ Returns distinct facility IDs from event data.
 ```json
 {
   "data": [
-    "FAC-KGL-001",
-    "FAC-KGL-002",
-    "FAC-HYE-003"
+    { "id": "FAC-KGL-001", "name": "Kigali South HC" },
+    { "id": "FAC-KGL-002", "name": "Muhima HC" },
+    { "id": "FAC-HYE-003", "name": "Huye District HC" }
   ]
 }
 ```
@@ -1649,11 +1906,7 @@ Returns distinct patient IDs from protocol instances.
 
 **Required Scope:** `dashboard:read`
 
-**Query Parameters:**
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `protocolDefinitionId` | UUID | — | Filter patients enrolled in a specific protocol |
+**Query Parameters:** none
 
 **Response: `200 OK`**
 
@@ -1672,7 +1925,7 @@ Returns distinct patient IDs from protocol instances.
 
 ### 15.1 GET `/v1/insights/dashboard/overview`
 
-Aggregated dashboard KPIs — total patients, total enrollments, compliance rate, active deviations.
+Top-line HIE transmission and deviation KPIs, plus the top/bottom 3 facilities by compliance rate. Backs the Dashboard's primary landing tiles.
 
 **Required Scope:** `dashboard:read`
 
@@ -1681,21 +1934,59 @@ Aggregated dashboard KPIs — total patients, total enrollments, compliance rate
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `facilityId` | String | — | Filter by facility |
-| `startDate` | ISO 8601 | — | Start of date range |
-| `endDate` | ISO 8601 | — | End of date range |
+| `startDate` | ISO 8601 (`OffsetDateTime`) | — | Start of date range |
+| `endDate` | ISO 8601 (`OffsetDateTime`) | — | End of date range |
 
 **Response: `200 OK`**
 
 ```json
 {
   "data": {
-    "totalPatients": 150,
-    "totalEnrollments": 248,
-    "complianceRate": 0.72,
-    "activeDeviations": 34
+    "totalPatientsEBuzima": 150,
+    "patientsReceivedHIE": 138,
+    "transmissionRate": 92.0,
+    "activeFacilities": 19,
+    "activeDeviations": 34,
+    "newDeviations24h": 3,
+    "hieEventCount": 4820,
+    "topFacilities": [
+      {
+        "rank": 1,
+        "facilityId": "0015",
+        "facilityName": "Muhima HC",
+        "totalEnrollments": 89,
+        "compliantPatients": 73,
+        "nonCompliantPatients": 16,
+        "complianceRate": 82.0,
+        "activeDeviations": 5,
+        "totalEvents": 2800,
+        "patientsFromHIE": 41
+      }
+    ],
+    "bottomFacilities": [
+      {
+        "rank": 1,
+        "facilityId": "0031",
+        "facilityName": "Kabuga HC",
+        "totalEnrollments": 22,
+        "compliantPatients": 6,
+        "nonCompliantPatients": 16,
+        "complianceRate": 27.0,
+        "activeDeviations": 14,
+        "totalEvents": 210,
+        "patientsFromHIE": 3
+      }
+    ]
   }
 }
 ```
+
+> **Field semantics:**
+> - `totalPatientsEBuzima` = distinct patients received via source `ebuzima-direct` (direct E-Buzima EMR integration — pending in most deployments).
+> - `patientsReceivedHIE` = distinct patients received via source `ebuzima` (HIE-mediated).
+> - `transmissionRate` = `patientsReceivedHIE / totalPatientsEBuzima × 100` (`0` when the denominator is `0`).
+> - `activeDeviations` / `newDeviations24h` come from the same intelligence-summary aggregation as `/v1/insights/deviations/intelligence-summary` (`newDeviations24h` = `recentActivity.last24Hours`).
+> - `topFacilities` / `bottomFacilities` are the top 3 / bottom 3 facilities by `complianceRate` (via the facility ranking service), each enriched with its HIE patient count.
 
 ### 15.2 GET `/v1/insights/dashboard/compliance-summary`
 
@@ -1800,7 +2091,9 @@ materialized view (`referral_count` = received, `matched_count` = compliant).
 
 ### 16.1 GET `/v1/insights/protocols/compliance-summary`
 
-Returns compliance summary aggregated across all protocols in a single call.
+Compliance summary aggregated **across all protocols combined** — the same
+`ComplianceSummaryDto` shape as §1.1, but totals sum every protocol instead of scoping to
+one `protocolDefinitionId`.
 
 **Required Scope:** `dashboard:read`
 
@@ -1809,24 +2102,43 @@ Returns compliance summary aggregated across all protocols in a single call.
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `facilityId` | String | — | Filter by facility |
+| `startDate` | ISO 8601 (`OffsetDateTime`) | — | Start of date range — when set, `totalEnrollments` counts distinct patients **enrolled in the period** |
+| `endDate` | ISO 8601 (`OffsetDateTime`) | — | End of date range |
 
 **Response: `200 OK`**
 
 ```json
 {
   "data": {
-    "protocols": [
-      {
-        "protocolDefinitionId": "550e8400-...",
-        "protocolCanonical": "http://openphc.org/fhir/PlanDefinition/anc-high-risk|2.1",
-        "totalEnrollments": 248,
-        "complianceRate": 0.72,
-        "complianceCategory": "MODERATE"
-      }
-    ]
+    "totalEnrollments": 1840,
+    "compliantPatients": 1324,
+    "complianceRate": 72.0,
+    "stepMetrics": {
+      "totalSteps": 9600,
+      "completed": 6800,
+      "onTime": 5100,
+      "late": 900,
+      "early": 800,
+      "overdue": 1200,
+      "missed": 480,
+      "due": 220,
+      "pending": 900
+    },
+    "deviationCount": 1680,
+    "deviationBreakdown": {
+      "overdue": 1200,
+      "missed": 430,
+      "orderViolation": 50
+    }
   }
 }
 ```
+
+> There is no `protocols: []` wrapper and no `complianceCategory` field — this is a flat,
+> pre-aggregated total (not a per-protocol breakdown). Because the DTO is
+> `@JsonInclude(NON_NULL)`, `protocolDefinitionId`/`protocolCanonical`/`statusBreakdown`
+> (which only apply to the single-protocol §1.1 response) are entirely absent from this
+> endpoint's JSON, not `null`.
 
 ---
 
@@ -1859,16 +2171,23 @@ returned elsewhere — see §3.13 in the data dictionary.
 {
   "data": [
     {
+      "rank": 1,
       "practitionerRef": "Practitioner/HLC-PRAC-2025-00005",
       "practitionerName": "Dr. Kwizera Emmanuel",
-      "complianceRate": 0.89,
-      "deviationCount": 3,
+      "facilityId": "0002",
+      "facilityName": "Kigali South HC",
       "totalPatients": 42,
-      "complianceCategory": "COMPLIANT"
+      "complianceRate": 89.0,
+      "totalSteps": 210,
+      "completedSteps": 187,
+      "activeDeviations": 3,
+      "totalEvents": 640
     }
   ]
 }
 ```
+
+> There is no `complianceCategory` or `deviationCount` field — `activeDeviations` is the raw count, and `complianceRate` (`completedSteps / totalSteps`) is the only ranking-relevant ratio.
 
 ---
 
@@ -1894,16 +2213,12 @@ Returns the ordered list of actions defined in the protocol PlanDefinition, with
     {
       "actionId": "registration",
       "parentActionId": null,
-      "stepOrder": 1,
-      "requiredBehavior": "must",
       "type": null,
       "title": "Registration"
     },
     {
       "actionId": "anc-visit-1-referral-escalation",
       "parentActionId": "anc-visit-1-referral",
-      "stepOrder": 8,
-      "requiredBehavior": "could",
       "type": "fire-event",
       "title": "ANC Visit 1 Referral Escalation Notification"
     }
@@ -1911,7 +2226,11 @@ Returns the ordered list of actions defined in the protocol PlanDefinition, with
 }
 ```
 
-> **Note:** The `type` field is extracted from `action.type.coding[0].code` in the protocol definition JSONB. Actions with `type = "fire-event"` are intelligence actions (notifications/escalations). The `title` field is from `action.title`.
+> **Note:** There is no `stepOrder` or `requiredBehavior` field — the response is exactly
+> `actionId`, `parentActionId`, `type`, `title`, in the order actions appear in the
+> `PlanDefinition.action[]` array. `type` is extracted from `action.type.coding[0].code`
+> in the protocol definition JSONB; actions with `type = "fire-event"` are intelligence
+> actions (notifications/escalations). `title` is from `action.title`.
 
 ---
 
@@ -1919,7 +2238,7 @@ Returns the ordered list of actions defined in the protocol PlanDefinition, with
 
 ### 19.1 GET `/v1/insights/deviations/intelligence-summary`
 
-Returns intelligence delivery summary including total deviations, active intelligence actions, and delivery statistics.
+Deviation counts broken down by type and severity, plus recent-activity windows. This is the deviation-focused counterpart to `/v1/insights/intelligence/summary` (§3.3), which tracks delivery success instead.
 
 **Required Scope:** `dashboard:read`
 
@@ -1927,8 +2246,8 @@ Returns intelligence delivery summary including total deviations, active intelli
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `startDate` | ISO 8601 | — | Start of date range |
-| `endDate` | ISO 8601 | — | End of date range |
+| `startDate` | ISO 8601 (`OffsetDateTime`) | — | Start of date range |
+| `endDate` | ISO 8601 (`OffsetDateTime`) | — | End of date range |
 | `facilityId` | String | — | Filter by facility |
 
 **Response: `200 OK`**
@@ -1937,13 +2256,26 @@ Returns intelligence delivery summary including total deviations, active intelli
 {
   "data": {
     "totalDeviations": 145,
-    "activeDeviations": 34,
-    "resolvedDeviations": 111,
-    "intelligenceActions": {
-      "totalDeliveries": 89,
-      "successfulDeliveries": 82,
-      "failedDeliveries": 7
+    "byType": {
+      "overdue": 98,
+      "missed": 42,
+      "orderViolation": 5
+    },
+    "bySeverity": {
+      "warning": 98,
+      "critical": 47
+    },
+    "recentActivity": {
+      "last24Hours": 3,
+      "last7Days": 21,
+      "last30Days": 84
     }
   }
 }
 ```
+
+> There is no `resolvedDeviations` or `intelligenceActions` field on this endpoint —
+> resolution stats live at `/v1/insights/deviations/resolution-rate` (§10.2), and
+> delivery stats live at `/v1/insights/intelligence/summary` (§3.3). `byType` keys are
+> `overdue`/`missed`/`orderViolation` (lowercase); `bySeverity` keys are
+> `warning`/`critical` (`OVERDUE` → warning, `MISSED`/`ORDER_VIOLATION` → critical).

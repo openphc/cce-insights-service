@@ -7,7 +7,7 @@ sequenceDiagram
     participant Client
     participant Gateway as CCE Gateway<br/>(8080)
     participant Insights as Insights Service<br/>(8084)
-    participant DB as PostgreSQL<br/>(cce_collector)
+    participant DB as ClickHouse<br/>(cce_analytics)
 
     Client->>Gateway: GET /v1/compliance-summary?facility_id=FAC-001
     Note right of Gateway: Validate OAuth token<br/>Check scope: dashboard:read
@@ -54,7 +54,7 @@ sequenceDiagram
     participant Service as PatientComplianceService
     participant PIRepo as ProtocolInstanceRepository
     participant SIRepo as StepInstanceRepository
-    participant DB as PostgreSQL
+    participant DB as ClickHouse
 
     Controller->>Service: getPatientTimeline(patientId)
     Service->>PIRepo: findBySubject(patientId)
@@ -119,7 +119,7 @@ sequenceDiagram
     participant Client
     participant Controller as ExportController
     participant Service as ExportService
-    participant DB as PostgreSQL
+    participant DB as ClickHouse
 
     Client->>Controller: GET /v1/insights/exports/compliance-report?format=csv
     Controller->>Controller: Set response headers<br/>Content-Type: text/csv<br/>Content-Disposition: attachment
@@ -288,7 +288,7 @@ flowchart TD
 sequenceDiagram
     participant Controller as FacilityRankingController
     participant Service as FacilityRankingService
-    participant DB as PostgreSQL
+    participant DB as ClickHouse
 
     Controller->>Service: getRanking(rankBy, order, protocolId, dateRange)
 
@@ -354,7 +354,7 @@ flowchart TD
 sequenceDiagram
     participant Controller as PatientRiskController
     participant Service as PatientRiskService
-    participant DB as PostgreSQL
+    participant DB as ClickHouse
 
     Controller->>Service: getAtRiskHotspots(protocolId, dateRange)
 
@@ -405,7 +405,7 @@ sequenceDiagram
     participant Client
     participant Controller as PatientController
     participant Repo as EventLogRepository
-    participant DB as PostgreSQL
+    participant DB as ClickHouse
 
     Client->>Controller: GET /v1/insights/patients/{id}/events?resourceType=Encounter&limit=50
     Controller->>Repo: findBySubjectOrderByEventTimeDesc("Patient/{id}")
@@ -503,7 +503,7 @@ sequenceDiagram
     participant Service as IngestionAnalyticsService
     participant InboundRepo as InboundEventRepository
     participant EventRepo as EventLogRepository
-    participant DB as PostgreSQL
+    participant DB as ClickHouse
 
     Controller->>Service: getPipelineLoss(facilityId, dateRange)
 
@@ -580,7 +580,7 @@ sequenceDiagram
     participant Controller as ProtocolAnalyticsController
     participant Service as ProtocolAnalyticsService
     participant Repo as ProtocolDefinitionRepository
-    participant DB as PostgreSQL
+    participant DB as ClickHouse
 
     Controller->>Service: getActionOrder(protocolDefinitionId)
     Service->>Repo: findById(protocolDefinitionId)

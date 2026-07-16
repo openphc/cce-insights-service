@@ -155,6 +155,24 @@ public abstract class AbstractClickHouseRepository<T, ID> implements ReadOnlyRep
         try { return UUID.fromString(s); } catch (Exception e) { return null; }
     }
 
+    /**
+     * Max element count for a single jOOQ {@code .in(...)} clause built from this helper.
+     * ClickHouse rejects queries whose bound-parameter text exceeds max_query_size
+     * (default 262144 bytes); wide date-range filters can otherwise produce IN lists with
+     * thousands of UUIDs. Callers should split large id lists with {@link #chunkIds} and
+     * issue one query per chunk, merging the results.
+     */
+    protected static final int MAX_IN_CLAUSE_SIZE = 1000;
+
+    /** Splits a list of ids into chunks no larger than {@link #MAX_IN_CLAUSE_SIZE}. */
+    protected static <E> List<List<E>> chunkIds(List<E> ids) {
+        List<List<E>> chunks = new ArrayList<>();
+        for (int i = 0; i < ids.size(); i += MAX_IN_CLAUSE_SIZE) {
+            chunks.add(ids.subList(i, Math.min(i + MAX_IN_CLAUSE_SIZE, ids.size())));
+        }
+        return chunks;
+    }
+
     /** Reads a Nullable DateTime column from a jOOQ Record. */
     protected static OffsetDateTime recordDateTime(Record r, String col) {
         Object val = r.get(col);
