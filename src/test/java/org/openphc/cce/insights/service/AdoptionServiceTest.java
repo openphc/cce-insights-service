@@ -35,6 +35,11 @@ class AdoptionServiceTest {
         return new Object[]{id, name, expected};
     }
 
+    /** facility reference row with district: [facility_id, facility_name, expected_per_day, district]. */
+    private static Object[] ref(String id, String name, long expected, String district) {
+        return new Object[]{id, name, expected, district};
+    }
+
     private static Map<String, AdoptionKpiDto> byId(List<AdoptionKpiDto> rows) {
         return rows.stream().collect(Collectors.toMap(AdoptionKpiDto::getFacilityId, r -> r));
     }
@@ -93,6 +98,20 @@ class AdoptionServiceTest {
 
         assertThat(result.get(0).getFacilityId()).isEqualTo("F-B");
         assertThat(result.get(1).getFacilityId()).isEqualTo("F-A");
+    }
+
+    @Test
+    void getAdoptionKpis_populatesDistrictFromReference() {
+        // RI-35: district flows from the facility reference (ref[3]) onto the DTO for the district filter.
+        when(repo.getAdoptionKpis()).thenReturn(List.<Object[]>of(adoption("F-A", 10, 9.0, 90.0)));
+        when(repo.getFacilityReference()).thenReturn(List.of(
+                ref("F-A", "Alpha", 10, "North"),
+                ref("F-B", "Bravo", 6, "South")));
+
+        Map<String, AdoptionKpiDto> result = byId(service.getAdoptionKpis());
+
+        assertThat(result.get("F-A").getDistrict()).isEqualTo("North");   // present in the MV
+        assertThat(result.get("F-B").getDistrict()).isEqualTo("South");   // filled from reference
     }
 
     @Test

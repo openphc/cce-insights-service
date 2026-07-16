@@ -1203,6 +1203,7 @@ Facility leaderboard ranked by compliance rate, deviation count, or event volume
       "rank": 1,
       "facilityId": "0015",
       "facilityName": "Muhima HC",
+      "district": "Gasabo",
       "totalEnrollments": 89,
       "compliantPatients": 73,
       "nonCompliantPatients": 16,
@@ -1215,6 +1216,7 @@ Facility leaderboard ranked by compliance rate, deviation count, or event volume
       "rank": 2,
       "facilityId": "0002",
       "facilityName": "Kigali South HC",
+      "district": "Nyarugenge",
       "totalEnrollments": 156,
       "compliantPatients": 115,
       "nonCompliantPatients": 41,
@@ -1227,6 +1229,7 @@ Facility leaderboard ranked by compliance rate, deviation count, or event volume
       "rank": 3,
       "facilityId": "0008",
       "facilityName": "Nyamirambo HC",
+      "district": "Kicukiro",
       "totalEnrollments": 62,
       "compliantPatients": 36,
       "nonCompliantPatients": 26,
@@ -2041,10 +2044,13 @@ Dashboard. All sections respect the global `facilityId` / `startDate` / `endDate
 
 ### 15.3 GET `/v1/insights/dashboard/referrals`
 
-Referrals KPI — total count of referral forms successfully received by HIE for the
-selected date range, plus a per-facility breakdown. Counts **ACCEPTED** inbound events
-(scoped by clinical `event_time`) that completed a *Referral Initiated* step, backed by
-the `mv_daily_referral_kpis` materialized view.
+Referrals KPI — **referrals received by HIE** for the selected date range with a
+compliant / non-compliant split, plus a per-facility breakdown. "Received by HIE" =
+**ACCEPTED** inbound referral events (scoped by clinical `event_time`) — prod: an `Encounter`
+carrying `TRANSFER_ENCOUNTER`; dev/demo: an accepted event that completed a Referral step.
+"Compliant" = those matched to a Referral step in a tracked care journey; "Non-Compliant" =
+received − matched; rate = compliant ÷ received. Backed by the `mv_daily_referral_kpis`
+materialized view (`referral_count` = received, `matched_count` = compliant).
 
 **Required Scope:** `dashboard:read`
 
@@ -2062,16 +2068,22 @@ the `mv_daily_referral_kpis` materialized view.
 {
   "data": {
     "totalReferralsReceived": 1240,
+    "compliantReferrals": 1180,
+    "nonCompliantReferrals": 60,
+    "referralComplianceRate": 95.2,
     "byFacility": [
-      { "facilityId": "0002", "facilityName": "Kigali South HC", "count": 480 },
-      { "facilityId": "0015", "facilityName": "Muhima HC", "count": 320 }
+      { "facilityId": "0002", "facilityName": "Kigali South HC", "district": "Nyarugenge", "count": 480, "compliant": 470, "nonCompliant": 10, "complianceRate": 97.9 },
+      { "facilityId": "0015", "facilityName": "Muhima HC", "district": "Gasabo", "count": 320, "compliant": 300, "nonCompliant": 20, "complianceRate": 93.8 }
     ]
   }
 }
 ```
 
-> `byFacility` returns one entry per facility in the reference list (`count` is `0` when a
-> facility received no referrals in the period).
+> `totalReferralsReceived` = received by HIE; `compliantReferrals` = matched to a Referral step;
+> `nonCompliantReferrals` = received − compliant; `referralComplianceRate` = compliant ÷ received (0
+> when none received). `byFacility` returns one entry per facility in the reference list — each with
+> its `district` (for the drill-down district/facility filters) and its own compliant/non-compliant
+> split — with `count` `0` when a facility received no referrals in the period.
 
 ---
 

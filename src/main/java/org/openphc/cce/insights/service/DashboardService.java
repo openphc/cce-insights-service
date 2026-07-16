@@ -196,17 +196,22 @@ public class DashboardService {
                                             OffsetDateTime endDate) {
         boolean hasFacility = facilityId != null && !facilityId.isEmpty();
 
-        // Facility-wise counts from inbound_event_logs.facility_id (event payload facility,
-        // same clock as event_time). Materialise into a map for reference-list join below.
-        Map<String, Long> countsByFacility = new LinkedHashMap<>();
+        // Facility-wise received + matched from inbound_event_logs.facility_id (event payload facility,
+        // same clock as event_time). Materialise into maps for the reference-list join below.
+        Map<String, Long> receivedByFacility = new LinkedHashMap<>();
+        Map<String, Long> matchedByFacility  = new LinkedHashMap<>();
         for (Object[] row : inboundEventRepository.countReferralsReceivedByHIEGroupedByFacility(
                 startDate, endDate)) {
-            countsByFacility.put((String) row[0], ((Number) row[1]).longValue());
+            String fid = (String) row[0];
+            receivedByFacility.put(fid, ((Number) row[1]).longValue());
+            matchedByFacility.put(fid, ((Number) row[2]).longValue());
         }
 
-        // Total — single COUNT() query so the total ignores facilities missing from the
-        // reference list (defensive: a stray facility_id in an event should still be counted).
-        long total = inboundEventRepository.countReferralsReceivedByHIE(
+        // Totals — single-query sums so they ignore facilities missing from the reference list
+        // (defensive: a stray facility_id in an event should still be counted).
+        long totalReceived = inboundEventRepository.countReferralsReceivedByHIE(
+                facilityId, startDate, endDate);
+        long totalMatched = inboundEventRepository.countReferralsMatched(
                 facilityId, startDate, endDate);
 
         // Anchor to the facility reference list so every in-scope facility shows up (0 if
@@ -216,16 +221,32 @@ public class DashboardService {
             String fid  = (String) ref[0];
             if (hasFacility && !facilityId.equals(fid)) continue;
             String name = (String) ref[1];
+            String district = ref.length > 3 ? (String) ref[3] : "";
+            long received  = receivedByFacility.getOrDefault(fid, 0L);
+            long matched   = matchedByFacility.getOrDefault(fid, 0L);
             byFacility.add(ReferralsKpiDto.FacilityReferralCountDto.builder()
                     .facilityId(fid)
                     .facilityName(name)
-                    .count(countsByFacility.getOrDefault(fid, 0L))
+                    .district(district)
+                    .count(received)
+                    .compliant(matched)
+                    .nonCompliant(received - matched)
+                    .complianceRate(complianceRate(matched, received))
                     .build());
         }
 
         return ReferralsKpiDto.builder()
-                .totalReferralsReceived(total)
+                .totalReferralsReceived(totalReceived)
+                .compliantReferrals(totalMatched)
+                .nonCompliantReferrals(totalReceived - totalMatched)
+                .referralComplianceRate(complianceRate(totalMatched, totalReceived))
                 .byFacility(byFacility)
                 .build();
+    }
+
+    /** Compliant as a percentage of received, rounded to 1 dp; 0 when nothing received. */
+    private static double complianceRate(long matched, long received) {
+        if (received <= 0) return 0.0;
+        return Math.round((matched * 1000.0 / received)) / 10.0;
     }
 }

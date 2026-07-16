@@ -181,7 +181,8 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
         return dsl.select(
                     DSL.field("facility_id",               String.class),
                     DSL.field("facility_name",              String.class),
-                    DSL.field("expected_patients_per_day",  Long.class))
+                    DSL.field("expected_patients_per_day",  Long.class),
+                    DSL.field("district_name",              String.class))
                   .from(DSL.table(DSL.sql("facility" + finalClause())))
                   .where(DSL.field("_is_deleted").eq(0))
                   .orderBy(DSL.field("facility_name"))
@@ -189,7 +190,8 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
                   .map(r -> new Object[]{
                       r.get(0, String.class),
                       r.get(1, String.class),
-                      toLong(r.get(2))
+                      toLong(r.get(2)),
+                      r.get(3, String.class)
                   });
     }
 

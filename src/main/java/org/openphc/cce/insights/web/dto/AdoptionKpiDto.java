@@ -9,6 +9,8 @@ import lombok.Data;
 public class AdoptionKpiDto {
     private String facilityId;
     private String facilityName;
+    /** Facility's district (may be empty when the source has no district). Enables the district filter. */
+    private String district;
     /** Validated baseline from facility (set by programme staff). */
     private long expectedVisitsPerDay;
     /** Average daily distinct reporters, rounded UP to a whole number so a sparse
