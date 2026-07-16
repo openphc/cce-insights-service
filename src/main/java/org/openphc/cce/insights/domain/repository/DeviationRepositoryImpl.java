@@ -99,11 +99,15 @@ public class DeviationRepositoryImpl
         if (ids == null || ids.isEmpty()) return List.of();
         List<String> idStrings = ids.stream().map(UUID::toString).collect(java.util.stream.Collectors.toList());
         var d = finalAs(DEVIATIONS, "d");
-        return dsl.select(DSL.asterisk())
-                  .from(d)
-                  .where(DSL.field("d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName()).in(idStrings))
-                  .fetch()
-                  .map(this::toDeviation);
+        List<Deviation> result = new java.util.ArrayList<>();
+        for (List<String> chunk : chunkIds(idStrings)) {
+            result.addAll(dsl.select(DSL.asterisk())
+                    .from(d)
+                    .where(DSL.field("d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName()).in(chunk))
+                    .fetch()
+                    .map(this::toDeviation));
+        }
+        return result;
     }
 
     @Override
@@ -115,26 +119,32 @@ public class DeviationRepositoryImpl
         var d = finalAs(DEVIATIONS, "d");
         var si = finalAs(STEP_INSTANCES, "si");   // for occurredAt() clinical date
         String detectedAt = occurredAt();  // clinical occurrence date, not system detection time
-        org.jooq.Condition where = DSL.field("d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName()).in(idStrings);
-        if (startDate != null) {
-            where = where.and(DSL.condition(
-                    detectedAt + " >= parseDateTime64BestEffort(?)", startDate.toString()));
+        // Each protocol_instance_id belongs to exactly one chunk, so groupBy results across
+        // chunks are disjoint and can be concatenated without merging/double-counting.
+        List<Object[]> result = new java.util.ArrayList<>();
+        for (List<String> chunk : chunkIds(idStrings)) {
+            org.jooq.Condition where = DSL.field("d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName()).in(chunk);
+            if (startDate != null) {
+                where = where.and(DSL.condition(
+                        detectedAt + " >= parseDateTime64BestEffort(?)", startDate.toString()));
+            }
+            if (endDate != null) {
+                where = where.and(DSL.condition(
+                        detectedAt + " <= parseDateTime64BestEffort(?)", endDate.toString()));
+            }
+            result.addAll(dsl.select(
+                        DSL.field("d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName()),
+                        DSL.field("count()", Long.class).as("cnt")
+                    )
+                    .from(d)
+                    .leftJoin(si).on(DSL.condition(
+                            "d." + DEVIATIONS.STEP_INSTANCE_ID.getName() + " = si.id"))
+                    .where(where)
+                    .groupBy(DSL.field("d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName()))
+                    .fetch()
+                    .map(r -> new Object[]{r.get(0, UUID.class), r.get(1, Long.class)}));
         }
-        if (endDate != null) {
-            where = where.and(DSL.condition(
-                    detectedAt + " <= parseDateTime64BestEffort(?)", endDate.toString()));
-        }
-        return dsl.select(
-                    DSL.field("d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName()),
-                    DSL.field("count()", Long.class).as("cnt")
-                )
-                .from(d)
-                .leftJoin(si).on(DSL.condition(
-                        "d." + DEVIATIONS.STEP_INSTANCE_ID.getName() + " = si.id"))
-                .where(where)
-                .groupBy(DSL.field("d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName()))
-                .fetch()
-                .map(r -> new Object[]{r.get(0, UUID.class), r.get(1, Long.class)});
+        return result;
     }
 
     @Override
@@ -146,23 +156,27 @@ public class DeviationRepositoryImpl
         var d  = finalAs(DEVIATIONS, "d");
         var si = finalAs(STEP_INSTANCES, "si");   // for occurredAt() clinical date
         String occurred = occurredAt();           // clinical occurrence date, not system detection time
-        org.jooq.Condition where = DSL.field("d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName()).in(idStrings);
-        if (startDate != null) {
-            where = where.and(DSL.condition(occurred + " >= parseDateTime64BestEffort(?)", startDate.toString()));
+        List<Object[]> result = new java.util.ArrayList<>();
+        for (List<String> chunk : chunkIds(idStrings)) {
+            org.jooq.Condition where = DSL.field("d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName()).in(chunk);
+            if (startDate != null) {
+                where = where.and(DSL.condition(occurred + " >= parseDateTime64BestEffort(?)", startDate.toString()));
+            }
+            if (endDate != null) {
+                where = where.and(DSL.condition(occurred + " <= parseDateTime64BestEffort(?)", endDate.toString()));
+            }
+            result.addAll(dsl.select(
+                        DSL.field("d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName()),
+                        DSL.field("d." + DEVIATIONS.DEVIATION_TYPE.getName())
+                    )
+                    .from(d)
+                    .leftJoin(si).on(DSL.condition(
+                            "d." + DEVIATIONS.STEP_INSTANCE_ID.getName() + " = si.id"))
+                    .where(where)
+                    .fetch()
+                    .map(r -> new Object[]{r.get(0, UUID.class), r.get(1, String.class)}));
         }
-        if (endDate != null) {
-            where = where.and(DSL.condition(occurred + " <= parseDateTime64BestEffort(?)", endDate.toString()));
-        }
-        return dsl.select(
-                    DSL.field("d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName()),
-                    DSL.field("d." + DEVIATIONS.DEVIATION_TYPE.getName())
-                )
-                .from(d)
-                .leftJoin(si).on(DSL.condition(
-                        "d." + DEVIATIONS.STEP_INSTANCE_ID.getName() + " = si.id"))
-                .where(where)
-                .fetch()
-                .map(r -> new Object[]{r.get(0, UUID.class), r.get(1, String.class)});
+        return result;
     }
 
     @Override
