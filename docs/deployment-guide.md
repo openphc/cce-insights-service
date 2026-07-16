@@ -2,7 +2,12 @@
 
 ## 1. Overview
 
-The **CCE Insights Service** is a stateless, read-only Spring Boot service that queries the shared `cce_collector` PostgreSQL database and exposes 37 REST endpoints consumed by the Analytics UI dashboard. It requires no Kafka, no Flyway, and no authentication — the CCE Gateway handles OAuth enforcement.
+The **CCE Insights Service** is a stateless, read-only Spring Boot service that queries the shared `cce_analytics` **ClickHouse** database via jOOQ and exposes 48 REST endpoints consumed by the Analytics UI dashboard. It requires no Kafka, no Flyway, and no authentication — the CCE Gateway handles OAuth enforcement.
+
+> **Migrated from PostgreSQL:** earlier versions of this service read a `cce_collector`
+> PostgreSQL database directly. The service now reads `cce_analytics` on ClickHouse
+> instead (see `application.yml` / `AbstractClickHouseRepository`) — all PostgreSQL
+> references below are historical and no longer apply.
 
 ---
 
@@ -22,7 +27,7 @@ The **CCE Insights Service** is a stateless, read-only Spring Boot service that 
 | Requirement | Version | Notes |
 |-------------|---------|-------|
 | Java | 21 LTS | Only for bare-metal; Docker images include JRE |
-| PostgreSQL | 16+ | Shared `cce_collector` database — must exist and be populated by Compliance Service |
+| ClickHouse | Reachable `cce_analytics` instance | Provisioned separately (schema/MVs owned by infra/deploy-scripts, not this repo); must be network-reachable at build time only if regenerating jOOQ sources — the runtime app and the pre-built Docker image only need it reachable at **startup**, not build time |
 | Docker | 24+ | For containerized deployments |
 | Docker Compose | 2.x | For Compose-based deployments |
 
@@ -33,18 +38,19 @@ The **CCE Insights Service** is a stateless, read-only Spring Boot service that 
 | Variable | Default | Required | Description |
 |----------|---------|----------|-------------|
 | `SERVER_PORT` | `8084` | No | HTTP port |
-| `DB_HOST` | `localhost` | **Yes** | PostgreSQL host |
-| `DB_PORT` | `5432` | No | PostgreSQL port |
-| `DB_NAME` | `cce_collector` | No | Database name |
-| `DB_USERNAME` | `cce_user` | **Yes** | Database username |
-| `DB_PASSWORD` | `cce_pass` | **Yes** | Database password |
-| `DB_POOL_SIZE` | `10` | No | HikariCP max connections |
+| `DB_HOST` | `localhost` (`cce-clickhouse` under the `docker` profile) | **Yes** | ClickHouse host |
+| `DB_PORT` | `8123` | No | ClickHouse HTTP port |
+| `DB_NAME` | `cce_analytics` | No | ClickHouse database name |
+| `DB_USERNAME` | `cce_pipeline` | **Yes** | ClickHouse username |
+| `DB_PASSWORD` | `cce_analytics_dev` | **Yes** | ClickHouse password |
+| `DB_POOL_SIZE` | `10` | No | HikariCP max connections (ClickHouse JDBC pool) |
+| `CLICKHOUSE_USE_FINAL` | `false` (`true` under the `docker` profile) | No | Force `FINAL` on all `ReplacingMergeTree` queries — see architecture-overview §4.2 |
 | `CACHE_TTL_LOOKUPS` | `60` | No | Lookup cache TTL (minutes) |
 | `CACHE_TTL_ANALYTICS` | `30` | No | Analytics cache TTL (minutes) |
 | `CACHE_TTL_METRICS` | `15` | No | Metrics cache TTL (minutes) |
 | `SPRING_PROFILES_ACTIVE` | — | No | `docker` for containers, `local` for dev |
 
-> **Security:** Never commit credentials. Use environment variables, secrets managers, or Kubernetes Secrets.
+> **Security:** Never commit credentials. Use environment variables, secrets managers, or Kubernetes Secrets. `.env.example` in the repo root still shows PostgreSQL-era placeholder values — use the ClickHouse defaults above instead.
 
 ---
 
@@ -71,21 +77,17 @@ curl http://localhost:8084/actuator/health
 
 ### 5.2 Connecting to Existing Database
 
-If the Compliance Service database already exists (e.g., managed by `cce-collector-service`), override the database host:
+If the `cce_analytics` ClickHouse instance already exists (managed separately from this repo), override the database host:
 
 ```bash
 docker compose up -d insights-service \
-  -e DB_HOST=your-db-host \
-  -e DB_PORT=5432 \
-  -e DB_USERNAME=cce_user \
+  -e DB_HOST=your-clickhouse-host \
+  -e DB_PORT=8123 \
+  -e DB_USERNAME=cce_pipeline \
   -e DB_PASSWORD=your-password
 ```
 
-Or simply edit `.env` and omit the `cce-db` service:
-
-```bash
-docker compose up -d insights-service
-```
+Or simply edit `.env` and point it at the existing instance — this repo's `docker-compose.yml` does not run a ClickHouse container itself (`cce-clickhouse` is expected to already be reachable on the `deploy-scripts_cce-net` network).
 
 ---
 
@@ -104,10 +106,10 @@ docker run -d \
   --name cce-insights-service \
   -p 8084:8084 \
   -e SPRING_PROFILES_ACTIVE=docker \
-  -e DB_HOST=your-db-host \
-  -e DB_PORT=5432 \
-  -e DB_NAME=cce_collector \
-  -e DB_USERNAME=cce_user \
+  -e DB_HOST=your-clickhouse-host \
+  -e DB_PORT=8123 \
+  -e DB_NAME=cce_analytics \
+  -e DB_USERNAME=cce_pipeline \
   -e DB_PASSWORD=your-password \
   -e DB_POOL_SIZE=10 \
   cce-insights-service:1.0.0
@@ -140,9 +142,9 @@ metadata:
   namespace: cce
 data:
   SERVER_PORT: "8084"
-  DB_HOST: "cce-postgresql"
-  DB_PORT: "5432"
-  DB_NAME: "cce_collector"
+  DB_HOST: "cce-clickhouse"
+  DB_PORT: "8123"
+  DB_NAME: "cce_analytics"
   DB_POOL_SIZE: "10"
   SPRING_PROFILES_ACTIVE: "docker"
 ```
@@ -157,7 +159,7 @@ metadata:
   namespace: cce
 type: Opaque
 stringData:
-  DB_USERNAME: cce_user
+  DB_USERNAME: cce_pipeline
   DB_PASSWORD: <your-password>
 ```
 
@@ -240,15 +242,20 @@ spec:
 ### 8.1 Build
 
 ```bash
-./gradlew build -x test -x integrationTest
+./gradlew build -x test -x integrationTest -x generateJooq
 ```
+
+> `-x generateJooq` skips regenerating the jOOQ ClickHouse bindings — the generated
+> sources under `src/generated/jooq/` are committed to the repo, so a live ClickHouse
+> connection is not required to build. Only omit this flag (and ensure ClickHouse is
+> reachable) if the ClickHouse schema changed and the bindings need regenerating first.
 
 ### 8.2 Run
 
 ```bash
-export DB_HOST=your-db-host
-export DB_PORT=5432
-export DB_USERNAME=cce_user
+export DB_HOST=your-clickhouse-host
+export DB_PORT=8123
+export DB_USERNAME=cce_pipeline
 export DB_PASSWORD=your-password
 
 java -XX:MaxRAMPercentage=75.0 \
@@ -261,7 +268,7 @@ java -XX:MaxRAMPercentage=75.0 \
 ```ini
 [Unit]
 Description=CCE Insights Service
-After=network.target postgresql.service
+After=network.target
 
 [Service]
 Type=simple
@@ -317,15 +324,21 @@ The service is **fully stateless** — scale to N replicas with no coordination 
 
 ### 10.2 Database Connection Pooling
 
-Each instance uses HikariCP with `DB_POOL_SIZE` connections. Ensure:
+Each instance uses HikariCP with `DB_POOL_SIZE` connections over the ClickHouse JDBC driver. Ensure:
 
-$$\text{total instances} \times \text{DB\_POOL\_SIZE} \leq \text{PostgreSQL max\_connections (analytics budget)}$$
+$$\text{total instances} \times \text{DB\_POOL\_SIZE} \leq \text{ClickHouse max\_concurrent\_queries (analytics budget)}$$
 
-Example: 3 instances × 10 pool = 30 connections needed.
+Example: 3 instances × 10 pool = 30 concurrent queries needed.
 
-### 10.3 Read Replicas (Phase 2)
+### 10.3 ClickHouse Scaling
 
-For high-scale deployments, point the Insights Service at a PostgreSQL read replica to eliminate load on the Compliance Service's write primary.
+ClickHouse scales differently from PostgreSQL read replicas — this service issues
+read-only queries against whatever ClickHouse endpoint `DB_HOST`/`DB_PORT` resolve to
+(a single node, a `Distributed` table across a cluster, or a load balancer in front of
+replicas, depending on how the ClickHouse deployment is provisioned). Scaling the
+underlying ClickHouse cluster is out of scope for this service — coordinate with
+whoever owns the `cce_analytics` ClickHouse deployment (see the infra/deploy-scripts
+repo).
 
 ---
 
@@ -333,8 +346,9 @@ For high-scale deployments, point the Insights Service at a PostgreSQL read repl
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| `503 Service Unavailable` | Database unreachable | Check `DB_HOST`, credentials, network |
+| `503 Service Unavailable` | ClickHouse unreachable | Check `DB_HOST`/`DB_PORT` (8123), credentials, network |
 | `Connection refused` on 8084 | Service not started | Check logs: `docker logs cce-insights-service` |
-| JPA validation errors on startup | Schema mismatch | Ensure Compliance Service migrations have run |
+| `transport error: 400` on a wide date-range query | ClickHouse `max_query_size` exceeded by an unbatched `IN (...)` clause | See architecture-overview's "Chunked `IN (...)` clauses" note — file a bug if a new query path hits this; the fix is to route the id list through `AbstractClickHouseRepository.chunkIds` |
 | `OutOfMemoryError` | Insufficient heap | Increase container memory limit |
-| Slow queries | Large dataset, no indexes | Check PostgreSQL query plans; consider read replica |
+| Slow queries | Large dataset, missing `FINAL`/`_is_deleted` filter, or an unbatched `IN` clause | Check ClickHouse `system.query_log` / `EXPLAIN`; confirm `ReplacingMergeTree` queries use `FINAL` where required (architecture-overview §4.2) |
+| Build fails trying to reach `localhost:8123` | `generateJooq` running when it shouldn't | Add `-x generateJooq` — the generated sources are committed, no live ClickHouse needed to build |
