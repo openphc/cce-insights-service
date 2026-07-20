@@ -92,6 +92,40 @@ public class InboundEventRepositoryImpl
         return r != null ? r : 0L;
     }
 
+    // ── RI-36 tracked cohort ──────────────────────────────────────────────────────
+    // Distinct patients whose events are "considered by a protocol" in the range: an ACCEPTED inbound
+    // event whose event_time is in [start,end] AND whose cloudevents_id matched a protocol
+    // (compliance_event_logs.processing_status = 'MATCHED' — whether it created a new protocol_instance
+    // or advanced an existing journey's step). Scoped by event_time (NOT enrolled_at) + facility.
+    // Excludes events not considered by any protocol (Consent onboarding, zero-match). Optional
+    // facilityId ('' = all) and optional dates (null = unbounded).
+    @Override
+    public long countDistinctPatientsWithMatchedEvents(String facilityId,
+                                                       OffsetDateTime startDate, OffsetDateTime endDate) {
+        String fid = str(facilityId);
+        var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
+        Long r = dsl.select(DSL.field("uniq(iel." + INBOUND_EVENT_LOGS.SUBJECT.getName() + ")", Long.class))
+                    .from(iel)
+                    .where(matchedCohortCondition(fid, startDate, endDate))
+                    .fetchOne(0, Long.class);
+        return r != null ? r : 0L;
+    }
+
+    /** WHERE clause (alias iel) selecting the "considered-by-a-protocol" inbound-event cohort. */
+    private org.jooq.Condition matchedCohortCondition(String fid,
+                                                      OffsetDateTime startDate, OffsetDateTime endDate) {
+        return DSL.field("iel." + INBOUND_EVENT_LOGS.STATUS.getName()).eq("ACCEPTED")
+                .and(DSL.field("iel." + INBOUND_EVENT_LOGS.SUBJECT.getName()).ne(""))
+                .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?", fid, fid))
+                .and(DSL.condition("iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName()
+                        + " IN (SELECT cel.cloudevents_id FROM compliance_event_logs cel" + finalClause()
+                        + " WHERE cel.processing_status = 'MATCHED')"))
+                .and(DSL.condition("? != '1' OR iel." + INBOUND_EVENT_LOGS.EVENT_TIME.getName()
+                        + " >= parseDateTime64BestEffort(?)", startDate == null ? "0" : "1", dtStart(startDate)))
+                .and(DSL.condition("? != '1' OR iel." + INBOUND_EVENT_LOGS.EVENT_TIME.getName()
+                        + " <= parseDateTime64BestEffort(?)", endDate == null ? "0" : "1", dtEnd(endDate)));
+    }
+
     @Override
     public long countDistinctActiveFacilities(OffsetDateTime startDate, OffsetDateTime endDate) {
         var iel = finalAs(INBOUND_EVENT_LOGS, "iel");

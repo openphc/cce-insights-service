@@ -27,11 +27,14 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
         return useFinal ? " FINAL" : "";
     }
 
-    // ── active-facility summary (live from mv_event_volume_hourly) ────────────
-    // Per requirements: a facility is active if it has transmitted ANY successful
-    // HIE submission in the period (regardless of compliance match). We therefore
-    // count distinct facility_ids in inbound_event_logs (status='ACCEPTED'), not
-    // mv_daily_facility_kpis (which only contains compliance-matched events).
+    // ── active-facility summary ───────────────────────────────────────────────
+    // A facility is ACTIVE if it has ≥1 event that is TRACKED BY A PROTOCOL in the period —
+    // an ACCEPTED inbound event (event_time-keyed) whose cloudevents_id matched a protocol
+    // (compliance_event_logs.processing_status='MATCHED'). This keeps the Facility Status tile
+    // consistent with the Facility Ranking "tracked patients" (both count protocol-tracked
+    // facilities). (Earlier this counted ANY ACCEPTED submission — pure HIE connectivity — which
+    // over-reported: a facility could be "active" while contributing nothing to any tracked care
+    // journey.) The matched-events subquery mirrors ProtocolInstanceRepositoryImpl/referral MV.
 
     @Override
     public Object[] getFacilityActivitySummary() {
@@ -45,13 +48,15 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
                              .from(DSL.table(DSL.sql("facility" + finalClause())))
                              .where(DSL.field("_is_deleted").eq(0));
 
-        // MV-first: Active Facilities = distinct facilities with clinical activity today, read from
-        // the event_time-keyed event-volume MV (mv_event_volume_hourly holds only ACCEPTED events).
+        // Active Facilities = distinct facilities with ≥1 protocol-MATCHED event today (event_time).
         Long activeFacilities = dsl.select(DSL.field("uniq(facility_id)", Long.class))
-            .from(DSL.table("mv_event_volume_hourly"))
-            .where(DSL.field("facility_id").ne(""))
+            .from(DSL.table(DSL.sql("inbound_event_logs" + finalClause())))
+            .where(DSL.field("status").eq("ACCEPTED"))
+            .and(DSL.field("facility_id").ne(""))
             .and(DSL.field("facility_id").in(facilityIds))
-            .and(DSL.condition("toDate(hour) = today()"))
+            .and(DSL.condition("cloudevents_id IN (SELECT cloudevents_id FROM compliance_event_logs"
+                    + finalClause() + " WHERE processing_status = 'MATCHED')"))
+            .and(DSL.condition("toDate(event_time) = today()"))
             .fetchOne(0, Long.class);
 
         long active = totalInScope == 0 ? 0L : (activeFacilities == null ? 0L : activeFacilities);
@@ -60,8 +65,8 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
         return new Object[]{totalInScope, active, inactive, rate};
     }
 
-    // ── active-facility summary, date range (live from mv_event_volume_hourly) ─
-    // "Active" = facility with ≥1 successful HIE submission anywhere in the range.
+    // ── active-facility summary, date range ───────────────────────────────────
+    // "Active" = facility with ≥1 protocol-MATCHED event (event_time) anywhere in the range.
 
     @Override
     public Object[] getFacilityActivitySummaryByDateRange(LocalDate startDate, LocalDate endDate) {
@@ -75,14 +80,17 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
                              .from(DSL.table(DSL.sql("facility" + finalClause())))
                              .where(DSL.field("_is_deleted").eq(0));
 
-        // MV-first: Active = distinct facilities with clinical activity in the range, from the
-        // event_time-keyed event-volume MV (see getFacilityActivitySummary()).
+        // Active = distinct facilities with ≥1 protocol-MATCHED event (event_time) in the range
+        // (see getFacilityActivitySummary()).
         Long activeFacilities = dsl.select(DSL.field("uniq(facility_id)", Long.class))
-            .from(DSL.table("mv_event_volume_hourly"))
-            .where(DSL.field("facility_id").ne(""))
+            .from(DSL.table(DSL.sql("inbound_event_logs" + finalClause())))
+            .where(DSL.field("status").eq("ACCEPTED"))
+            .and(DSL.field("facility_id").ne(""))
             .and(DSL.field("facility_id").in(facilityIds))
-            .and(DSL.condition("toDate(hour) >= ?", startDate))
-            .and(DSL.condition("toDate(hour) <= ?", endDate))
+            .and(DSL.condition("cloudevents_id IN (SELECT cloudevents_id FROM compliance_event_logs"
+                    + finalClause() + " WHERE processing_status = 'MATCHED')"))
+            .and(DSL.condition("toDate(event_time) >= ?", startDate))
+            .and(DSL.condition("toDate(event_time) <= ?", endDate))
             .fetchOne(0, Long.class);
 
         long active = totalInScope == 0 ? 0L : (activeFacilities == null ? 0L : activeFacilities);
@@ -96,14 +104,17 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
 
     @Override
     public List<Object[]> getFacilityActivityDetail(LocalDate startDate, LocalDate endDate) {
-        // ACTIVE = facility with ≥1 ACCEPTED event WITHIN [startDate, endDate] — the summary card's
-        // definition (mv_event_volume_hourly, event_time-keyed). This determines active/inactive.
+        // ACTIVE = facility with ≥1 protocol-MATCHED event WITHIN [startDate, endDate] — the summary
+        // card's definition (event_time-keyed). This determines active/inactive.
         java.util.Set<String> activeInPeriod = new java.util.HashSet<>();
         dsl.select(DSL.field("facility_id", String.class))
-           .from(DSL.table("mv_event_volume_hourly"))
-           .where(DSL.field("facility_id").ne(""))
-           .and(DSL.condition("toDate(hour) >= ?", startDate))
-           .and(DSL.condition("toDate(hour) <= ?", endDate))
+           .from(DSL.table(DSL.sql("inbound_event_logs" + finalClause())))
+           .where(DSL.field("status").eq("ACCEPTED"))
+           .and(DSL.field("facility_id").ne(""))
+           .and(DSL.condition("cloudevents_id IN (SELECT cloudevents_id FROM compliance_event_logs"
+                   + finalClause() + " WHERE processing_status = 'MATCHED')"))
+           .and(DSL.condition("toDate(event_time) >= ?", startDate))
+           .and(DSL.condition("toDate(event_time) <= ?", endDate))
            .groupBy(DSL.field("facility_id"))
            .fetch()
            .forEach(r -> activeInPeriod.add(r.get(0, String.class)));

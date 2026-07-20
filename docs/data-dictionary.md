@@ -526,26 +526,80 @@ percentage = category_count / total_patients_at_facility * 100
 
 > **Note:** Facility is derived by joining `protocol_instance` → `event_log.facility_id`.
 
+> **RI-36 — Dashboard "Service Compliance" tracked cohort (event activity, not `enrolled_at`):**
+> The Dashboard patient tile (`GET /dashboard/compliance-summary`, computed live in
+> `DashboardService.getComplianceSummary`) no longer scopes `tracked_patients` by
+> `enrolled_at`. **Tracked** = distinct `inbound_event_logs.subject` for `ACCEPTED` events
+> with `event_time` in the period whose `cloudevents_id` matched a protocol
+> (`compliance_event_logs.processing_status = 'MATCHED'`) — i.e. events *considered by a
+> protocol*, whether they created a new enrollment or advanced an existing journey. This
+> counts a patient enrolled in a prior period who is active again in the window (the old
+> `enrolled_at` cohort dropped them) and excludes Consent-only / unmatched events.
+> **Non-compliant** = of that cohort, patients with ≥1 deviation whose **clinical occurrence
+> date** (§3.1 occurrence clock, not `detected_at`) is in range. Compliant = tracked −
+> non-compliant; rate = compliant ÷ tracked. Per-protocol `mv_daily_compliance_kpis`
+> (enrollment-based) is unchanged.
+>
+> The **Facility Ranking** compliance breakdown (`ProtocolInstanceRepository.countPatient-
+> ComplianceByFacility`, backing `GET /facilities/rankings`) uses the **same** matched-event
+> cohort so card and breakdown reconcile by definition. Patients are attributed to their
+> current facility via `mv_patient_facility_latest`; a tracked patient with no resolved
+> facility there appears in the country card but not in any facility row, so the breakdown's
+> tracked total can be lower than the card's country total (facility-attribution gap, not
+> double-counting).
+>
+> The `GET /protocols[/{id}]/compliance-summary` endpoints take a `dateFilterMode`:
+> **`enrollment`** (default, cohort = `enrolled_at` in range) and **`eventTime`** — user-facing
+> label **"Clinical Event Date"** (RI-36). In `eventTime` mode the all-protocols patient block
+> reuses the exact card queries (reconciles with the card); the per-protocol path uses
+> `findByProtocolDefinitionIdWithActivityBetween`, now keyed on clinical **`event_time`** of a
+> protocol-MATCHED event (was step `updated_at`, a system write time). Because
+> `compliance_event_logs` has no protocol column (only `cloudevents_id` / `processing_status` /
+> `correlation_id`, and `correlation_id` matches neither `protocol_instances.id` nor
+> `step_instances.id`), per-protocol `eventTime` is "enrolled in protocol X **AND** has a matched
+> event in range", not "events matched to protocol X".
+>
+> **Naming (important):** `eventTime` / "Clinical Event Date" is the CLINICAL event clock
+> (`inbound_event_logs.event_time`). It is **distinct** from the system `updated_at` "activity"
+> that the Patient detail page's activity log shows (when CCE processed a record) — the value was
+> renamed from `activity`→`eventTime` and the label to "Clinical Event Date" specifically to avoid
+> that confusion. The **Compliance Overview** page has no toggle (always `eventTime`); the
+> **Patients** page has the Enrollment / Clinical Event Date radio (default Clinical Event Date)
+> and shares this same query.
+
 ### 3.13a Facility Activity Formulas
 
-Per the e-Buzima requirements: a facility is active if it has transmitted **any successful
-HIE submission** in the reporting period — regardless of whether the events matched a
-protocol step. Counts come live from `mv_event_volume_hourly` (event_time-keyed,
-ACCEPTED-only), not the compliance MV.
+A facility is **active** if it has ≥1 event that is **tracked by a protocol** in the period —
+an `ACCEPTED` inbound event (event_time-keyed) whose `cloudevents_id` matched a protocol
+(`compliance_event_logs.processing_status='MATCHED'`). This keeps the Facility Status tile
+consistent with the Facility Ranking "tracked patients" (both count protocol-tracked facilities).
+
+> **Changed:** this previously counted **any** ACCEPTED HIE submission (pure connectivity, from
+> `mv_event_volume_hourly`). That over-reported — a facility transmitting only unmatched events
+> showed as "active" while contributing nothing to any tracked care journey, so the top tile
+> (e.g. 7 active) disagreed with the ranking (e.g. 3 with tracked patients). Active is now
+> protocol-tracked, so the two reconcile.
 
 ```
 total_in_scope       = COUNT(*) FROM facility FINAL WHERE _is_deleted = 0
 
-active_facilities    = uniq(facility_id) FROM mv_event_volume_hourly
-                       WHERE facility_id != ''
+active_facilities    = uniq(facility_id) FROM inbound_event_logs
+                       WHERE status = 'ACCEPTED' AND facility_id != ''
                          AND facility_id IN (facility reference)
-                         AND toDate(hour) BETWEEN startDate AND endDate
-                       (toDate(hour) = today() when no range)
+                         AND cloudevents_id IN
+                             (SELECT cloudevents_id FROM compliance_event_logs
+                              WHERE processing_status = 'MATCHED')
+                         AND toDate(event_time) BETWEEN startDate AND endDate
+                       (toDate(event_time) = today() when no range)
 
 inactive_facilities  = total_in_scope − active_facilities
 
 active_facility_rate = active_facilities / total_in_scope × 100
 ```
+
+> Note: `inactive` now means "no protocol-tracked events" — a facility may still be transmitting
+> raw HIE events that simply aren't matched to any protocol. Raw transmission volume is still
+> visible via the Events (period) column and the Events / Ingestion pages.
 
 > The denominator (`total_in_scope`) comes from `facility`, not from observed event data.
 > This ensures facilities that transmitted no events in the period are counted as inactive

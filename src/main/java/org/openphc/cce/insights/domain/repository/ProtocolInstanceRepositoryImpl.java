@@ -319,6 +319,21 @@ public class ProtocolInstanceRepositoryImpl
         String deviationCountExpr = "uniqIf(d." + DEVIATIONS.ID.getName()
                 + ", d.id != " + zeroUuid + devDateClause + ")";
 
+        // RI-36 — tracked cohort is "patients whose events are considered by a protocol in the range"
+        // (matched-event activity by event_time), NOT enrolled_at. Mirrors the Dashboard card
+        // (InboundEventRepository.countDistinctPatientsWithMatchedEvents) so the drill-down reconciles
+        // with it. Facility attribution stays via mv_patient_facility_latest (patient's current
+        // facility), unchanged — only cohort MEMBERSHIP swaps from enrolled-in-range to active-in-range.
+        String matchedCohortClause =
+                "pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName() + " IN ("
+                + " SELECT iel.subject FROM inbound_event_logs iel" + finalClause()
+                + " WHERE iel.status = 'ACCEPTED' AND iel.subject != ''"
+                + " AND iel.cloudevents_id IN (SELECT cel.cloudevents_id FROM compliance_event_logs cel"
+                + finalClause() + " WHERE cel.processing_status = 'MATCHED')"
+                + (startDate != null ? " AND iel.event_time >= parseDateTime64BestEffort('" + startDate + "')" : "")
+                + (endDate   != null ? " AND iel.event_time <= parseDateTime64BestEffort('" + endDate   + "')" : "")
+                + ")";
+
         return dsl.select(
                     DSL.field("pf.facility_id", String.class),
                     DSL.field("uniq(pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName() + ")", Long.class),
@@ -333,7 +348,7 @@ public class ProtocolInstanceRepositoryImpl
                           "d." + DEVIATIONS.STEP_INSTANCE_ID.getName() + " = si.id"))
                   .where(notDeleted())
                   .and(DSL.field("pf.facility_id").ne(""))
-                  .and(enrollmentBetween(startDate, endDate))
+                  .and(DSL.condition(matchedCohortClause))
                   .groupBy(DSL.field("pf.facility_id"))
                   .orderBy(DSL.field("pf.facility_id"))
                   .fetch()
@@ -399,6 +414,15 @@ public class ProtocolInstanceRepositoryImpl
     public List<ProtocolInstance> findByProtocolDefinitionIdWithActivityBetween(UUID protocolDefinitionId,
                                                                                  OffsetDateTime startDate,
                                                                                  OffsetDateTime endDate) {
+        // RI-36 "Activity" mode — instances of this protocol whose patient is ACTIVE in the range:
+        // has an ACCEPTED inbound event with clinical event_time in range that was considered by a
+        // protocol (compliance_event_logs.processing_status='MATCHED'). This replaces the old
+        // step_instances.updated_at basis (a system/CDC write time bumped by reprocessing/backfills,
+        // not clinical activity). event_time makes Activity mode reconcile with the Dashboard
+        // "Service Compliance" card, the Facility Ranking drill-down, and the Deviations page — all
+        // clinical-time. Since instances are already scoped to this protocol, this is effectively
+        // "enrolled in protocol X AND active in range" (compliance_event_logs carries no protocol
+        // link, so per-protocol matched-event attribution is not available).
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
         return dsl.select(DSL.asterisk())
                   .from(pi)
@@ -407,10 +431,13 @@ public class ProtocolInstanceRepositoryImpl
                           "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
                           protocolDefinitionId.toString()))
                   .and(DSL.condition(
-                          "pi.id IN (SELECT protocol_instance_id FROM step_instances" + finalClause()
-                          + " WHERE _is_deleted = 0"
-                          + " AND updated_at >= parseDateTime64BestEffort(?)"
-                          + " AND updated_at <= parseDateTime64BestEffort(?))",
+                          "pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName() + " IN ("
+                          + " SELECT iel.subject FROM inbound_event_logs iel" + finalClause()
+                          + " WHERE iel.status = 'ACCEPTED' AND iel.subject != ''"
+                          + " AND iel.cloudevents_id IN (SELECT cel.cloudevents_id FROM compliance_event_logs cel"
+                          + finalClause() + " WHERE cel.processing_status = 'MATCHED')"
+                          + " AND iel.event_time >= parseDateTime64BestEffort(?)"
+                          + " AND iel.event_time <= parseDateTime64BestEffort(?))",
                           dtStart(startDate), dtEnd(endDate)))
                   .orderBy(DSL.field("pi." + PROTOCOL_INSTANCES.ENROLLED_AT.getName()).desc())
                   .fetch()

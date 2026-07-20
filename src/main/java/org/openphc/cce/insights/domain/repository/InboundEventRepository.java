@@ -15,6 +15,16 @@ public interface InboundEventRepository extends ReadOnlyRepository<InboundEvent,
 
     long countDistinctActiveFacilities(OffsetDateTime startDate, OffsetDateTime endDate);
 
+    /**
+     * RI-36 tracked cohort — distinct patients whose events are "considered by a protocol" in the
+     * range: ACCEPTED inbound events with {@code event_time} in [start,end] whose {@code cloudevents_id}
+     * matched a protocol (compliance_event_logs {@code processing_status='MATCHED'}), whether they
+     * created a new enrollment or advanced an existing journey. Scoped by {@code event_time} (not
+     * enrolled_at) and facility ({@code null}/'' = all). Optional dates (null = unbounded).
+     */
+    long countDistinctPatientsWithMatchedEvents(String facilityId,
+                                                OffsetDateTime startDate, OffsetDateTime endDate);
+
     long countEventsBySource(String source, String facilityId,
                              OffsetDateTime startDate, OffsetDateTime endDate);
 

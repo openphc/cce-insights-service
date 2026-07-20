@@ -66,6 +66,15 @@ public interface DeviationRepository extends ReadOnlyRepository<Deviation, UUID>
     long countDistinctPatientsWithDeviationsBetween(String facilityId,
                                                     OffsetDateTime startDate, OffsetDateTime endDate);
 
+    /**
+     * RI-36 non-compliant — of the tracked matched-event cohort (patients with a protocol-MATCHED
+     * event in range; see {@link InboundEventRepository#countDistinctPatientsWithMatchedEvents}),
+     * how many have a deviation whose clinical OCCURRENCE date is in [start,end] (not detected_at,
+     * no enrolled_at). Facility ({@code null}/'' = all); optional dates.
+     */
+    long countDistinctNonCompliantAmongMatched(String facilityId,
+                                               OffsetDateTime startDate, OffsetDateTime endDate);
+
     // Batch load full Deviation objects for a set of protocol instances
     List<Deviation> findByProtocolInstanceIdIn(List<UUID> ids);
 
