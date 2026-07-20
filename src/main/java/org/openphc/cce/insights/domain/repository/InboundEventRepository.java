@@ -88,4 +88,13 @@ public interface InboundEventRepository extends ReadOnlyRepository<InboundEvent,
      */
     List<Object[]> countReferralsReceivedByHIEGroupedByFacility(OffsetDateTime startDate,
                                                                 OffsetDateTime endDate);
+
+    /**
+     * Referrals received by HIE, grouped by PATIENT (RI-44 patient drill-down). Same referral-event
+     * definition as {@link #countReferralsReceivedByHIE} / mv_daily_referral_kpis (prod
+     * TRANSFER_ENCOUNTER Encounter ∪ dev/demo referral-step), scoped by clinical event_time.
+     * One row per distinct patient (inbound_event_logs.subject).
+     * Rows: {@code [patientId(String), facilityId(String), lastReferral(String), referralCount(Long), matchedCount(Long)]}.
+     */
+    List<Object[]> referralsReceivedByHIEByPatient(OffsetDateTime startDate, OffsetDateTime endDate);
 }

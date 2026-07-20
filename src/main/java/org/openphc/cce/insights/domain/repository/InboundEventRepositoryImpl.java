@@ -610,4 +610,46 @@ public class InboundEventRepositoryImpl
                   .fetch()
                   .map(r -> new Object[]{r.get(0, String.class), r.get(1, Long.class), r.get(2, Long.class)});
     }
+
+    @Override
+    public List<Object[]> referralsReceivedByHIEByPatient(OffsetDateTime startDate, OffsetDateTime endDate) {
+        // "Compliant" (matched to a Referral step) — reused for the WHERE branch (B) and the per-patient
+        // matched count. Same subquery the pipeline's mv_daily_referral_kpis uses (schema/07).
+        String matchedReferral =
+                "iel.cloudevents_id IN ("
+                + " SELECT cel.cloudevents_id FROM compliance_event_logs cel" + finalClause()
+                + " JOIN step_instances si" + finalClause() + " ON si.completed_by_event_id = cel.id"
+                + " WHERE match(si.action_id, '^(.+-referral|referral)$'))";
+        // (A) prod TRANSFER_ENCOUNTER Encounter (ingestion-based, match-independent).
+        String transferEncounter =
+                "(iel.resource_type = 'Encounter' AND arrayExists("
+                + " t -> arrayExists("
+                + "        c -> JSONExtractString(c, 'display') = 'TRANSFER_ENCOUNTER',"
+                + "        JSONExtractArrayRaw(t, 'coding')),"
+                + " JSONExtractArrayRaw(JSONExtractRaw(iel.raw_payload, 'data'), 'type')))";
+
+        return dsl.select(
+                    DSL.field("iel.subject", String.class),
+                    DSL.field("any(iel.facility_id)", String.class),
+                    DSL.field("toString(max(iel.event_time))", String.class),
+                    DSL.field("count()", Long.class),
+                    DSL.field("countIf(" + matchedReferral + ")", Long.class))
+                  .from(DSL.table(DSL.sql("inbound_event_logs iel" + finalClause())))
+                  .where(DSL.condition("iel.status = 'ACCEPTED'"))
+                  .and(DSL.condition("iel.subject != ''"))
+                  .and(DSL.condition("iel.event_time IS NOT NULL"))
+                  .and(DSL.condition("(" + transferEncounter + " OR " + matchedReferral + ")"))
+                  .and(DSL.condition("iel.event_time >= parseDateTime64BestEffort(?)", dtStart(startDate)))
+                  .and(DSL.condition("iel.event_time <= parseDateTime64BestEffort(?)", dtEnd(endDate)))
+                  .groupBy(DSL.field("iel.subject"))
+                  .orderBy(DSL.field("max(iel.event_time)").desc())
+                  .fetch()
+                  .map(r -> new Object[]{
+                          r.get(0, String.class),
+                          r.get(1, String.class),
+                          r.get(2, String.class),
+                          r.get(3, Long.class),
+                          r.get(4, Long.class)
+                  });
+    }
 }
