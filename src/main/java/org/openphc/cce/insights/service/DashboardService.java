@@ -4,7 +4,6 @@ import lombok.RequiredArgsConstructor;
 import org.openphc.cce.insights.domain.repository.DailyKpiRepository;
 import org.openphc.cce.insights.domain.repository.DeviationRepository;
 import org.openphc.cce.insights.domain.repository.InboundEventRepository;
-import org.openphc.cce.insights.domain.repository.ProtocolInstanceRepository;
 import org.openphc.cce.insights.web.dto.DashboardComplianceSummaryDto;
 import org.openphc.cce.insights.web.dto.DashboardOverviewDto;
 import org.openphc.cce.insights.web.dto.FacilityRankingDto;
@@ -25,7 +24,6 @@ import java.util.Map;
 public class DashboardService {
 
     private final InboundEventRepository inboundEventRepository;
-    private final ProtocolInstanceRepository protocolInstanceRepository;
     private final DeviationRepository deviationRepository;
     private final DailyKpiRepository dailyKpiRepository;
     private final FacilityRankingService facilityRankingService;
@@ -101,24 +99,16 @@ public class DashboardService {
         boolean hasRange = startDate != null || endDate != null;
         boolean hasFacility = facilityId != null && !facilityId.isEmpty();
 
-        long totalPatients;
-        long patientsWithDeviations;
-        if (hasFacility) {
-            // Facility-scoped cohort: enrolled patients at the selected facility
-            // (always range-aware so the tile respects the date filter).
-            OffsetDateTime cohortStart = hasRange ? startDate : null;
-            OffsetDateTime cohortEnd   = hasRange ? endDate   : null;
-            long[] counts = protocolInstanceRepository.countPatientCohortForFacility(
-                    facilityId, cohortStart, cohortEnd);
-            totalPatients = counts[0];
-            patientsWithDeviations = counts[1];
-        } else if (hasRange) {
-            totalPatients = protocolInstanceRepository.countDistinctPatientsEnrolledBetween(startDate, endDate);
-            patientsWithDeviations = deviationRepository.countDistinctPatientsWithDeviationsBetween(startDate, endDate);
-        } else {
-            totalPatients = protocolInstanceRepository.findDistinctPatientIds().size();
-            patientsWithDeviations = deviationRepository.countDistinctPatientsWithDeviations();
-        }
+        // RI-36: tracked = distinct patients whose events are considered by a protocol in the range
+        // (an ACCEPTED, protocol-MATCHED event with event_time in [start,end]) — scoped by EVENT
+        // activity, not enrolled_at, so an already-enrolled patient who is active in the window is
+        // counted. Non-compliant = of those, patients with a deviation OCCURRING in the range.
+        // Compliant = tracked − non-compliant (a tracked patient with no in-range deviation, enrolled
+        // or not, is compliant, per the RI-36 decision).
+        long totalPatients = inboundEventRepository.countDistinctPatientsWithMatchedEvents(
+                facilityId, startDate, endDate);
+        long patientsWithDeviations = deviationRepository.countDistinctNonCompliantAmongMatched(
+                facilityId, startDate, endDate);
 
         long compliantPatients = Math.max(0, totalPatients - patientsWithDeviations);
         double patientComplianceRate = totalPatients > 0

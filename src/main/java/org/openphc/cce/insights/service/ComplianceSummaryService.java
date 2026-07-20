@@ -31,16 +31,28 @@ public class ComplianceSummaryService {
     private final DeviationRepository deviationRepository;
     private final ComplianceEventLogRepository complianceEventLogRepository;
     private final DailyKpiRepository dailyKpiRepository;
+    private final InboundEventRepository inboundEventRepository;
 
     @Cacheable(value = "analytics",
-            key = "'compliance-all-' + (#facilityId ?: 'all') + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all')")
+            key = "'compliance-all-' + (#facilityId ?: 'all') + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all') + '-' + #dateFilterMode")
     public ComplianceSummaryDto getAllProtocolsComplianceSummary(String facilityId,
                                                                  OffsetDateTime startDate,
-                                                                 OffsetDateTime endDate) {
+                                                                 OffsetDateTime endDate,
+                                                                 String dateFilterMode) {
         boolean hasFacility = facilityId != null && !facilityId.isEmpty();
         LocalDate snapshotDate = endDate != null ? endDate.toLocalDate()
                 : startDate != null ? startDate.toLocalDate()
                 : null;
+
+        // RI-36 "eventTime" (Clinical Event Date) mode — the patient block (tracked/compliant/rate) is
+        // the matched-event cohort by clinical event_time, identical to the Dashboard "Service
+        // Compliance" card, so the two reconcile exactly. NB: this is the CLINICAL event clock, NOT
+        // the system updated_at "activity" shown by the patient details log. Step metrics + deviation
+        // breakdown keep their existing sources (protocol-step snapshot + occurrence-date deviations),
+        // which are cohort-independent.
+        if ("eventTime".equalsIgnoreCase(dateFilterMode)) {
+            return buildAllProtocolsEventTimeSummary(facilityId, startDate, endDate, snapshotDate, hasFacility);
+        }
         long enrolledInPeriod = (startDate != null || endDate != null)
                 ? (hasFacility
                         ? protocolInstanceRepository.countDistinctPatientsForFacility(facilityId, startDate, endDate)
@@ -78,11 +90,7 @@ public class ComplianceSummaryService {
                     .complianceRate(effectiveEnrollments > 0
                             ? Math.round((double) effectiveCompliant / effectiveEnrollments * 1000.0) / 10.0
                             : 0.0)
-                    .stepMetrics(ComplianceSummaryDto.StepMetrics.builder()
-                            .totalSteps(toLong(kpis[8])).completed(toLong(kpis[0]))
-                            .onTime(toLong(kpis[6])).late(toLong(kpis[7])).early(toLong(kpis[5]))
-                            .overdue(toLong(kpis[1])).missed(toLong(kpis[2])).due(toLong(kpis[3])).pending(toLong(kpis[4]))
-                            .build())
+                    .stepMetrics(stepMetricsFrom(kpis))
                     // Deviations from mv_daily_deviation_kpis (clinical OCCURRENCE date, in-window) —
                     // same source/clock as the Deviations page, so the two reconcile. (The compliance
                     // state snapshot's kpis[11..14] counted deviations cumulatively as-of the snapshot
@@ -127,11 +135,7 @@ public class ComplianceSummaryService {
                 .totalEnrollments(totalEnrollments)
                 .compliantPatients(compliantPatients)
                 .complianceRate(Math.round(complianceRate * 1000.0) / 10.0)
-                .stepMetrics(ComplianceSummaryDto.StepMetrics.builder()
-                        .totalSteps(toLong(sm[8])).completed(toLong(sm[0]))
-                        .onTime(toLong(sm[6])).late(toLong(sm[7])).early(toLong(sm[5]))
-                        .overdue(toLong(sm[1])).missed(toLong(sm[2])).due(toLong(sm[3])).pending(toLong(sm[4]))
-                        .build())
+                .stepMetrics(stepMetricsFrom(sm))
                 // Deviations from mv_daily_deviation_kpis (clinical occurrence date, in-window) —
                 // reconciles with the Deviations page; dm[1..4] (all-time base aggregate) no longer used.
                 .deviationCount(dev.total())
@@ -139,6 +143,59 @@ public class ComplianceSummaryService {
                         "overdue",        dev.overdue(),
                         "missed",         dev.missed(),
                         "orderViolation", dev.orderViolation()))
+                .build();
+    }
+
+    /**
+     * RI-36 all-protocols "eventTime" (Clinical Event Date) summary — patient block from the
+     * matched-event cohort (by clinical event_time), the SAME queries as
+     * {@link DashboardService#getComplianceSummary}, so this reconciles with the Dashboard card.
+     * (Clinical event clock, NOT the system updated_at "activity" detail log.) Step metrics keep their
+     * existing snapshot source (MV for all-facilities, base aggregate for a single facility) and the
+     * deviation breakdown uses occurrence-date counts — both cohort-independent, shared with the
+     * enrollment path.
+     */
+    private ComplianceSummaryDto buildAllProtocolsEventTimeSummary(String facilityId,
+                                                                   OffsetDateTime startDate,
+                                                                   OffsetDateTime endDate,
+                                                                   LocalDate snapshotDate,
+                                                                   boolean hasFacility) {
+        long tracked = inboundEventRepository.countDistinctPatientsWithMatchedEvents(
+                facilityId, startDate, endDate);
+        if (tracked == 0) {
+            return ComplianceSummaryDto.builder()
+                    .totalEnrollments(0).compliantPatients(0).complianceRate(0.0)
+                    .stepMetrics(ComplianceSummaryDto.StepMetrics.builder().build())
+                    .deviationCount(0).deviationBreakdown(Map.of())
+                    .build();
+        }
+        long nonCompliant = deviationRepository.countDistinctNonCompliantAmongMatched(
+                facilityId, startDate, endDate);
+        long compliant = Math.max(0, tracked - nonCompliant);
+        Object[] stepArr = hasFacility
+                ? stepInstanceRepository.aggregateStepMetricsByFacility(facilityId)
+                : dailyKpiRepository.getComplianceKpisAll(snapshotDate);
+        DeviationCounts dev = occurrenceDeviations(facilityId, startDate, endDate);
+        return ComplianceSummaryDto.builder()
+                .totalEnrollments(tracked)
+                .compliantPatients(compliant)
+                .complianceRate(Math.round((double) compliant / tracked * 1000.0) / 10.0)
+                .stepMetrics(stepMetricsFrom(stepArr))
+                .deviationCount(dev.total())
+                .deviationBreakdown(Map.of(
+                        "overdue",        dev.overdue(),
+                        "missed",         dev.missed(),
+                        "orderViolation", dev.orderViolation()))
+                .build();
+    }
+
+    /** Maps a step-metric aggregate row (from mv_daily_compliance_kpis or aggregateStepMetricsByFacility,
+     *  same column order) into a StepMetrics DTO. */
+    private ComplianceSummaryDto.StepMetrics stepMetricsFrom(Object[] a) {
+        return ComplianceSummaryDto.StepMetrics.builder()
+                .totalSteps(toLong(a[8])).completed(toLong(a[0]))
+                .onTime(toLong(a[6])).late(toLong(a[7])).early(toLong(a[5]))
+                .overdue(toLong(a[1])).missed(toLong(a[2])).due(toLong(a[3])).pending(toLong(a[4]))
                 .build();
     }
 
@@ -168,24 +225,28 @@ public class ComplianceSummaryService {
     }
 
     @Cacheable(value = "analytics",
-            key = "'compliance-' + #protocolDefinitionId + '-' + (#facilityId ?: 'all') + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all')")
+            key = "'compliance-' + #protocolDefinitionId + '-' + (#facilityId ?: 'all') + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all') + '-' + #dateFilterMode")
     public ComplianceSummaryDto getProtocolComplianceSummary(UUID protocolDefinitionId, String facilityId,
                                                               OffsetDateTime startDate,
-                                                              OffsetDateTime endDate) {
+                                                              OffsetDateTime endDate,
+                                                              String dateFilterMode) {
         ProtocolDefinition pd = protocolDefinitionRepository.findById(protocolDefinitionId)
                 .orElseThrow(() -> new EntityNotFoundException(
                         "Protocol definition not found: " + protocolDefinitionId));
 
         boolean hasFacility = facilityId != null && !facilityId.isEmpty();
 
-        // WINDOWED semantics for every card: patients ENROLLED within [startDate, endDate] (across
-        // all facilities, or the selected facility via mv_patient_facility_latest), plus their step
-        // state and the deviations detected within the range. Every card is derived from ONE scoped
-        // instance set, so the patient counts, transactions, and deviation cards are mutually
-        // consistent and all honour the date range. (The previous code mixed an MV daily-snapshot for
-        // All-Facilities steps with un-scoped all-time facility aggregates, which never agreed.)
+        // WINDOWED semantics for every card, on the cohort selected by dateFilterMode:
+        // "enrollment" = patients ENROLLED within [startDate, endDate]; "eventTime" / Clinical Event
+        // Date (RI-36) = patients with a protocol-MATCHED inbound event by clinical event_time in range
+        // (reconciles with the Dashboard card; NOT the system updated_at "activity" detail log).
+        // Optionally narrowed to the selected facility via
+        // mv_patient_facility_latest. Every card (patient counts, transactions, deviations) is derived
+        // from ONE scoped instance set, so they stay mutually consistent and all honour the range.
+        // (The previous code mixed an MV daily-snapshot for All-Facilities steps with un-scoped
+        // all-time facility aggregates, which never agreed.)
         List<ProtocolInstance> scoped = latestInstancePerPatient(
-                loadInstancesForPatientFilter(protocolDefinitionId, null, startDate, endDate, "enrollment"));
+                loadInstancesForPatientFilter(protocolDefinitionId, null, startDate, endDate, dateFilterMode));
         if (hasFacility) {
             Set<String> patientsAtFacility = new HashSet<>(
                     protocolInstanceRepository.findPatientIdsAtFacility(facilityId));
@@ -311,11 +372,13 @@ public class ComplianceSummaryService {
                                                                   OffsetDateTime endDate,
                                                                   String dateFilterMode) {
         boolean hasDateRange = startDate != null || endDate != null;
-        boolean activityMode = "activity".equalsIgnoreCase(dateFilterMode);
+        // "eventTime" (Clinical Event Date) = scope by clinical event_time of a protocol-matched event;
+        // NOT the system updated_at "activity" detail log.
+        boolean eventTimeMode = "eventTime".equalsIgnoreCase(dateFilterMode);
         List<ProtocolInstance> instances;
         if (!hasDateRange) {
             instances = protocolInstanceRepository.findByProtocolDefinitionId(protocolDefinitionId);
-        } else if (activityMode) {
+        } else if (eventTimeMode) {
             instances = protocolInstanceRepository.findByProtocolDefinitionIdWithActivityBetween(
                     protocolDefinitionId, startDate, endDate);
         } else {

@@ -4,7 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.openphc.cce.insights.domain.repository.DailyKpiRepository;
 import org.openphc.cce.insights.domain.repository.DeviationRepository;
 import org.openphc.cce.insights.domain.repository.InboundEventRepository;
-import org.openphc.cce.insights.domain.repository.ProtocolInstanceRepository;
+import org.openphc.cce.insights.web.dto.DashboardComplianceSummaryDto;
 import org.openphc.cce.insights.web.dto.ReferralsKpiDto;
 import org.openphc.cce.insights.web.dto.ReferralsKpiDto.FacilityReferralCountDto;
 
@@ -15,6 +15,7 @@ import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -30,13 +31,14 @@ class DashboardServiceTest {
 
     private final InboundEventRepository inbound = mock(InboundEventRepository.class);
     private final DailyKpiRepository dailyKpi = mock(DailyKpiRepository.class);
+    private final DeviationRepository deviation = mock(DeviationRepository.class);
+    private final PractitionerRankingService practitioners = mock(PractitionerRankingService.class);
     private final DashboardService service = new DashboardService(
             inbound,
-            mock(ProtocolInstanceRepository.class),
-            mock(DeviationRepository.class),
+            deviation,
             dailyKpi,
             mock(FacilityRankingService.class),
-            mock(PractitionerRankingService.class),
+            practitioners,
             mock(DeviationAnalyticsService.class));
 
     /** grouped referral row: [facility_id, received, matched]. */
@@ -115,6 +117,50 @@ class DashboardServiceTest {
         assertThat(dto.getReferralComplianceRate()).isEqualTo(0.0);   // no divide-by-zero
         assertThat(dto.getByFacility()).hasSize(1);
         assertThat(dto.getByFacility().get(0).getComplianceRate()).isEqualTo(0.0);
+    }
+
+    /** activity tile row: [totalInScope, activeFacilities, inactiveFacilities, activeFacilityRate]. */
+    private static Object[] activity(long total, long active, long inactive, double rate) {
+        return new Object[]{total, active, inactive, rate};
+    }
+
+    /**
+     * RI-36 — the patient block is the matched-event cohort (tracked), the deviation-occurrence
+     * intersection (non-compliant), compliant = tracked − non-compliant, rate = compliant ÷ tracked.
+     * No enrolled_at anywhere. Practitioner rankings are empty here to isolate the patient math.
+     */
+    @Test
+    void getComplianceSummary_patientsAreMatchedEventCohortMinusDeviators() {
+        when(inbound.countDistinctPatientsWithMatchedEvents(any(), any(), any())).thenReturn(16L);
+        when(deviation.countDistinctNonCompliantAmongMatched(any(), any(), any())).thenReturn(4L);
+        when(dailyKpi.getFacilityActivitySummary()).thenReturn(activity(20L, 3L, 17L, 15.0));
+        when(practitioners.getRankings(any(), any(), anyInt(), any(), any(), any(), any()))
+                .thenReturn(List.of());
+
+        DashboardComplianceSummaryDto.PatientComplianceDto p =
+                service.getComplianceSummary(null, null, null).getPatients();
+
+        assertThat(p.getTrackedPatients()).isEqualTo(16);
+        assertThat(p.getNonCompliantPatients()).isEqualTo(4);
+        assertThat(p.getCompliantPatients()).isEqualTo(12);        // 16 - 4
+        assertThat(p.getComplianceRate()).isEqualTo(75.0);         // 12 / 16
+    }
+
+    /** Non-compliant can never exceed tracked → compliant floors at 0, rate at 0 (no negative split). */
+    @Test
+    void getComplianceSummary_neverGoesNegativeWhenDeviatorsExceedTracked() {
+        when(inbound.countDistinctPatientsWithMatchedEvents(any(), any(), any())).thenReturn(0L);
+        when(deviation.countDistinctNonCompliantAmongMatched(any(), any(), any())).thenReturn(3L);
+        when(dailyKpi.getFacilityActivitySummary()).thenReturn(activity(20L, 0L, 20L, 0.0));
+        when(practitioners.getRankings(any(), any(), anyInt(), any(), any(), any(), any()))
+                .thenReturn(List.of());
+
+        DashboardComplianceSummaryDto.PatientComplianceDto p =
+                service.getComplianceSummary(null, null, null).getPatients();
+
+        assertThat(p.getTrackedPatients()).isZero();
+        assertThat(p.getCompliantPatients()).isZero();            // max(0, 0 - 3)
+        assertThat(p.getComplianceRate()).isEqualTo(0.0);         // no divide-by-zero
     }
 
     @Test
