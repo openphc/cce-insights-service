@@ -631,6 +631,54 @@ public class DeviationRepositoryImpl
         return r != null ? r : 0L;
     }
 
+    // ── RI-36 non-compliant among the matched-event cohort ────────────────────────
+    // Of the RI-36 tracked cohort (patients with a protocol-MATCHED event in range — see
+    // InboundEventRepository.countDistinctPatientsWithMatchedEvents), how many have a deviation whose
+    // clinical OCCURRENCE date is in [start,end] (NOT detected_at — matches the Deviations page).
+    // The cohort is a ClickHouse IN-subquery (not a bound-param list → no max_query_size risk).
+    @Override
+    public long countDistinctNonCompliantAmongMatched(String facilityId,
+                                                       OffsetDateTime startDate, OffsetDateTime endDate) {
+        String fid = str(facilityId);
+        var d  = finalAs(DEVIATIONS, "d");
+        var si = finalAs(STEP_INSTANCES, "si");   // for occurredAt() clinical date
+        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        String occurred = occurredAt();
+
+        String cohortIn =
+                "pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName() + " IN ("
+                + " SELECT iel.subject FROM inbound_event_logs iel" + finalClause()
+                + " WHERE iel.status = 'ACCEPTED' AND iel.subject != ''"
+                + " AND (? = '' OR iel.facility_id = ?)"
+                + " AND iel.cloudevents_id IN (SELECT cel.cloudevents_id FROM compliance_event_logs cel"
+                + finalClause() + " WHERE cel.processing_status = 'MATCHED')"
+                + " AND (? != '1' OR iel.event_time >= parseDateTime64BestEffort(?))"
+                + " AND (? != '1' OR iel.event_time <= parseDateTime64BestEffort(?)))";
+
+        org.jooq.Condition where = DSL.condition(cohortIn,
+                fid, fid,
+                startDate == null ? "0" : "1", dtStart(startDate),
+                endDate   == null ? "0" : "1", dtEnd(endDate));
+        // Deviation OCCURRENCE (clinical) in range — NOT detected_at, NO enrolled_at.
+        if (startDate != null) {
+            where = where.and(DSL.condition(occurred + " >= parseDateTime64BestEffort(?)", startDate.toString()));
+        }
+        if (endDate != null) {
+            where = where.and(DSL.condition(occurred + " <= parseDateTime64BestEffort(?)", endDate.toString()));
+        }
+
+        Long r = dsl.select(
+                        DSL.field("uniq(pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName() + ")", Long.class))
+                    .from(d)
+                    .leftJoin(si).on(DSL.condition(
+                            "d." + DEVIATIONS.STEP_INSTANCE_ID.getName() + " = si.id"))
+                    .join(pi).on(DSL.condition(
+                            "d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                    .where(where)
+                    .fetchOne(0, Long.class);
+        return r != null ? r : 0L;
+    }
+
     @Override
     public Object[] aggregateDeviationMetrics(UUID protocolDefinitionId) {
         var d  = finalAs(DEVIATIONS, "d");

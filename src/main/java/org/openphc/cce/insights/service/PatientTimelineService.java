@@ -285,8 +285,8 @@ public class PatientTimelineService {
             if (el != null) {
                 String effectiveDt = el.getData() != null ? extractEffectiveDateTime(el.getData()) : null;
                 String practitioner = el.getData() != null ? extractPractitioner(el.getData()) : null;
-                String facilityId = el.getFacilityId();
-                String facilityName = el.getData() != null ? extractFacilityName(el.getData()) : null;
+                String facilityId = resolveFacilityId(el);
+                String facilityName = el.getData() != null ? extractFacilityName(el.getData(), facilityId) : null;
                 if (effectiveDt != null || practitioner != null || facilityId != null || facilityName != null) {
                     result.put(entry.getKey(), new EventContext(effectiveDt, practitioner, facilityId, facilityName));
                 }
@@ -296,6 +296,36 @@ public class PatientTimelineService {
     }
 
     private record EventContext(String effectiveDateTime, String practitioner, String facilityId, String facilityName) {}
+
+    /**
+     * Resolves the facility id for an event: the ClickHouse-joined {@code facility_id} column when
+     * present, otherwise derived directly from the FHIR body the same way FacilityService does
+     * upstream (hospitalization.origin, then the source-facility extension).
+     *
+     * {@code findByComplianceEventIds} — the query backing this method — reads {@code
+     * compliance_event_logs} without joining {@code inbound_event_logs}, and {@code
+     * compliance_event_logs} carries no facility_id column of its own, so {@code
+     * el.getFacilityId()} is currently always blank for this call path; the FHIR-derived fallback
+     * below is therefore the only source of a facility id here, not a backup for a rare gap.
+     */
+    private String resolveFacilityId(ComplianceEventLog el) {
+        String stored = el.getFacilityId();
+        if (stored != null && !stored.isBlank()) return stored;
+        if (el.getData() == null) return null;
+        try {
+            JsonNode root = objectMapper.readTree(el.getData());
+            JsonNode hospitalization = root.get("hospitalization");
+            JsonNode origin = hospitalization != null ? hospitalization.get("origin") : null;
+            if (origin != null) {
+                String id = extractBareId(origin);
+                if (id != null) return id;
+            }
+            return extractSourceFacilityExtension(root);
+        } catch (Exception e) {
+            log.debug("Failed to extract facilityId: {}", e.getMessage());
+            return null;
+        }
+    }
 
     /**
      * Extract practitioner display name from FHIR JSON data.
@@ -361,9 +391,22 @@ public class PatientTimelineService {
 
     /**
      * Extract facility/location name from FHIR JSON data.
-     * Supports: ServiceRequest.locationReference[], Encounter.location[].location
+     * Supports: ServiceRequest.locationReference[], Encounter.hospitalization.origin (transfers),
+     * Encounter.location[].location (fallback, guarded against {@code knownFacilityId}).
+     *
+     * For a transfer Encounter, location[].location reflects where the patient ended up
+     * (the destination), not where the encounter/referral originated — hospitalization.origin
+     * is the correct source facility. When origin is absent, {@code knownFacilityId} (resolved by
+     * {@link #resolveFacilityId}, itself falling back to the source-facility extension) is used to
+     * confirm location[]'s id actually matches the source facility before trusting its display name
+     * — otherwise it may be the transfer destination. Mirrors the openhim-cce-emitter-adaptor fix
+     * (PR #30).
+     *
+     * @param knownFacilityId the facility id already resolved for this event (see {@link
+     *                        #resolveFacilityId}), or null if unresolved — passed in rather than
+     *                        re-derived here to avoid parsing the source-facility extension twice
      */
-    private String extractFacilityName(String jsonData) {
+    private String extractFacilityName(String jsonData, String knownFacilityId) {
         try {
             JsonNode root = objectMapper.readTree(jsonData);
             // ServiceRequest: locationReference[].display
@@ -378,18 +421,64 @@ public class PatientTimelineService {
                     }
                 }
             }
-            // Encounter: location[].location.display
+            // Encounter (transfer): hospitalization.origin.display takes priority
+            JsonNode hospitalization = root.get("hospitalization");
+            JsonNode origin = hospitalization != null ? hospitalization.get("origin") : null;
+            if (origin != null) {
+                String name = extractDisplayOrReference(origin);
+                if (name != null) return name;
+            }
+            // Encounter: location[].location.display — only trusted when there's no known
+            // facility id, or when it agrees with location[]'s own id.
             JsonNode locations = root.get("location");
             if (locations != null && locations.isArray()) {
                 for (JsonNode loc : locations) {
                     JsonNode location = loc.get("location");
                     if (location != null && location.has("display")) {
-                        return location.get("display").asText();
+                        if (knownFacilityId == null || knownFacilityId.equals(extractBareId(location))) {
+                            return location.get("display").asText();
+                        }
                     }
                 }
             }
         } catch (Exception e) {
             log.debug("Failed to extract facility name: {}", e.getMessage());
+        }
+        return null;
+    }
+
+    /**
+     * Extracts the facility ID from the source system's {@code source-facility} extension
+     * (matched by URL suffix so it survives base-URL changes), e.g.:
+     * {@code {"url": ".../source-facility", "valueString": "1651"}} → {@code "1651"}.
+     */
+    private String extractSourceFacilityExtension(JsonNode root) {
+        JsonNode extensions = root.get("extension");
+        if (extensions == null || !extensions.isArray()) return null;
+        for (JsonNode extension : extensions) {
+            JsonNode urlNode = extension.get("url");
+            String url = urlNode != null ? urlNode.asText() : null;
+            if (url != null && url.endsWith("source-facility") && extension.has("valueString")) {
+                String value = extension.get("valueString").asText();
+                if (!value.isBlank()) return value;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Extracts the bare id (stripping any {@code ResourceType/} prefix) from a Reference node's
+     * {@code reference} or {@code identifier.value}, for comparison against the source-facility
+     * extension's value.
+     */
+    private String extractBareId(JsonNode refNode) {
+        if (refNode.has("reference")) {
+            String reference = refNode.get("reference").asText();
+            return reference.contains("/") ? reference.substring(reference.lastIndexOf('/') + 1) : reference;
+        }
+        JsonNode identifier = refNode.get("identifier");
+        if (identifier != null && identifier.has("value")) {
+            return identifier.get("value").asText();
         }
         return null;
     }

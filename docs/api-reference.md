@@ -30,8 +30,9 @@ Aggregate compliance metrics for a specific protocol across all enrolled patient
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `facilityId` | String | — | Filter by facility FOSA ID |
-| `startDate` | ISO 8601 | — | Start of date range — when set, `totalEnrollments` counts distinct patients **enrolled in the period** (matches Dashboard cohort semantics) |
+| `startDate` | ISO 8601 | — | Start of date range — the cohort scope depends on `dateFilterMode` |
 | `endDate` | ISO 8601 | — | End of date range — also used as the snapshot date for step metrics |
+| `dateFilterMode` | String | `enrollment` | `enrollment` — cohort = patients **enrolled in** [startDate, endDate]; `eventTime` (RI-36, "Clinical Event Date") — cohort = patients of this protocol with a protocol-**MATCHED** inbound event (`compliance_event_logs.processing_status='MATCHED'`) at clinical **`event_time`** in range. Every card (patients, transactions, deviations) derives from the selected cohort. This is the clinical event clock, **not** the system `updated_at` "activity" detail log. Note: `compliance_event_logs` carries no protocol link, so per-protocol `eventTime` = "enrolled in this protocol AND has a matched event in range". |
 
 **Response: `200 OK`**
 
@@ -138,7 +139,7 @@ deduplicated to **one row per patient** (most recent enrollment in the filtered 
 | `patientId` | String | — | Substring search on patient ID |
 | `startDate` | ISO 8601 | — | When set, narrows cohort based on `dateFilterMode` |
 | `endDate` | ISO 8601 | — | End of date range |
-| `dateFilterMode` | String | `enrollment` | `enrollment` — cohort = patients enrolled in [startDate, endDate]; `activity` — cohort = patients with step activity (`step_instances.updated_at`) in [startDate, endDate] regardless of enrollment date |
+| `dateFilterMode` | String | `enrollment` | `enrollment` — cohort = patients enrolled in [startDate, endDate]; `eventTime` (RI-36, "Clinical Event Date") — cohort = patients with a protocol-**MATCHED** inbound event (`compliance_event_logs.processing_status='MATCHED'`) at clinical **`event_time`** in range, regardless of enrollment date. Clinical event clock — **not** the system `updated_at` "activity" detail log. (Was previously step `updated_at`; now clinical event time, consistent with the Dashboard card / Deviations page.) |
 | `limit` | Integer | `15` | Page size (max 200) |
 | `cursor` | String | — | Pagination cursor |
 
@@ -1193,6 +1194,19 @@ Facility leaderboard ranked by compliance rate, deviation count, or event volume
 > Active Facilities tile and the Events → By Facility table. Earlier versions read
 > `event_count` from the compliance MV which under-counted facilities with accepted but
 > unmatched events.
+>
+> **RI-36 — compliance cohort (per row):** `compliantPatients` / `nonCompliantPatients` /
+> `complianceRate` are computed live from the patient cohort that is **active in the period**
+> — patients whose events are *considered by a protocol* (ACCEPTED inbound events with
+> `event_time` in range whose `cloudevents_id` matched a protocol,
+> `compliance_event_logs.processing_status='MATCHED'`), **not** `enrolled_at`. This is the
+> same cohort as the Dashboard "Service Compliance" card, so the breakdown reconciles with it
+> by definition. `nonCompliantPatients` uses the deviation's **clinical occurrence date** (not
+> `detected_at`). Patients are attributed to their **current** facility via
+> `mv_patient_facility_latest`; a tracked patient with no resolved facility there is counted in
+> the country card but cannot appear in any facility row, so the breakdown's tracked total can
+> be lower than the card's country total (a facility-attribution gap, not double-counting).
+> `totalEnrollments` remains the all-time enrolled count and is unaffected.
 
 **Response: `200 OK`**
 
@@ -1246,7 +1260,11 @@ Facility leaderboard ranked by compliance rate, deviation count, or event volume
 
 ### 9.2 GET `/v1/insights/facilities/activity-summary`
 
-Active/inactive facility summary tile, derived live from `mv_event_volume_hourly`.
+Active/inactive facility summary tile. **Active = facility with ≥1 protocol-tracked event**
+(an `ACCEPTED` inbound event whose `cloudevents_id` matched a protocol,
+`compliance_event_logs.processing_status='MATCHED'`), by clinical `event_time` — so the tile
+reconciles with the Facility Ranking "tracked patients". (Was previously "any ACCEPTED HIE
+submission" from `mv_event_volume_hourly`; see data dictionary §3.13a.)
 
 **Required Scope:** `dashboard:read`
 
@@ -1254,11 +1272,12 @@ Active/inactive facility summary tile, derived live from `mv_event_volume_hourly
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `facilityId` | String | — | Single-facility tile: reports 1 in-scope facility, active/inactive per whether it transmitted in the period |
-| `startDate` | ISO 8601 | — | Start of date range — counts facilities with ≥1 successful HIE submission in the period |
+| `facilityId` | String | — | Single-facility tile: reports 1 in-scope facility, active/inactive per whether it had a protocol-tracked event in the period |
+| `startDate` | ISO 8601 | — | Start of date range — counts facilities with ≥1 protocol-MATCHED event (event_time) in the period |
 | `endDate` | ISO 8601 | — | End of date range |
 
 > Without any filters, falls back to today's active-facility count.
+> "Inactive" = no protocol-tracked events (a facility may still be transmitting unmatched HIE events).
 
 **Response: `200 OK`**
 
@@ -1999,8 +2018,8 @@ Dashboard. All sections respect the global `facilityId` / `startDate` / `endDate
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `facilityId` | String | — | Narrow patients/practitioner counts to a single facility (when set, activity tile reflects whether that facility transmitted). |
-| `startDate` | ISO 8601 | — | Start of date range (cohort = enrolled in period) |
+| `facilityId` | String | — | Narrow patients/practitioner counts to a single facility (matched on the inbound event's payload `facility_id`; activity tile reflects whether that facility transmitted). |
+| `startDate` | ISO 8601 | — | Start of date range — the tracked cohort is scoped by inbound event `event_time` (RI-36), **not** `enrolled_at` |
 | `endDate` | ISO 8601 | — | End of date range |
 
 **Response: `200 OK`**
@@ -2030,10 +2049,21 @@ Dashboard. All sections respect the global `facilityId` / `startDate` / `endDate
 }
 ```
 
-> **Definitions:**
-> - `trackedPatients` = distinct patients **enrolled in the selected period** (or
->   all-time when no range is provided). When a facility is selected, the cohort is
->   constrained via `mv_patient_facility_latest`.
+> **Definitions (patient block — RI-36, scoped by event activity, not `enrolled_at`):**
+> - `trackedPatients` = distinct patients whose events are **considered by a protocol**
+>   in the period: `ACCEPTED` inbound events with `event_time` in range whose
+>   `cloudevents_id` matched a protocol (`compliance_event_logs.processing_status = 'MATCHED'`),
+>   whether the event created a new enrollment or advanced an existing care journey. A
+>   patient enrolled in a *prior* period who generates a matched event in this range is now
+>   counted (the old `enrolled_at` cohort missed them). Consent-only / unmatched events are
+>   excluded. All-time when no range is given; facility scope matches the event payload
+>   `facility_id`.
+> - `nonCompliantPatients` = of that tracked cohort, those with ≥1 deviation whose **clinical
+>   occurrence date** (overdue/missed/order-violation date, coalescing to due date then
+>   `detected_at`) falls in the period — the same occurrence clock as the Deviations page,
+>   **not** `detected_at`.
+> - `compliantPatients` = `trackedPatients − nonCompliantPatients` (floored at 0).
+> - `complianceRate` = `compliantPatients ÷ trackedPatients` (0 when none tracked).
 > - `activeFacilities` = facilities with ≥1 successful HIE submission
 >   (`inbound_event_logs.status = 'ACCEPTED'`) in the period — see
 >   §3.13a in the data dictionary.
@@ -2102,8 +2132,9 @@ one `protocolDefinitionId`.
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `facilityId` | String | — | Filter by facility |
-| `startDate` | ISO 8601 (`OffsetDateTime`) | — | Start of date range — when set, `totalEnrollments` counts distinct patients **enrolled in the period** |
+| `startDate` | ISO 8601 (`OffsetDateTime`) | — | Start of date range — cohort scope depends on `dateFilterMode` |
 | `endDate` | ISO 8601 (`OffsetDateTime`) | — | End of date range |
+| `dateFilterMode` | String | `enrollment` | `enrollment` — `totalEnrollments` counts distinct patients **enrolled in the period**; `eventTime` (RI-36, "Clinical Event Date") — the patient block (tracked/compliant/rate) is the **matched-event cohort** by clinical `event_time`, computed with the SAME queries as the Dashboard "Service Compliance" card (`GET /dashboard/compliance-summary`), so the two reconcile exactly. Step metrics + deviation breakdown keep their snapshot/occurrence-date sources (cohort-independent). |
 
 **Response: `200 OK`**
 

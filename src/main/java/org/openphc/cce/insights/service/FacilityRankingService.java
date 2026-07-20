@@ -40,17 +40,19 @@ public class FacilityRankingService {
         LocalDate end   = endDate   != null ? endDate   : today;
         LocalDate start = startDate != null ? startDate : end;
 
-        // Every ranking column is derived from ONE date-scoped, enrolled-in-range cohort per facility:
-        // tracked patients, non-compliant patients, AND deviations all come from countPatientCompliance-
-        // ByFacility (row = [facilityId, tracked, nonCompliant, deviations]). Sharing one cohort keeps the
-        // row consistent — deviations track the filter and can never disagree with the compliance rate.
+        // Every ranking column is derived from ONE date-scoped cohort per facility: tracked patients,
+        // non-compliant patients, AND deviations all come from countPatientComplianceByFacility
+        // (row = [facilityId, tracked, nonCompliant, deviations]). RI-36: the cohort is patients
+        // ACTIVE in the range (events considered by a protocol, by event_time) — NOT enrolled_at — so
+        // this breakdown reconciles with the Dashboard "Service Compliance" card. Sharing one cohort
+        // keeps the row consistent: deviations track the filter and can never disagree with the rate.
         // (Compliance is computed live from the cohort here, not from a daily snapshot MV.)
         Map<String, long[]> patientsByFacility = new LinkedHashMap<>();
         boolean hasDateRange = startDate != null || endDate != null;
-        OffsetDateTime enrollStart = hasDateRange ? toRangeStart(startDate, end) : null;
-        OffsetDateTime enrollEnd   = hasDateRange ? toRangeEnd(endDate, start) : null;
+        OffsetDateTime rangeStart = hasDateRange ? toRangeStart(startDate, end) : null;
+        OffsetDateTime rangeEnd   = hasDateRange ? toRangeEnd(endDate, start) : null;
         for (Object[] row : protocolInstanceRepository.countPatientComplianceByFacility(
-                enrollStart, enrollEnd)) {
+                rangeStart, rangeEnd)) {
             patientsByFacility.put((String) row[0], new long[]{
                     ((Number) row[1]).longValue(),
                     ((Number) row[2]).longValue(),
@@ -61,7 +63,7 @@ public class FacilityRankingService {
         // Events (period) per facility — one grouped read of the event_time event-volume MV
         // (replaces N per-facility countAccepted calls). Same clock/scope as the Active tile.
         Map<String, Long> eventsByFacility = new LinkedHashMap<>();
-        for (Object[] r : inboundEventRepository.eventCountByFacilityFromMv(enrollStart, enrollEnd)) {
+        for (Object[] r : inboundEventRepository.eventCountByFacilityFromMv(rangeStart, rangeEnd)) {
             eventsByFacility.put((String) r[0], ((Number) r[1]).longValue());
         }
 

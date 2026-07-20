@@ -25,7 +25,12 @@ public interface ProtocolInstanceRepository extends ReadOnlyRepository<ProtocolI
                                                                         OffsetDateTime startDate,
                                                                         OffsetDateTime endDate);
 
-    /** Protocol instances that had step activity (step updated_at) in the given window. */
+    /** RI-36 "Activity" mode — protocol instances whose patient was ACTIVE in the window: has an
+     *  ACCEPTED inbound event with clinical {@code event_time} in range that a protocol matched
+     *  (compliance_event_logs {@code processing_status='MATCHED'}). Clinical-time, not the old
+     *  step {@code updated_at} (system write time). Effectively "enrolled in this protocol AND
+     *  active in range" — see {@code ProtocolInstanceRepositoryImpl} for why per-protocol
+     *  matched-event attribution isn't available. */
     List<ProtocolInstance> findByProtocolDefinitionIdWithActivityBetween(UUID protocolDefinitionId,
                                                                           OffsetDateTime startDate,
                                                                           OffsetDateTime endDate);
@@ -53,11 +58,16 @@ public interface ProtocolInstanceRepository extends ReadOnlyRepository<ProtocolI
                                                                              Pageable pageable);
 
     /**
-     * Distinct enrolled patients per facility via mv_patient_facility_latest.
-     * Returns rows of [facility_id(String), tracked_patients(long), non_compliant_patients(long),
-     * deviations(long)]. When dates are provided, tracked = enrolled in range; non-compliant =
-     * enrolled-in-range patients with a deviation detected in range; deviations = deviations detected
-     * in range for that same cohort. All three share one cohort so a leaderboard row is consistent.
+     * Distinct tracked patients per facility via mv_patient_facility_latest (patient's current
+     * facility). Returns rows of [facility_id(String), tracked_patients(long),
+     * non_compliant_patients(long), deviations(long)]. RI-36: {@code tracked} = patients whose
+     * events are "considered by a protocol" in the range (ACCEPTED inbound events with
+     * {@code event_time} in range whose {@code cloudevents_id} matched a protocol —
+     * {@code compliance_event_logs.processing_status='MATCHED'}), NOT enrolled_at — so this drill-down
+     * reconciles with the Dashboard "Service Compliance" card. {@code non_compliant} = those of the
+     * cohort with a deviation whose clinical OCCURRENCE date (not detected_at) is in range;
+     * {@code deviations} = deviation rows in range for the same cohort. All three share one cohort so
+     * a leaderboard row stays internally consistent.
      */
     List<Object[]> countPatientComplianceByFacility(OffsetDateTime startDate, OffsetDateTime endDate);
 

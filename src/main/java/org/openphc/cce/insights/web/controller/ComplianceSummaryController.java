@@ -25,9 +25,10 @@ public class ComplianceSummaryController {
     public ResponseEntity<ApiResponse<ComplianceSummaryDto>> getAllProtocolsComplianceSummary(
             @RequestParam(required = false) String facilityId,
             @RequestParam(required = false) OffsetDateTime startDate,
-            @RequestParam(required = false) OffsetDateTime endDate) {
+            @RequestParam(required = false) OffsetDateTime endDate,
+            @RequestParam(defaultValue = "enrollment") String dateFilterMode) {
         ComplianceSummaryDto summary = complianceSummaryService.getAllProtocolsComplianceSummary(
-                facilityId, startDate, endDate);
+                facilityId, startDate, endDate, dateFilterMode);
         return ResponseEntity.ok(ApiResponse.ok(summary));
     }
 
@@ -36,9 +37,10 @@ public class ComplianceSummaryController {
             @PathVariable UUID protocolDefinitionId,
             @RequestParam(required = false) String facilityId,
             @RequestParam(required = false) OffsetDateTime startDate,
-            @RequestParam(required = false) OffsetDateTime endDate) {
+            @RequestParam(required = false) OffsetDateTime endDate,
+            @RequestParam(defaultValue = "enrollment") String dateFilterMode) {
         ComplianceSummaryDto summary = complianceSummaryService.getProtocolComplianceSummary(
-                protocolDefinitionId, facilityId, startDate, endDate);
+                protocolDefinitionId, facilityId, startDate, endDate, dateFilterMode);
         return ResponseEntity.ok(ApiResponse.ok(summary));
     }
 
