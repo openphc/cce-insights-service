@@ -54,5 +54,9 @@ public interface StepInstanceRepository extends ReadOnlyRepository<StepInstance,
 
     Object[] aggregateStepMetricsByFacility(String facilityId);
 
+    /** Same step-state aggregate as {@link #aggregateStepMetricsByFacility}, but over every facility
+     *  in the given district (all-protocols Transactions when a district is selected). */
+    Object[] aggregateStepMetricsByDistrict(String district);
+
     Object[] aggregateStepMetricsByProtocolAndFacility(UUID protocolDefinitionId, String facilityId);
 }

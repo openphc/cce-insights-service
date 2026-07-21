@@ -184,9 +184,15 @@ public class ComplianceSummaryService {
         long nonCompliant = deviationRepository.countDistinctNonCompliantAmongMatched(
                 facilityId, district, startDate, endDate);
         long compliant = Math.max(0, tracked - nonCompliant);
+        // Step metrics from ONE live source across all three scopes so they reconcile: single facility
+        // → per-facility aggregate; a district → per-district aggregate; otherwise all facilities. (The
+        // old all-facilities daily-snapshot MV has no facility dimension — it couldn't be district-
+        // filtered and its per-day snapshot didn't reconcile with the live per-facility numbers.)
         Object[] stepArr = hasFacility
                 ? stepInstanceRepository.aggregateStepMetricsByFacility(facilityId)
-                : dailyKpiRepository.getComplianceKpisAll(snapshotDate);
+                : (district != null && !district.isBlank())
+                        ? stepInstanceRepository.aggregateStepMetricsByDistrict(district)
+                        : stepInstanceRepository.aggregateStepMetricsAll();
         DeviationCounts dev = occurrenceDeviations(facilityId, district, startDate, endDate);
         return ComplianceSummaryDto.builder()
                 .totalEnrollments(tracked)

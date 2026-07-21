@@ -646,6 +646,37 @@ public class StepInstanceRepositoryImpl
     }
 
     @Override
+    public Object[] aggregateStepMetricsByDistrict(String district) {
+        var si = finalAs(STEP_INSTANCES, "si");
+        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        var pf = MV_PATIENT_FACILITY_LATEST.as("pf");
+        String state = "si." + STEP_INSTANCES.STATE.getName();
+        String cs    = "si." + STEP_INSTANCES.COMPLETION_STATUS.getName();
+
+        org.jooq.Record r = dsl.select(
+                    DSL.field("countIf(" + state + " IN ('COMPLETED','SKIPPED'))", Long.class).as("completed"),
+                    DSL.field("countIf(" + state + " = 'OVERDUE')",                Long.class).as("overdue"),
+                    DSL.field("countIf(" + state + " = 'MISSED')",                 Long.class).as("missed"),
+                    DSL.field("countIf(" + state + " = 'DUE')",                    Long.class).as("due"),
+                    DSL.field("countIf(" + state + " = 'PENDING')",                Long.class).as("pending"),
+                    DSL.field("countIf(" + cs    + " = 'EARLY')",                  Long.class).as("early"),
+                    DSL.field("countIf(" + cs    + " = 'ON_TIME')",                Long.class).as("on_time"),
+                    DSL.field("countIf(" + cs    + " = 'LATE')",                   Long.class).as("late"),
+                    DSL.field("countIf(" + state + " != '')",                      Long.class).as("total_steps"),
+                    DSL.field("uniq(pi.id)",                                        Long.class).as("total_enrollments")
+                )
+                .from(pi)
+                .join(pf).on(DSL.condition(
+                        "pf.patient_id = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
+                .leftJoin(si).on(DSL.condition(
+                        "si." + STEP_INSTANCES.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                .where(DSL.condition("pf.facility_id IN (SELECT facility_id FROM facility" + finalClause()
+                        + " WHERE _is_deleted = 0 AND lower(district_name) = lower(?))", district))
+                .fetchOne();
+        return r != null ? r.intoArray() : new Object[]{0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L};
+    }
+
+    @Override
     public Object[] aggregateStepMetricsByProtocolAndFacility(UUID protocolDefinitionId, String facilityId) {
         var si = finalAs(STEP_INSTANCES, "si");
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
