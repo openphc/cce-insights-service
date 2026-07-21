@@ -55,7 +55,7 @@ public class DashboardController {
             @RequestParam(required = false) OffsetDateTime endDate) {
         ReferralsKpiDto kpi = dashboardService.getReferralsKpi(facilityId, startDate, endDate);
         List<String> districtIds = facilityDirectory.facilityIdsInDistrict(district);
-        if (districtIds != null && kpi.getByFacility() != null) {
+        if (district != null && !district.isBlank() && districtIds != null && kpi.getByFacility() != null) {
             Set<String> scope = new HashSet<>(districtIds);
             List<ReferralsKpiDto.FacilityReferralCountDto> rows = kpi.getByFacility().stream()
                     .filter(r -> scope.contains(r.getFacilityId())).toList();

@@ -37,7 +37,7 @@ public class FacilityRankingController {
         List<FacilityRankingDto> rankings = facilityRankingService.getRankings(
                 protocolDefinitionId, facilityId, startDate, endDate, rankBy, order, limit);
         List<String> districtIds = facilityDirectory.facilityIdsInDistrict(district);
-        if (districtIds != null) {
+        if (district != null && !district.isBlank() && districtIds != null) {
             Set<String> scope = new HashSet<>(districtIds);
             rankings = rankings.stream().filter(r -> scope.contains(r.getFacilityId())).toList();
         }

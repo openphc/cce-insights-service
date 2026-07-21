@@ -50,6 +50,8 @@ class PatientControllerIT extends AbstractIntegrationTest {
     @MockitoBean
     private PatientReferralService patientReferralService;
     @MockitoBean
+    private org.openphc.cce.insights.service.FacilityDirectory facilityDirectory;
+    @MockitoBean
     private ProtocolInstanceRepository protocolInstanceRepository;
     @MockitoBean
     private StepInstanceRepository stepInstanceRepository;

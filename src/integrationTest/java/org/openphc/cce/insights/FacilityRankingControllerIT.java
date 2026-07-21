@@ -29,6 +29,9 @@ class FacilityRankingControllerIT extends AbstractIntegrationTest {
     @MockitoBean
     private FacilityRankingService facilityRankingService;
 
+    @MockitoBean
+    private org.openphc.cce.insights.service.FacilityDirectory facilityDirectory;
+
     @Test
     void getFacilityRanking_returnsRankedList() throws Exception {
         when(facilityRankingService.getRankings(
@@ -41,5 +44,37 @@ class FacilityRankingControllerIT extends AbstractIntegrationTest {
         mockMvc.perform(get("/v1/insights/facilities/ranking"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").isArray());
+    }
+
+    /** District filter keeps only rows whose facility is in the selected district. */
+    @Test
+    void getFacilityRanking_districtScopedFiltersOutOtherFacilities() throws Exception {
+        when(facilityRankingService.getRankings(
+                any(), nullable(String.class), nullable(LocalDate.class), nullable(LocalDate.class),
+                eq("complianceRate"), eq("desc"), eq(50)))
+                .thenReturn(List.of(
+                        FacilityRankingDto.builder().rank(1).facilityId("F-A").complianceRate(90.0).build(),
+                        FacilityRankingDto.builder().rank(2).facilityId("F-B").complianceRate(80.0).build()));
+        when(facilityDirectory.facilityIdsInDistrict("Gasabo")).thenReturn(List.of("F-A"));
+
+        mockMvc.perform(get("/v1/insights/facilities/ranking?district=Gasabo"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].facilityId").value("F-A"));
+    }
+
+    /** No district param = no scoping, even though the resolver mock would default to an empty list. */
+    @Test
+    void getFacilityRanking_noDistrictReturnsAllRows() throws Exception {
+        when(facilityRankingService.getRankings(
+                any(), nullable(String.class), nullable(LocalDate.class), nullable(LocalDate.class),
+                eq("complianceRate"), eq("desc"), eq(50)))
+                .thenReturn(List.of(
+                        FacilityRankingDto.builder().rank(1).facilityId("F-A").complianceRate(90.0).build(),
+                        FacilityRankingDto.builder().rank(2).facilityId("F-B").complianceRate(80.0).build()));
+
+        mockMvc.perform(get("/v1/insights/facilities/ranking"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(2));
     }
 }

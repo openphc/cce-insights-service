@@ -131,8 +131,8 @@ class DashboardServiceTest {
      */
     @Test
     void getComplianceSummary_patientsAreMatchedEventCohortMinusDeviators() {
-        when(inbound.countDistinctPatientsWithMatchedEvents(any(), any(), any())).thenReturn(16L);
-        when(deviation.countDistinctNonCompliantAmongMatched(any(), any(), any())).thenReturn(4L);
+        when(inbound.countDistinctPatientsWithMatchedEvents(any(), any(), any(), any())).thenReturn(16L);
+        when(deviation.countDistinctNonCompliantAmongMatched(any(), any(), any(), any())).thenReturn(4L);
         when(dailyKpi.getFacilityActivitySummary()).thenReturn(activity(20L, 3L, 17L, 15.0));
         when(practitioners.getRankings(any(), any(), anyInt(), any(), any(), any(), any()))
                 .thenReturn(List.of());
@@ -149,8 +149,8 @@ class DashboardServiceTest {
     /** Non-compliant can never exceed tracked → compliant floors at 0, rate at 0 (no negative split). */
     @Test
     void getComplianceSummary_neverGoesNegativeWhenDeviatorsExceedTracked() {
-        when(inbound.countDistinctPatientsWithMatchedEvents(any(), any(), any())).thenReturn(0L);
-        when(deviation.countDistinctNonCompliantAmongMatched(any(), any(), any())).thenReturn(3L);
+        when(inbound.countDistinctPatientsWithMatchedEvents(any(), any(), any(), any())).thenReturn(0L);
+        when(deviation.countDistinctNonCompliantAmongMatched(any(), any(), any(), any())).thenReturn(3L);
         when(dailyKpi.getFacilityActivitySummary()).thenReturn(activity(20L, 0L, 20L, 0.0));
         when(practitioners.getRankings(any(), any(), anyInt(), any(), any(), any(), any()))
                 .thenReturn(List.of());

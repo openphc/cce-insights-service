@@ -55,7 +55,7 @@ public class AdoptionController {
         }
         // District filter: keep only facilities in the selected district.
         List<String> districtIds = facilityDirectory.facilityIdsInDistrict(district);
-        if (districtIds != null) {
+        if (district != null && !district.isBlank() && districtIds != null) {
             Set<String> scope = new HashSet<>(districtIds);
             result = result.stream().filter(r -> scope.contains(r.getFacilityId())).toList();
         }

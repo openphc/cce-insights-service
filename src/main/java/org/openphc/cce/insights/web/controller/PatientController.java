@@ -59,7 +59,7 @@ public class PatientController {
         List<PatientReferralDto> referrals =
                 patientReferralService.getReferralsReceivedByHie(startDate, endDate);
         List<String> districtIds = facilityDirectory.facilityIdsInDistrict(district);
-        if (districtIds != null) {
+        if (district != null && !district.isBlank() && districtIds != null) {
             Set<String> scope = new HashSet<>(districtIds);
             referrals = referrals.stream().filter(r -> scope.contains(r.getFacilityId())).collect(Collectors.toList());
         }

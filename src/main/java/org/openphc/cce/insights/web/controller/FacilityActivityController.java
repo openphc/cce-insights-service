@@ -42,7 +42,7 @@ public class FacilityActivityController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         List<String> districtIds = facilityDirectory.facilityIdsInDistrict(district);
-        if (districtIds != null) {
+        if (district != null && !district.isBlank() && districtIds != null) {
             // District-scoped summary = counts recomputed over that district's facilities.
             LocalDate start = startDate != null ? startDate : endDate != null ? endDate : LocalDate.now();
             LocalDate end   = endDate   != null ? endDate   : startDate != null ? startDate : LocalDate.now();
@@ -97,7 +97,7 @@ public class FacilityActivityController {
         LocalDate end   = endDate   != null ? endDate   : startDate != null ? startDate : LocalDate.now();
         List<FacilityActivityItemDto> items = facilityActivityService.getFacilityActivityDetail(start, end);
         List<String> districtIds = facilityDirectory.facilityIdsInDistrict(district);
-        if (districtIds != null) {
+        if (district != null && !district.isBlank() && districtIds != null) {
             Set<String> scope = new HashSet<>(districtIds);
             items = items.stream().filter(f -> scope.contains(f.getFacilityId())).toList();
         }
