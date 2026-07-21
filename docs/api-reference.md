@@ -463,6 +463,48 @@ All `intelligence_delivery` records for a patient — the notification/escalatio
 
 ---
 
+### 2.7 GET `/v1/insights/patients/referrals/received-by-hie`
+
+Patients behind the Patients-page **"Referrals Received by HIE"** indicator (RI-44) — distinct patients with a referral received by HIE in the selected period, keyed by **clinical `event_time`**. A "referral" is an ACCEPTED inbound event that is a prod `TRANSFER_ENCOUNTER` Encounter or a dev/demo event that completed a Referral step (same definition as `mv_daily_referral_kpis`). One row per patient; the referral date uses the matched Referral step's `completed_at` (clinical occurrence), falling back to `event_time` for transfer encounters with no step.
+
+**Required Scope:** `dashboard:read`
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `startDate` | ISO 8601 | — | Referral clinical date on/after (unbounded if omitted) |
+| `endDate` | ISO 8601 | — | Referral clinical date on/before (unbounded if omitted) |
+
+**Response: `200 OK`**
+
+```json
+{
+  "data": [
+    {
+      "patientId": "9991234567890",
+      "facilityId": "1302",
+      "facilityName": "NCD Upazila",
+      "lastReferral": "2026-06-25T08:17:51Z",
+      "referralCount": 6,
+      "matchedCount": 6
+    }
+  ]
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `patientId` | String | Patient (subject) |
+| `facilityId` / `facilityName` | String | Reporting (origin) facility of the patient's referral |
+| `lastReferral` | ISO 8601 | Most recent referral's clinical date (UTC) |
+| `referralCount` | Long | Referral events for this patient in range |
+| `matchedCount` | Long | Of those, referrals matched to (completing) a Referral step |
+
+> The **"Created Referrals"**, **"Failed Referrals"**, and **"Referral Rate"** indicators on the Patients page are UI placeholders (no endpoint) pending a product definition.
+
+---
+
 ## 3. Deviations & Intelligence
 
 ### 3.1 GET `/v1/insights/deviations`
