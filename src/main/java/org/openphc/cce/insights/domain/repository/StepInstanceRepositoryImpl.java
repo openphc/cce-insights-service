@@ -327,7 +327,7 @@ public class StepInstanceRepositoryImpl
                 .where(DSL.condition(
                         "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
                         protocolDefId.toString()))
-                .and(enrolledBetween(startDate, endDate))
+                .and(matchedActivityBetween(startDate, endDate))
                 .groupBy(DSL.field("si." + STEP_INSTANCES.ACTION_ID.getName()))
                 .fetch()
                 .map(StepInstanceRepositoryImpl::toStepAnalyticsRow);
@@ -374,7 +374,7 @@ public class StepInstanceRepositoryImpl
                         "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
                         protocolDefId.toString()))
                 .and(DSL.field("pf.facility_id").eq(facilityId))
-                .and(enrolledBetween(startDate, endDate))
+                .and(matchedActivityBetween(startDate, endDate))
                 .groupBy(DSL.field("si." + STEP_INSTANCES.ACTION_ID.getName()))
                 .fetch()
                 .map(StepInstanceRepositoryImpl::toStepAnalyticsRow);
@@ -427,6 +427,34 @@ public class StepInstanceRepositoryImpl
                     enrolledAt + " <= parseDateTime64BestEffort(?)", endDate.toString()));
         }
         return cond;
+    }
+
+    /**
+     * RI-36 event_time cohort guard (Service Workflow step analytics): restrict pi to patients with a
+     * protocol-MATCHED inbound event (compliance_event_logs.processing_status='MATCHED') by clinical
+     * event_time in [startDate,endDate] — the SAME cohort the compliance cards/transactions use
+     * (ProtocolInstanceRepositoryImpl.findByProtocolDefinitionIdWithActivityBetween). Replaces the
+     * enrolled_at scoping so the per-action step breakdown is on the clinical clock and consistent
+     * with the rest of the Compliance page. Null dates leave that bound open.
+     */
+    private org.jooq.Condition matchedActivityBetween(OffsetDateTime startDate, OffsetDateTime endDate) {
+        String pid = "pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName();
+        StringBuilder sql = new StringBuilder(
+                pid + " IN (SELECT iel.subject FROM inbound_event_logs iel" + finalClause()
+                + " WHERE iel.status = 'ACCEPTED' AND iel.subject != ''"
+                + " AND iel.cloudevents_id IN (SELECT cel.cloudevents_id FROM compliance_event_logs cel"
+                + finalClause() + " WHERE cel.processing_status = 'MATCHED')");
+        java.util.List<Object> binds = new java.util.ArrayList<>();
+        if (startDate != null) {
+            sql.append(" AND iel.event_time >= parseDateTime64BestEffort(?)");
+            binds.add(startDate.toString());
+        }
+        if (endDate != null) {
+            sql.append(" AND iel.event_time <= parseDateTime64BestEffort(?)");
+            binds.add(endDate.toString());
+        }
+        sql.append(")");
+        return DSL.condition(sql.toString(), binds.toArray());
     }
 
     @Override
