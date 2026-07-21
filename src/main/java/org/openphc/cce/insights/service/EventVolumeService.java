@@ -21,15 +21,15 @@ public class EventVolumeService {
     private final DailyKpiRepository dailyKpiRepository;
 
     @Cacheable(value = "metrics",
-            key = "'vol-summary-' + (#facilityId ?: 'all') + '-' + (#source ?: 'all') + '-' + #startDate + '-' + #endDate")
-    public EventVolumeSummaryDto getSummary(String facilityId, String source,
+            key = "'vol-summary-' + (#facilityId ?: 'all') + '-' + (#source ?: 'all') + '-' + (#district ?: 'all') + '-' + #startDate + '-' + #endDate")
+    public EventVolumeSummaryDto getSummary(String facilityId, String source, String district,
                                              OffsetDateTime startDate, OffsetDateTime endDate) {
         // Volume + facility/source from the event_time event-volume MV; total/matched/zeromatch/
         // duplicate/pipeline-loss from the event_time processing MV — SAME inbound event set, so the
         // rates reconcile with Total and every card is clinical (event_time) + consistent.
-        List<Object[]> byFacility = inboundEventRepository.eventVolumeByFacilityAndType(facilityId, source, null, startDate, endDate);
-        List<Object[]> bySource = inboundEventRepository.eventVolumeBySource(facilityId, startDate, endDate);
-        Object[] proc = inboundEventRepository.eventProcessingKpis(facilityId, startDate, endDate);
+        List<Object[]> byFacility = inboundEventRepository.eventVolumeByFacilityAndType(facilityId, source, null, district, startDate, endDate);
+        List<Object[]> bySource = inboundEventRepository.eventVolumeBySource(facilityId, district, startDate, endDate);
+        Object[] proc = inboundEventRepository.eventProcessingKpis(facilityId, district, startDate, endDate);
         long totalEvents  = ((Number) proc[0]).longValue();
         long pipelineLoss = ((Number) proc[4]).longValue();
 
@@ -74,7 +74,7 @@ public class EventVolumeService {
     public EventKpiDto getEventKpis() {
         // All-time event_time processing totals from mv_daily_event_kpis. The UI now reads the
         // date-filtered pipeline loss from getSummary(); this endpoint remains for the cumulative view.
-        Object[] p = inboundEventRepository.eventProcessingKpis(null, null, null);
+        Object[] p = inboundEventRepository.eventProcessingKpis(null, null, null, null);
         long total = ((Number) p[0]).longValue(), matched = ((Number) p[1]).longValue();
         long zero = ((Number) p[2]).longValue(), dup = ((Number) p[3]).longValue(), loss = ((Number) p[4]).longValue();
         return EventKpiDto.builder()
@@ -122,10 +122,10 @@ public class EventVolumeService {
     }
 
     @Cacheable(value = "metrics",
-            key = "'vol-restype-' + (#facilityId ?: 'all') + '-' + (#source ?: 'all') + '-' + #startDate + '-' + #endDate")
-    public List<ResourceTypeCountDto> getByResourceType(String facilityId, String source,
+            key = "'vol-restype-' + (#facilityId ?: 'all') + '-' + (#source ?: 'all') + '-' + (#district ?: 'all') + '-' + #startDate + '-' + #endDate")
+    public List<ResourceTypeCountDto> getByResourceType(String facilityId, String source, String district,
                                                         OffsetDateTime startDate, OffsetDateTime endDate) {
-        return inboundEventRepository.eventVolumeByResourceType(facilityId, source, startDate, endDate).stream()
+        return inboundEventRepository.eventVolumeByResourceType(facilityId, source, district, startDate, endDate).stream()
                 .map(row -> ResourceTypeCountDto.builder()
                         .resourceType((String) row[0])
                         .count(((Number) row[1]).longValue())
@@ -134,11 +134,11 @@ public class EventVolumeService {
     }
 
     @Cacheable(value = "metrics",
-            key = "'vol-facility-' + (#facilityId ?: 'all') + '-' + (#source ?: 'all') + '-' + (#resourceType ?: 'all') + '-' + #startDate + '-' + #endDate")
-    public List<FacilityEventCountDto> getByFacility(String facilityId, String source, String resourceType,
+            key = "'vol-facility-' + (#facilityId ?: 'all') + '-' + (#source ?: 'all') + '-' + (#resourceType ?: 'all') + '-' + (#district ?: 'all') + '-' + #startDate + '-' + #endDate")
+    public List<FacilityEventCountDto> getByFacility(String facilityId, String source, String resourceType, String district,
                                                      OffsetDateTime startDate, OffsetDateTime endDate) {
         List<Object[]> rows = inboundEventRepository.eventVolumeByFacilityAndType(
-                facilityId, source, resourceType, startDate, endDate);
+                facilityId, source, resourceType, district, startDate, endDate);
         // rows: [facility_id, resource_type, count] — aggregate by facility
         Map<String, List<Object[]>> grouped = new LinkedHashMap<>();
         for (Object[] row : rows) {
@@ -160,12 +160,12 @@ public class EventVolumeService {
         }).collect(Collectors.toList());
     }
 
-    @Cacheable(value = "metrics", key = "'vol-trends-' + #interval + '-' + #facilityId + '-' + #source + '-' + #startDate + '-' + #endDate")
+    @Cacheable(value = "metrics", key = "'vol-trends-' + #interval + '-' + #facilityId + '-' + #source + '-' + (#district ?: 'all') + '-' + #startDate + '-' + #endDate")
     public EventVolumeTrendDto getTrends(String interval, OffsetDateTime startDate,
-                                          OffsetDateTime endDate, String facilityId, String source) {
+                                          OffsetDateTime endDate, String facilityId, String source, String district) {
         String dbInterval = DateUtil.mapInterval(interval);
         // Clinical event volume from the event_time event-volume MV (consistent with the cards).
-        List<Object[]> rows = inboundEventRepository.eventVolumeTrends(dbInterval, facilityId, source, startDate, endDate);
+        List<Object[]> rows = inboundEventRepository.eventVolumeTrends(dbInterval, facilityId, source, district, startDate, endDate);
 
         // rows: [period, resource_type, count] — aggregate by period
         Map<String, Map<String, Long>> periodMap = new LinkedHashMap<>();

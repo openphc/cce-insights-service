@@ -25,9 +25,10 @@ public class EventVolumeController {
     public ResponseEntity<ApiResponse<EventVolumeSummaryDto>> getSummary(
             @RequestParam(required = false) String facilityId,
             @RequestParam(required = false) String source,
+            @RequestParam(required = false) String district,
             @RequestParam(required = false) OffsetDateTime startDate,
             @RequestParam(required = false) OffsetDateTime endDate) {
-        EventVolumeSummaryDto summary = eventVolumeService.getSummary(facilityId, source, startDate, endDate);
+        EventVolumeSummaryDto summary = eventVolumeService.getSummary(facilityId, source, district, startDate, endDate);
         return ResponseEntity.ok(ApiResponse.ok(summary));
     }
 
@@ -37,10 +38,11 @@ public class EventVolumeController {
             @RequestParam(required = false) String resourceType,
             @RequestParam(required = false) String facilityId,
             @RequestParam(required = false) String source,
+            @RequestParam(required = false) String district,
             @RequestParam(required = false) OffsetDateTime startDate,
             @RequestParam(required = false) OffsetDateTime endDate) {
         EventVolumeTrendDto trends = eventVolumeService.getTrends(
-                interval, startDate, endDate, facilityId, source);
+                interval, startDate, endDate, facilityId, source, district);
         return ResponseEntity.ok(ApiResponse.ok(trends));
     }
 
@@ -48,10 +50,11 @@ public class EventVolumeController {
     public ResponseEntity<ApiResponse<List<ResourceTypeCountDto>>> getByResourceType(
             @RequestParam(required = false) String facilityId,
             @RequestParam(required = false) String source,
+            @RequestParam(required = false) String district,
             @RequestParam(required = false) OffsetDateTime startDate,
             @RequestParam(required = false) OffsetDateTime endDate) {
         List<ResourceTypeCountDto> counts = eventVolumeService.getByResourceType(
-                facilityId, source, startDate, endDate);
+                facilityId, source, district, startDate, endDate);
         return ResponseEntity.ok(ApiResponse.ok(counts));
     }
 
@@ -60,10 +63,11 @@ public class EventVolumeController {
             @RequestParam(required = false) String facilityId,
             @RequestParam(required = false) String resourceType,
             @RequestParam(required = false) String source,
+            @RequestParam(required = false) String district,
             @RequestParam(required = false) OffsetDateTime startDate,
             @RequestParam(required = false) OffsetDateTime endDate) {
         List<FacilityEventCountDto> counts = eventVolumeService.getByFacility(
-                facilityId, source, resourceType, startDate, endDate);
+                facilityId, source, resourceType, district, startDate, endDate);
         return ResponseEntity.ok(ApiResponse.ok(counts));
     }
 }
