@@ -11,6 +11,33 @@ All endpoints are accessed through the **CCE Gateway Service** (not directly by 
 
 ---
 
+## 0. Global filters
+
+Every clinical-metric endpoint accepts the shared filters the UI sends from the header:
+
+| Param | Applies to | Notes |
+|---|---|---|
+| `startDate`, `endDate` | all metric endpoints | clinical `event_time` window (ISO-8601). |
+| `facilityId` | most metric endpoints | scope to a single facility. |
+| `district` | **all clinical pages** (see below) | scope to every facility in that district. Blank/absent = all facilities. |
+
+**Global District filter.** `district` (district name, e.g. `Gasabo`) resolves to the set of
+facilities in that district (from the `facility` reference table) and scopes the result to those
+facilities — behaving as "the union of the district's facilities". It is honored by:
+
+- Facility ranking, activity-summary, activity-detail, adoption (`/facilities/*`)
+- Dashboard referrals (`/dashboard/referrals`) and patient referrals (`/patients/referrals/received-by-hie`)
+- Compliance summaries (`/protocols[/{id}]/compliance-summary`, `/protocols/{id}/patients`) and step-analytics
+- Deviations (`/deviations`, `/deviations/kpis`, `/deviations/trends`, `/deviations/by-action`)
+- Event volume (`/events/summary`, `/events/trends`, `/events/by-resource-type`, `/events/by-facility`)
+
+Not district-scoped by design: the **Ingestion** pipeline endpoints (`/ingestion/*`) — pipeline
+health, not clinical-event metrics — and the cumulative `/events/kpis`.
+
+The district option list is served by **`GET /v1/insights/lookups/districts`** → `{ "data": ["Gasabo", "Kicukiro", ...] }` (distinct, non-blank, sorted). `GET /v1/insights/lookups/facilities` now also returns each facility's `district`.
+
+---
+
 ## 1. Compliance Summaries
 
 ### 1.1 GET `/v1/insights/protocols/{protocolDefinitionId}/compliance-summary`
