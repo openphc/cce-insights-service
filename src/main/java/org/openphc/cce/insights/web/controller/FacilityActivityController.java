@@ -2,6 +2,7 @@ package org.openphc.cce.insights.web.controller;
 
 import lombok.RequiredArgsConstructor;
 import org.openphc.cce.insights.service.FacilityActivityService;
+import org.openphc.cce.insights.service.FacilityDirectory;
 import org.openphc.cce.insights.web.dto.ApiResponse;
 import org.openphc.cce.insights.web.dto.FacilityActivityItemDto;
 import org.openphc.cce.insights.web.dto.FacilityActivitySummaryDto;
@@ -13,7 +14,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/v1/insights/facilities")
@@ -21,6 +24,7 @@ import java.util.List;
 public class FacilityActivityController {
 
     private final FacilityActivityService facilityActivityService;
+    private final FacilityDirectory facilityDirectory;
 
     /**
      * GET /v1/insights/facilities/activity-summary
@@ -28,13 +32,34 @@ public class FacilityActivityController {
      * With startDate+endDate: counts facilities with ≥1 successful HIE submission in the period.
      * With facilityId: reports the single-facility tile (1 in-scope; 1 active/inactive depending on
      *   whether that facility transmitted in the period).
+     * With district: counts recomputed over just that district's facilities (from the detail list).
      * Without filters: falls back to today's active-facility count from mv_event_volume_hourly.
      */
     @GetMapping("/activity-summary")
     public ResponseEntity<ApiResponse<FacilityActivitySummaryDto>> getActivitySummary(
             @RequestParam(required = false) String facilityId,
+            @RequestParam(required = false) String district,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        List<String> districtIds = facilityDirectory.facilityIdsInDistrict(district);
+        if (districtIds != null) {
+            // District-scoped summary = counts recomputed over that district's facilities.
+            LocalDate start = startDate != null ? startDate : endDate != null ? endDate : LocalDate.now();
+            LocalDate end   = endDate   != null ? endDate   : startDate != null ? startDate : LocalDate.now();
+            Set<String> scope = new HashSet<>(districtIds);
+            List<FacilityActivityItemDto> items = facilityActivityService.getFacilityActivityDetail(start, end)
+                    .stream().filter(f -> scope.contains(f.getFacilityId())).toList();
+            long total = items.size();
+            long active = items.stream().filter(f -> f.isActive()).count();
+            double rate = total > 0 ? Math.round((double) active / total * 1000.0) / 10.0 : 0.0;
+            return ResponseEntity.ok(ApiResponse.ok(FacilityActivitySummaryDto.builder()
+                    .totalInScope(total)
+                    .activeFacilities(active)
+                    .inactiveFacilities(total - active)
+                    .activeFacilityRate(rate)
+                    .build()));
+        }
+
         FacilityActivitySummaryDto dto;
         if (facilityId != null && !facilityId.isEmpty()) {
             LocalDate effectiveStart = startDate != null ? startDate
@@ -61,15 +86,21 @@ public class FacilityActivityController {
      * Drill-down behind the Active/Inactive facility cards (RI-29): every in-scope facility with
      * its active/inactive flag, district, and last-activity day for the selected range. The UI
      * partitions by {@code active}; counts reconcile with /activity-summary. Missing dates default
-     * to today (same behaviour as the summary endpoint).
+     * to today (same behaviour as the summary endpoint). Optionally scoped to one district.
      */
     @GetMapping("/activity-detail")
     public ResponseEntity<ApiResponse<List<FacilityActivityItemDto>>> getActivityDetail(
+            @RequestParam(required = false) String district,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         LocalDate start = startDate != null ? startDate : endDate != null ? endDate : LocalDate.now();
         LocalDate end   = endDate   != null ? endDate   : startDate != null ? startDate : LocalDate.now();
-        return ResponseEntity.ok(ApiResponse.ok(
-                facilityActivityService.getFacilityActivityDetail(start, end)));
+        List<FacilityActivityItemDto> items = facilityActivityService.getFacilityActivityDetail(start, end);
+        List<String> districtIds = facilityDirectory.facilityIdsInDistrict(district);
+        if (districtIds != null) {
+            Set<String> scope = new HashSet<>(districtIds);
+            items = items.stream().filter(f -> scope.contains(f.getFacilityId())).toList();
+        }
+        return ResponseEntity.ok(ApiResponse.ok(items));
     }
 }

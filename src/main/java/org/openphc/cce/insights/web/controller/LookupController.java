@@ -32,6 +32,7 @@ public class LookupController {
     private final ComplianceEventLogRepository complianceEventLogRepository;
     private final DailyKpiRepository dailyKpiRepository;
     private final InboundEventRepository inboundEventRepository;
+    private final org.openphc.cce.insights.service.FacilityDirectory facilityDirectory;
     private final ObjectMapper objectMapper;
 
     @GetMapping("/protocols")
@@ -72,9 +73,17 @@ public class LookupController {
             Map<String, String> map = new LinkedHashMap<>();
             map.put("id", (String) row[0]);
             map.put("name", (String) row[1]);
+            map.put("district", row.length > 3 ? (String) row[3] : "");
             return map;
         }).collect(Collectors.toList());
         return ResponseEntity.ok(ApiResponse.ok(result));
+    }
+
+    /** Distinct district names — feeds the global District filter. */
+    @GetMapping("/districts")
+    @Cacheable(value = "lookups", key = "'districts'")
+    public ResponseEntity<ApiResponse<List<String>>> getDistricts() {
+        return ResponseEntity.ok(ApiResponse.ok(facilityDirectory.districts()));
     }
 
     @GetMapping("/practitioners")

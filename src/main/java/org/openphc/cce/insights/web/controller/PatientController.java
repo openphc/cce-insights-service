@@ -16,6 +16,7 @@ import org.openphc.cce.insights.domain.repository.IntelligenceDeliveryRepository
 import org.openphc.cce.insights.domain.repository.ProtocolDefinitionRepository;
 import org.openphc.cce.insights.domain.repository.ProtocolInstanceRepository;
 import org.openphc.cce.insights.domain.repository.StepInstanceRepository;
+import org.openphc.cce.insights.service.FacilityDirectory;
 import org.openphc.cce.insights.service.PatientReferralService;
 import org.openphc.cce.insights.service.PatientTimelineService;
 import org.openphc.cce.insights.web.dto.ApiResponse;
@@ -36,6 +37,7 @@ public class PatientController {
 
     private final PatientTimelineService patientTimelineService;
     private final PatientReferralService patientReferralService;
+    private final FacilityDirectory facilityDirectory;
     private final ProtocolInstanceRepository protocolInstanceRepository;
     private final StepInstanceRepository stepInstanceRepository;
     private final DeviationRepository deviationRepository;
@@ -52,9 +54,16 @@ public class PatientController {
     @GetMapping("/referrals/received-by-hie")
     public ResponseEntity<ApiResponse<List<PatientReferralDto>>> getReferralsReceivedByHie(
             @RequestParam(required = false) OffsetDateTime startDate,
-            @RequestParam(required = false) OffsetDateTime endDate) {
-        return ResponseEntity.ok(ApiResponse.ok(
-                patientReferralService.getReferralsReceivedByHie(startDate, endDate)));
+            @RequestParam(required = false) OffsetDateTime endDate,
+            @RequestParam(required = false) String district) {
+        List<PatientReferralDto> referrals =
+                patientReferralService.getReferralsReceivedByHie(startDate, endDate);
+        List<String> districtIds = facilityDirectory.facilityIdsInDistrict(district);
+        if (districtIds != null) {
+            Set<String> scope = new HashSet<>(districtIds);
+            referrals = referrals.stream().filter(r -> scope.contains(r.getFacilityId())).collect(Collectors.toList());
+        }
+        return ResponseEntity.ok(ApiResponse.ok(referrals));
     }
 
     @GetMapping("/{patientId}/compliance-timeline")

@@ -2,6 +2,7 @@ package org.openphc.cce.insights.web.controller;
 
 import lombok.RequiredArgsConstructor;
 import org.openphc.cce.insights.service.AdoptionService;
+import org.openphc.cce.insights.service.FacilityDirectory;
 import org.openphc.cce.insights.web.dto.AdoptionKpiDto;
 import org.openphc.cce.insights.web.dto.ApiResponse;
 import org.openphc.cce.insights.web.dto.FacilityReferenceDto;
@@ -12,7 +13,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/v1/insights/facilities")
@@ -20,6 +23,7 @@ import java.util.List;
 public class AdoptionController {
 
     private final AdoptionService adoptionService;
+    private final FacilityDirectory facilityDirectory;
 
     /**
      * GET /v1/insights/facilities/adoption
@@ -35,6 +39,7 @@ public class AdoptionController {
     @GetMapping("/adoption")
     public ResponseEntity<ApiResponse<List<AdoptionKpiDto>>> getAdoptionKpis(
             @RequestParam(required = false) String facilityId,
+            @RequestParam(required = false) String district,
             @RequestParam(required = false) LocalDate startDate,
             @RequestParam(required = false) LocalDate endDate) {
         List<AdoptionKpiDto> result = (startDate != null || endDate != null)
@@ -47,6 +52,12 @@ public class AdoptionController {
         if (facilityId != null && !facilityId.isEmpty()) {
             String fid = facilityId;
             result = result.stream().filter(r -> fid.equals(r.getFacilityId())).toList();
+        }
+        // District filter: keep only facilities in the selected district.
+        List<String> districtIds = facilityDirectory.facilityIdsInDistrict(district);
+        if (districtIds != null) {
+            Set<String> scope = new HashSet<>(districtIds);
+            result = result.stream().filter(r -> scope.contains(r.getFacilityId())).toList();
         }
         return ResponseEntity.ok(ApiResponse.ok(result));
     }
