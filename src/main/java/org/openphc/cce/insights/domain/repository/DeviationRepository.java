@@ -15,15 +15,15 @@ public interface DeviationRepository extends ReadOnlyRepository<Deviation, UUID>
 
     Page<Deviation> findByDeviationType(DeviationType type, Pageable pageable);
 
-    List<Object[]> findFilteredDeviations(String deviationType, String facilityId,
+    List<Object[]> findFilteredDeviations(String deviationType, String facilityId, String district,
                                           UUID protocolDefinitionId,
                                           OffsetDateTime startDate, OffsetDateTime endDate, int lim);
 
     List<Object[]> findDeviationTrends(String interval, OffsetDateTime startDate,
-                                       OffsetDateTime endDate, String facilityId,
+                                       OffsetDateTime endDate, String facilityId, String district,
                                        UUID protocolDefinitionId);
 
-    List<Object[]> findDeviationsByAction(UUID protocolDefId, OffsetDateTime startDate, OffsetDateTime endDate);
+    List<Object[]> findDeviationsByAction(UUID protocolDefId, String district, OffsetDateTime startDate, OffsetDateTime endDate);
 
     List<Object[]> findResolutionRate(UUID protocolDefId, OffsetDateTime startDate, OffsetDateTime endDate);
 
@@ -36,7 +36,7 @@ public interface DeviationRepository extends ReadOnlyRepository<Deviation, UUID>
      * Replaces summing daily snapshot rows from mv_daily_deviation_kpis (which double-counts across days).
      * Returns rows of [deviation_type(String), count(long)].
      */
-    List<Object[]> countByTypeFiltered(UUID protocolDefinitionId, String facilityId,
+    List<Object[]> countByTypeFiltered(UUID protocolDefinitionId, String facilityId, String district,
                                         OffsetDateTime startDate, OffsetDateTime endDate);
 
     List<Object[]> findRepeatDeviationPatients(int minDeviations, String facilityId,

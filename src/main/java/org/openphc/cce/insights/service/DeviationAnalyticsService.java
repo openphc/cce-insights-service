@@ -17,12 +17,12 @@ public class DeviationAnalyticsService {
 
     private final DeviationRepository deviationRepository;
 
-    public List<DeviationDto> getDeviations(String deviationType, String facilityId,
+    public List<DeviationDto> getDeviations(String deviationType, String facilityId, String district,
                                              UUID protocolDefinitionId,
                                              OffsetDateTime startDate, OffsetDateTime endDate,
                                              int limit) {
         List<Object[]> rows = deviationRepository.findFilteredDeviations(
-                deviationType, facilityId, protocolDefinitionId, startDate, endDate, limit);
+                deviationType, facilityId, district, protocolDefinitionId, startDate, endDate, limit);
         return rows.stream().map(row -> DeviationDto.builder()
                 .deviationId(uuidOf(row[0]))
                 .patientId((String) row[1])
@@ -37,15 +37,15 @@ public class DeviationAnalyticsService {
                 .build()).collect(Collectors.toList());
     }
 
-    @Cacheable(value = "analytics", key = "'deviation-kpis-' + (#protocolDefinitionId ?: 'all') + '-' + (#facilityId ?: 'all') + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all')")
-    public DeviationKpiDto getDeviationKpis(UUID protocolDefinitionId, String facilityId,
+    @Cacheable(value = "analytics", key = "'deviation-kpis-' + (#protocolDefinitionId ?: 'all') + '-' + (#facilityId ?: 'all') + '-' + (#district ?: 'all') + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all')")
+    public DeviationKpiDto getDeviationKpis(UUID protocolDefinitionId, String facilityId, String district,
                                              OffsetDateTime startDate, OffsetDateTime endDate) {
         // Counts distinct deviation rows in the deviations table, optionally scoped to
         // protocol, facility (via mv_patient_facility_latest) and detection date range.
         // Replaces summing mv_daily_deviation_kpis snapshot rows, which inflated totals
         // by counting the same active deviation on every day it appeared in the snapshot.
         List<Object[]> rows = deviationRepository.countByTypeFiltered(
-                protocolDefinitionId, facilityId, startDate, endDate);
+                protocolDefinitionId, facilityId, district, startDate, endDate);
         long total = 0, overdue = 0, missed = 0, orderViolation = 0;
         for (Object[] row : rows) {
             long c = ((Number) row[1]).longValue();
@@ -66,12 +66,12 @@ public class DeviationAnalyticsService {
     }
 
     @Cacheable(value = "analytics",
-            key = "'dev-trends-' + #interval + '-' + (#protocolDefinitionId ?: 'all') + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all') + '-' + (#facilityId ?: 'all')")
+            key = "'dev-trends-' + #interval + '-' + (#protocolDefinitionId ?: 'all') + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all') + '-' + (#facilityId ?: 'all') + '-' + (#district ?: 'all')")
     public DeviationTrendDto getDeviationTrends(String interval, OffsetDateTime startDate,
-                                                 OffsetDateTime endDate, String facilityId,
+                                                 OffsetDateTime endDate, String facilityId, String district,
                                                  UUID protocolDefinitionId) {
         String dbInterval = DateUtil.mapInterval(interval);
-        List<Object[]> rows = deviationRepository.findDeviationTrends(dbInterval, startDate, endDate, facilityId, protocolDefinitionId);
+        List<Object[]> rows = deviationRepository.findDeviationTrends(dbInterval, startDate, endDate, facilityId, district, protocolDefinitionId);
 
         Map<String, DeviationTrendDto.TrendPoint.TrendPointBuilder> pointMap = new LinkedHashMap<>();
         for (Object[] row : rows) {
@@ -135,11 +135,11 @@ public class DeviationAnalyticsService {
                 .build();
     }
 
-    @Cacheable(value = "analytics", key = "'dev-action-' + #protocolDefId + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all')")
-    public List<DeviationByActionDto> getDeviationsByAction(UUID protocolDefId,
+    @Cacheable(value = "analytics", key = "'dev-action-' + #protocolDefId + '-' + (#district ?: 'all') + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all')")
+    public List<DeviationByActionDto> getDeviationsByAction(UUID protocolDefId, String district,
                                                              OffsetDateTime startDate,
                                                              OffsetDateTime endDate) {
-        List<Object[]> rows = deviationRepository.findDeviationsByAction(protocolDefId, startDate, endDate);
+        List<Object[]> rows = deviationRepository.findDeviationsByAction(protocolDefId, district, startDate, endDate);
         return rows.stream().map(row -> DeviationByActionDto.builder()
                 .actionId((String) row[0])
                 .protocolDefinitionId(uuidOf(row[1]))

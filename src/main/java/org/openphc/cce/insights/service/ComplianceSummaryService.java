@@ -81,7 +81,7 @@ public class ComplianceSummaryService {
                         .deviationCount(0).deviationBreakdown(Map.of())
                         .build();
             }
-            DeviationCounts dev = occurrenceDeviations(facilityId, startDate, endDate);
+            DeviationCounts dev = occurrenceDeviations(facilityId, district, startDate, endDate);
             long effectiveEnrollments = enrolledInPeriod >= 0 ? enrolledInPeriod : totalEnrollments;
             // Compliant/non-compliant on the CLINICAL clock when a date range is set: non-compliant =
             // cohort patients (enrolled in window) that have a deviation whose OCCURRENCE date is in the
@@ -140,7 +140,7 @@ public class ComplianceSummaryService {
             compliantPatients = Math.min(totalEnrollments, toLong(dm[0]));
         }
         double complianceRate  = (double) compliantPatients / totalEnrollments;
-        DeviationCounts dev = occurrenceDeviations(facilityId, startDate, endDate);
+        DeviationCounts dev = occurrenceDeviations(facilityId, null, startDate, endDate);
 
         return ComplianceSummaryDto.builder()
                 .totalEnrollments(totalEnrollments)
@@ -187,7 +187,7 @@ public class ComplianceSummaryService {
         Object[] stepArr = hasFacility
                 ? stepInstanceRepository.aggregateStepMetricsByFacility(facilityId)
                 : dailyKpiRepository.getComplianceKpisAll(snapshotDate);
-        DeviationCounts dev = occurrenceDeviations(facilityId, startDate, endDate);
+        DeviationCounts dev = occurrenceDeviations(facilityId, district, startDate, endDate);
         return ComplianceSummaryDto.builder()
                 .totalEnrollments(tracked)
                 .compliantPatients(compliant)
@@ -220,10 +220,10 @@ public class ComplianceSummaryService {
      * source and clock as the Deviations page, so the compliance-page deviation card reconciles
      * with it. Null dates widen to all-time. Passing {@code null} protocol = all protocols.
      */
-    private DeviationCounts occurrenceDeviations(String facilityId,
+    private DeviationCounts occurrenceDeviations(String facilityId, String district,
                                                  OffsetDateTime startDate, OffsetDateTime endDate) {
         long overdue = 0, missed = 0, orderViolation = 0, total = 0;
-        for (Object[] row : deviationRepository.countByTypeFiltered(null, facilityId, startDate, endDate)) {
+        for (Object[] row : deviationRepository.countByTypeFiltered(null, facilityId, district, startDate, endDate)) {
             long cnt = toLong(row[1]);
             total += cnt;
             switch ((String) row[0]) {

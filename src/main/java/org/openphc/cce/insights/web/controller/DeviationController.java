@@ -21,23 +21,25 @@ public class DeviationController {
     public ResponseEntity<ApiResponse<DeviationKpiDto>> getDeviationKpis(
             @RequestParam(required = false) UUID protocolDefinitionId,
             @RequestParam(required = false) String facilityId,
+            @RequestParam(required = false) String district,
             @RequestParam(required = false) OffsetDateTime startDate,
             @RequestParam(required = false) OffsetDateTime endDate) {
         return ResponseEntity.ok(ApiResponse.ok(
                 deviationAnalyticsService.getDeviationKpis(
-                        protocolDefinitionId, facilityId, startDate, endDate)));
+                        protocolDefinitionId, facilityId, district, startDate, endDate)));
     }
 
     @GetMapping("/deviations")
     public ResponseEntity<ApiResponse<List<DeviationDto>>> getDeviations(
             @RequestParam(required = false) String deviationType,
             @RequestParam(required = false) String facilityId,
+            @RequestParam(required = false) String district,
             @RequestParam(required = false) UUID protocolDefinitionId,
             @RequestParam(required = false) OffsetDateTime startDate,
             @RequestParam(required = false) OffsetDateTime endDate,
             @RequestParam(defaultValue = "50") int limit) {
         List<DeviationDto> deviations = deviationAnalyticsService.getDeviations(
-                deviationType, facilityId, protocolDefinitionId, startDate, endDate, limit);
+                deviationType, facilityId, district, protocolDefinitionId, startDate, endDate, limit);
         return ResponseEntity.ok(ApiResponse.ok(deviations));
     }
 
@@ -45,11 +47,12 @@ public class DeviationController {
     public ResponseEntity<ApiResponse<DeviationTrendDto>> getDeviationTrends(
             @RequestParam(defaultValue = "weekly") String interval,
             @RequestParam(required = false) String facilityId,
+            @RequestParam(required = false) String district,
             @RequestParam(required = false) UUID protocolDefinitionId,
             @RequestParam(required = false) OffsetDateTime startDate,
             @RequestParam(required = false) OffsetDateTime endDate) {
         DeviationTrendDto trends = deviationAnalyticsService.getDeviationTrends(
-                interval, startDate, endDate, facilityId, protocolDefinitionId);
+                interval, startDate, endDate, facilityId, district, protocolDefinitionId);
         return ResponseEntity.ok(ApiResponse.ok(trends));
     }
 
@@ -66,10 +69,11 @@ public class DeviationController {
     @GetMapping("/deviations/by-action")
     public ResponseEntity<ApiResponse<List<DeviationByActionDto>>> getDeviationsByAction(
             @RequestParam(required = false) UUID protocolDefinitionId,
+            @RequestParam(required = false) String district,
             @RequestParam(required = false) OffsetDateTime startDate,
             @RequestParam(required = false) OffsetDateTime endDate) {
         List<DeviationByActionDto> results = deviationAnalyticsService.getDeviationsByAction(
-                protocolDefinitionId, startDate, endDate);
+                protocolDefinitionId, district, startDate, endDate);
         return ResponseEntity.ok(ApiResponse.ok(results));
     }
 
