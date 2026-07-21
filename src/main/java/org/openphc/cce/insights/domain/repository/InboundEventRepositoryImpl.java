@@ -100,15 +100,24 @@ public class InboundEventRepositoryImpl
     // Excludes events not considered by any protocol (Consent onboarding, zero-match). Optional
     // facilityId ('' = all) and optional dates (null = unbounded).
     @Override
-    public long countDistinctPatientsWithMatchedEvents(String facilityId,
+    public long countDistinctPatientsWithMatchedEvents(String facilityId, String district,
                                                        OffsetDateTime startDate, OffsetDateTime endDate) {
         String fid = str(facilityId);
         var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
         Long r = dsl.select(DSL.field("uniq(iel." + INBOUND_EVENT_LOGS.SUBJECT.getName() + ")", Long.class))
                     .from(iel)
                     .where(matchedCohortCondition(fid, startDate, endDate))
+                    .and(districtScope("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName(), district))
                     .fetchOne(0, Long.class);
         return r != null ? r : 0L;
+    }
+
+    /** "district blank OR facility_id in the district's facilities" — resolved via the facility ref. */
+    private org.jooq.Condition districtScope(String facilityColumn, String district) {
+        String d = str(district);
+        return DSL.condition("? = '' OR " + facilityColumn
+                + " IN (SELECT facility_id FROM facility" + finalClause()
+                + " WHERE _is_deleted = 0 AND lower(district_name) = lower(?))", d, d);
     }
 
     /** WHERE clause (alias iel) selecting the "considered-by-a-protocol" inbound-event cohort. */

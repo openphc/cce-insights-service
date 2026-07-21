@@ -72,7 +72,7 @@ public interface DeviationRepository extends ReadOnlyRepository<Deviation, UUID>
      * how many have a deviation whose clinical OCCURRENCE date is in [start,end] (not detected_at,
      * no enrolled_at). Facility ({@code null}/'' = all); optional dates.
      */
-    long countDistinctNonCompliantAmongMatched(String facilityId,
+    long countDistinctNonCompliantAmongMatched(String facilityId, String district,
                                                OffsetDateTime startDate, OffsetDateTime endDate);
 
     // Batch load full Deviation objects for a set of protocol instances

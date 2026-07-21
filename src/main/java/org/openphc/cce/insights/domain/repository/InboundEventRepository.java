@@ -22,7 +22,7 @@ public interface InboundEventRepository extends ReadOnlyRepository<InboundEvent,
      * created a new enrollment or advanced an existing journey. Scoped by {@code event_time} (not
      * enrolled_at) and facility ({@code null}/'' = all). Optional dates (null = unbounded).
      */
-    long countDistinctPatientsWithMatchedEvents(String facilityId,
+    long countDistinctPatientsWithMatchedEvents(String facilityId, String district,
                                                 OffsetDateTime startDate, OffsetDateTime endDate);
 
     long countEventsBySource(String source, String facilityId,

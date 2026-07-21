@@ -637,9 +637,10 @@ public class DeviationRepositoryImpl
     // clinical OCCURRENCE date is in [start,end] (NOT detected_at — matches the Deviations page).
     // The cohort is a ClickHouse IN-subquery (not a bound-param list → no max_query_size risk).
     @Override
-    public long countDistinctNonCompliantAmongMatched(String facilityId,
+    public long countDistinctNonCompliantAmongMatched(String facilityId, String district,
                                                        OffsetDateTime startDate, OffsetDateTime endDate) {
         String fid = str(facilityId);
+        String dist = str(district);
         var d  = finalAs(DEVIATIONS, "d");
         var si = finalAs(STEP_INSTANCES, "si");   // for occurredAt() clinical date
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
@@ -650,6 +651,8 @@ public class DeviationRepositoryImpl
                 + " SELECT iel.subject FROM inbound_event_logs iel" + finalClause()
                 + " WHERE iel.status = 'ACCEPTED' AND iel.subject != ''"
                 + " AND (? = '' OR iel.facility_id = ?)"
+                + " AND (? = '' OR iel.facility_id IN (SELECT facility_id FROM facility" + finalClause()
+                + " WHERE _is_deleted = 0 AND lower(district_name) = lower(?)))"
                 + " AND iel.cloudevents_id IN (SELECT cel.cloudevents_id FROM compliance_event_logs cel"
                 + finalClause() + " WHERE cel.processing_status = 'MATCHED')"
                 + " AND (? != '1' OR iel.event_time >= parseDateTime64BestEffort(?))"
@@ -657,6 +660,7 @@ public class DeviationRepositoryImpl
 
         org.jooq.Condition where = DSL.condition(cohortIn,
                 fid, fid,
+                dist, dist,
                 startDate == null ? "0" : "1", dtStart(startDate),
                 endDate   == null ? "0" : "1", dtEnd(endDate));
         // Deviation OCCURRENCE (clinical) in range — NOT detected_at, NO enrolled_at.

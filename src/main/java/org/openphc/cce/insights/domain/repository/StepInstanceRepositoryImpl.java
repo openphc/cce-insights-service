@@ -291,7 +291,7 @@ public class StepInstanceRepositoryImpl
     }
 
     @Override
-    public List<Object[]> findStepAnalytics(UUID protocolDefId,
+    public List<Object[]> findStepAnalytics(UUID protocolDefId, String district,
                                             OffsetDateTime startDate, OffsetDateTime endDate) {
         var stepInstances = finalAs(STEP_INSTANCES, "si");
         var protocolInstances = finalAs(PROTOCOL_INSTANCES, "pi");
@@ -327,14 +327,14 @@ public class StepInstanceRepositoryImpl
                 .where(DSL.condition(
                         "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
                         protocolDefId.toString()))
-                .and(matchedActivityBetween(startDate, endDate))
+                .and(matchedActivityBetween(district, startDate, endDate))
                 .groupBy(DSL.field("si." + STEP_INSTANCES.ACTION_ID.getName()))
                 .fetch()
                 .map(StepInstanceRepositoryImpl::toStepAnalyticsRow);
     }
 
     @Override
-    public List<Object[]> findStepAnalyticsByFacility(UUID protocolDefId, String facilityId,
+    public List<Object[]> findStepAnalyticsByFacility(UUID protocolDefId, String facilityId, String district,
                                                        OffsetDateTime startDate, OffsetDateTime endDate) {
         var stepInstances = finalAs(STEP_INSTANCES, "si");
         var protocolInstances = finalAs(PROTOCOL_INSTANCES, "pi");
@@ -374,7 +374,7 @@ public class StepInstanceRepositoryImpl
                         "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
                         protocolDefId.toString()))
                 .and(DSL.field("pf.facility_id").eq(facilityId))
-                .and(matchedActivityBetween(startDate, endDate))
+                .and(matchedActivityBetween(district, startDate, endDate))
                 .groupBy(DSL.field("si." + STEP_INSTANCES.ACTION_ID.getName()))
                 .fetch()
                 .map(StepInstanceRepositoryImpl::toStepAnalyticsRow);
@@ -438,6 +438,11 @@ public class StepInstanceRepositoryImpl
      * with the rest of the Compliance page. Null dates leave that bound open.
      */
     private org.jooq.Condition matchedActivityBetween(OffsetDateTime startDate, OffsetDateTime endDate) {
+        return matchedActivityBetween(null, startDate, endDate);
+    }
+
+    private org.jooq.Condition matchedActivityBetween(String district,
+                                                      OffsetDateTime startDate, OffsetDateTime endDate) {
         String pid = "pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName();
         StringBuilder sql = new StringBuilder(
                 pid + " IN (SELECT iel.subject FROM inbound_event_logs iel" + finalClause()
@@ -445,6 +450,11 @@ public class StepInstanceRepositoryImpl
                 + " AND iel.cloudevents_id IN (SELECT cel.cloudevents_id FROM compliance_event_logs cel"
                 + finalClause() + " WHERE cel.processing_status = 'MATCHED')");
         java.util.List<Object> binds = new java.util.ArrayList<>();
+        if (district != null && !district.isBlank()) {
+            sql.append(" AND iel.facility_id IN (SELECT facility_id FROM facility" + finalClause()
+                    + " WHERE _is_deleted = 0 AND lower(district_name) = lower(?))");
+            binds.add(district);
+        }
         if (startDate != null) {
             sql.append(" AND iel.event_time >= parseDateTime64BestEffort(?)");
             binds.add(startDate.toString());

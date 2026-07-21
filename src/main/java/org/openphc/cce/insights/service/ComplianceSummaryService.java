@@ -32,10 +32,21 @@ public class ComplianceSummaryService {
     private final ComplianceEventLogRepository complianceEventLogRepository;
     private final DailyKpiRepository dailyKpiRepository;
     private final InboundEventRepository inboundEventRepository;
+    private final FacilityDirectory facilityDirectory;
+
+    /** Distinct patients across the district's facilities (null when no district selected). */
+    private Set<String> patientsInDistrict(String district) {
+        List<String> facilities = facilityDirectory.facilityIdsInDistrict(district);
+        if (facilities == null) return null;
+        Set<String> patients = new HashSet<>();
+        for (String fid : facilities) patients.addAll(protocolInstanceRepository.findPatientIdsAtFacility(fid));
+        return patients;
+    }
 
     @Cacheable(value = "analytics",
-            key = "'compliance-all-' + (#facilityId ?: 'all') + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all') + '-' + #dateFilterMode")
+            key = "'compliance-all-' + (#facilityId ?: 'all') + '-' + (#district ?: 'all') + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all') + '-' + #dateFilterMode")
     public ComplianceSummaryDto getAllProtocolsComplianceSummary(String facilityId,
+                                                                 String district,
                                                                  OffsetDateTime startDate,
                                                                  OffsetDateTime endDate,
                                                                  String dateFilterMode) {
@@ -51,7 +62,7 @@ public class ComplianceSummaryService {
         // breakdown keep their existing sources (protocol-step snapshot + occurrence-date deviations),
         // which are cohort-independent.
         if ("eventTime".equalsIgnoreCase(dateFilterMode)) {
-            return buildAllProtocolsEventTimeSummary(facilityId, startDate, endDate, snapshotDate, hasFacility);
+            return buildAllProtocolsEventTimeSummary(facilityId, district, startDate, endDate, snapshotDate, hasFacility);
         }
         long enrolledInPeriod = (startDate != null || endDate != null)
                 ? (hasFacility
@@ -156,12 +167,13 @@ public class ComplianceSummaryService {
      * enrollment path.
      */
     private ComplianceSummaryDto buildAllProtocolsEventTimeSummary(String facilityId,
+                                                                   String district,
                                                                    OffsetDateTime startDate,
                                                                    OffsetDateTime endDate,
                                                                    LocalDate snapshotDate,
                                                                    boolean hasFacility) {
         long tracked = inboundEventRepository.countDistinctPatientsWithMatchedEvents(
-                facilityId, startDate, endDate);
+                facilityId, district, startDate, endDate);
         if (tracked == 0) {
             return ComplianceSummaryDto.builder()
                     .totalEnrollments(0).compliantPatients(0).complianceRate(0.0)
@@ -170,7 +182,7 @@ public class ComplianceSummaryService {
                     .build();
         }
         long nonCompliant = deviationRepository.countDistinctNonCompliantAmongMatched(
-                facilityId, startDate, endDate);
+                facilityId, district, startDate, endDate);
         long compliant = Math.max(0, tracked - nonCompliant);
         Object[] stepArr = hasFacility
                 ? stepInstanceRepository.aggregateStepMetricsByFacility(facilityId)
@@ -225,8 +237,9 @@ public class ComplianceSummaryService {
     }
 
     @Cacheable(value = "analytics",
-            key = "'compliance-' + #protocolDefinitionId + '-' + (#facilityId ?: 'all') + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all') + '-' + #dateFilterMode")
+            key = "'compliance-' + #protocolDefinitionId + '-' + (#facilityId ?: 'all') + '-' + (#district ?: 'all') + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all') + '-' + #dateFilterMode")
     public ComplianceSummaryDto getProtocolComplianceSummary(UUID protocolDefinitionId, String facilityId,
+                                                              String district,
                                                               OffsetDateTime startDate,
                                                               OffsetDateTime endDate,
                                                               String dateFilterMode) {
@@ -252,6 +265,13 @@ public class ComplianceSummaryService {
                     protocolInstanceRepository.findPatientIdsAtFacility(facilityId));
             scoped = scoped.stream()
                     .filter(pi -> patientsAtFacility.contains(pi.getPatientId()))
+                    .collect(Collectors.toList());
+        }
+        // Global district scope — keep only patients assigned to a facility in the district.
+        Set<String> districtPatients = patientsInDistrict(district);
+        if (districtPatients != null) {
+            scoped = scoped.stream()
+                    .filter(pi -> districtPatients.contains(pi.getPatientId()))
                     .collect(Collectors.toList());
         }
         long totalEnrollments = scoped.size();   // one row per patient (latest enrollment)
@@ -314,9 +334,10 @@ public class ComplianceSummaryService {
     }
 
     @Cacheable(value = "analytics",
-            key = "'protocol-patients-' + #protocolDefinitionId + '-' + #statusFilter + '-' + (#facilityIdFilter ?: 'all') + '-' + #patientIdFilter + '-' + #startDate + '-' + #endDate + '-' + #dateFilterMode + '-' + #limit + '-' + #offset")
+            key = "'protocol-patients-' + #protocolDefinitionId + '-' + #statusFilter + '-' + (#facilityIdFilter ?: 'all') + '-' + (#district ?: 'all') + '-' + #patientIdFilter + '-' + #startDate + '-' + #endDate + '-' + #dateFilterMode + '-' + #limit + '-' + #offset")
     public ProtocolPatientsPage getProtocolPatients(UUID protocolDefinitionId, String statusFilter,
                                                     String facilityIdFilter,
+                                                    String district,
                                                     String patientIdFilter,
                                                     OffsetDateTime startDate, OffsetDateTime endDate,
                                                     String dateFilterMode,
@@ -338,6 +359,14 @@ public class ComplianceSummaryService {
                     .collect(Collectors.toSet());
             instances = instances.stream()
                     .filter(pi -> patientIdsAtFacility.contains(pi.getPatientId()))
+                    .collect(Collectors.toList());
+        }
+
+        // Global district scope.
+        Set<String> districtPatients = patientsInDistrict(district);
+        if (districtPatients != null) {
+            instances = instances.stream()
+                    .filter(pi -> districtPatients.contains(pi.getPatientId()))
                     .collect(Collectors.toList());
         }
 
