@@ -644,4 +644,55 @@ public class InboundEventRepositoryImpl
                   .fetch()
                   .map(r -> new Object[]{r.get(0, String.class), r.get(1, Long.class), r.get(2, Long.class)});
     }
+
+    @Override
+    public List<Object[]> referralsReceivedByHIEByPatient(OffsetDateTime startDate, OffsetDateTime endDate) {
+        // Referral-step completions keyed by the completing event (branch B). Carries the step's
+        // clinical completion date, which is the per-patient date the patient-detail timeline shows —
+        // NOT the referral ServiceRequest's event_time (that comes from occurrenceDateTime, a uniform
+        // scheduled date). Same referral-step match the pipeline's mv_daily_referral_kpis uses (schema/07).
+        String refSteps =
+                "(SELECT cel.cloudevents_id AS cid, max(si.completed_at) AS completed_at"
+                + " FROM compliance_event_logs cel" + finalClause()
+                + " JOIN step_instances si" + finalClause() + " ON si.completed_by_event_id = cel.id"
+                + " WHERE match(si.action_id, '^(.+-referral|referral)$')"
+                + " GROUP BY cel.cloudevents_id) rs";
+        // (A) prod TRANSFER_ENCOUNTER Encounter (ingestion-based, no matched step — dated by event_time).
+        String transferEncounter =
+                "(iel.resource_type = 'Encounter' AND arrayExists("
+                + " t -> arrayExists("
+                + "        c -> JSONExtractString(c, 'display') = 'TRANSFER_ENCOUNTER',"
+                + "        JSONExtractArrayRaw(t, 'coding')),"
+                + " JSONExtractArrayRaw(JSONExtractRaw(iel.raw_payload, 'data'), 'type')))";
+        // Referral clinical date: matched referral (rs.cid set) → step completed_at (reconciles with
+        // patient detail); transfer encounter → event_time. rs is LEFT-joined, so ClickHouse fills
+        // rs.cid='' for non-matches (join-fills-defaults, not nulls). The card/list are BOTH filtered
+        // and displayed on THIS date, so the global date range applies to the date the user sees.
+        String refDate = "if(rs.cid != '', rs.completed_at, iel.event_time)";
+
+        return dsl.select(
+                    DSL.field("iel.subject", String.class),
+                    DSL.field("any(iel.facility_id)", String.class),
+                    DSL.field("formatDateTime(max(" + refDate + "), '%Y-%m-%dT%H:%i:%SZ')", String.class),
+                    DSL.field("count()", Long.class),
+                    DSL.field("countIf(rs.cid != '')", Long.class))
+                  .from(DSL.table(DSL.sql("inbound_event_logs iel" + finalClause())))
+                  .leftJoin(DSL.table(DSL.sql(refSteps)))
+                        .on(DSL.condition("rs.cid = iel.cloudevents_id"))
+                  .where(DSL.condition("iel.status = 'ACCEPTED'"))
+                  .and(DSL.condition("iel.subject != ''"))
+                  .and(DSL.condition("(" + transferEncounter + " OR rs.cid != '')"))
+                  .and(DSL.condition(refDate + " >= parseDateTime64BestEffort(?)", dtStart(startDate)))
+                  .and(DSL.condition(refDate + " <= parseDateTime64BestEffort(?)", dtEnd(endDate)))
+                  .groupBy(DSL.field("iel.subject"))
+                  .orderBy(DSL.field("max(" + refDate + ")").desc())
+                  .fetch()
+                  .map(r -> new Object[]{
+                          r.get(0, String.class),
+                          r.get(1, String.class),
+                          r.get(2, String.class),
+                          r.get(3, Long.class),
+                          r.get(4, Long.class)
+                  });
+    }
 }

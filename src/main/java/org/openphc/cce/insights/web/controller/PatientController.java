@@ -16,8 +16,10 @@ import org.openphc.cce.insights.domain.repository.IntelligenceDeliveryRepository
 import org.openphc.cce.insights.domain.repository.ProtocolDefinitionRepository;
 import org.openphc.cce.insights.domain.repository.ProtocolInstanceRepository;
 import org.openphc.cce.insights.domain.repository.StepInstanceRepository;
+import org.openphc.cce.insights.service.PatientReferralService;
 import org.openphc.cce.insights.service.PatientTimelineService;
 import org.openphc.cce.insights.web.dto.ApiResponse;
+import org.openphc.cce.insights.web.dto.PatientReferralDto;
 import org.openphc.cce.insights.web.dto.PatientTimelineDto;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -33,6 +35,7 @@ import java.util.stream.Collectors;
 public class PatientController {
 
     private final PatientTimelineService patientTimelineService;
+    private final PatientReferralService patientReferralService;
     private final ProtocolInstanceRepository protocolInstanceRepository;
     private final StepInstanceRepository stepInstanceRepository;
     private final DeviationRepository deviationRepository;
@@ -40,6 +43,19 @@ public class PatientController {
     private final IntelligenceDeliveryRepository intelligenceDeliveryRepository;
     private final ProtocolDefinitionRepository protocolDefinitionRepository;
     private final ObjectMapper objectMapper;
+
+    /**
+     * RI-44 — "Referrals Received by HIE" indicator drill-down: patients with a referral event
+     * (event_time-scoped) for the Patients page. ("Created" and "Failed" indicators are UI
+     * placeholders pending definition, so they have no endpoint.)
+     */
+    @GetMapping("/referrals/received-by-hie")
+    public ResponseEntity<ApiResponse<List<PatientReferralDto>>> getReferralsReceivedByHie(
+            @RequestParam(required = false) OffsetDateTime startDate,
+            @RequestParam(required = false) OffsetDateTime endDate) {
+        return ResponseEntity.ok(ApiResponse.ok(
+                patientReferralService.getReferralsReceivedByHie(startDate, endDate)));
+    }
 
     @GetMapping("/{patientId}/compliance-timeline")
     public ResponseEntity<ApiResponse<PatientTimelineDto>> getComplianceTimeline(
