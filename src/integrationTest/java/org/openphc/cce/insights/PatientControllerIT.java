@@ -20,6 +20,7 @@ import org.openphc.cce.insights.domain.repository.IntelligenceDeliveryRepository
 import org.openphc.cce.insights.domain.repository.ProtocolDefinitionRepository;
 import org.openphc.cce.insights.domain.repository.ProtocolInstanceRepository;
 import org.openphc.cce.insights.domain.repository.StepInstanceRepository;
+import org.openphc.cce.insights.service.PatientReferralService;
 import org.openphc.cce.insights.service.PatientTimelineService;
 import org.openphc.cce.insights.web.controller.PatientController;
 import org.openphc.cce.insights.web.GlobalExceptionHandler;
@@ -46,6 +47,8 @@ class PatientControllerIT extends AbstractIntegrationTest {
 
     @MockitoBean
     private PatientTimelineService patientTimelineService;
+    @MockitoBean
+    private PatientReferralService patientReferralService;
     @MockitoBean
     private ProtocolInstanceRepository protocolInstanceRepository;
     @MockitoBean
