@@ -1,6 +1,6 @@
 # CCE Insights Service
 
-**Read-only compliance analytics API** for the Clinical Care Engine (CCE) platform. Provides 34 REST endpoints serving protocol adherence metrics, deviation analytics, event volume trends, ingestion pipeline monitoring, patient risk analysis, intelligence delivery tracking, referral KPIs, and lookup/filter data for dashboards.
+**Read-only compliance analytics API** for the Clinical Care Engine (CCE) platform. Provides 35 REST endpoints serving protocol adherence metrics, deviation analytics, event volume trends, ingestion pipeline monitoring, patient risk analysis, intelligence delivery tracking, referral KPIs, and lookup/filter data (incl. a global district filter) for dashboards.
 
 ## Architecture
 
@@ -31,7 +31,12 @@ Analytics UI → CCE Gateway (OAuth) → CCE Insights Service → PostgreSQL (cc
 docker compose up -d
 ```
 
-## API Endpoints (34)
+## API Endpoints (35)
+
+Most clinical-metric endpoints accept a global **`district`** query param (alongside `startDate`/
+`endDate`/`facilityId`) that scopes results to that district's facilities; `/lookups/districts`
+serves the option list. Ingestion endpoints are not district-scoped. See
+[docs/api-reference.md §0](docs/api-reference.md) for the full list.
 
 | Group | Endpoints | Path Prefix |
 |-------|-----------|-------------|
@@ -46,7 +51,7 @@ docker compose up -d
 | Practitioner Analytics | 1 | `/v1/insights/practitioners/ranking` |
 | Patient Risk | 2 | `/v1/insights/patients/` |
 | Ingestion Analytics | 4 | `/v1/insights/ingestion/` |
-| Lookups | 5 | `/v1/insights/lookups/` |
+| Lookups | 6 | `/v1/insights/lookups/` |
 | Export | 1 | `/v1/insights/exports/` |
 
 See [docs/api-reference.md](docs/api-reference.md) for full request/response schemas.

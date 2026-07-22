@@ -22,7 +22,7 @@ public interface InboundEventRepository extends ReadOnlyRepository<InboundEvent,
      * created a new enrollment or advanced an existing journey. Scoped by {@code event_time} (not
      * enrolled_at) and facility ({@code null}/'' = all). Optional dates (null = unbounded).
      */
-    long countDistinctPatientsWithMatchedEvents(String facilityId,
+    long countDistinctPatientsWithMatchedEvents(String facilityId, String district,
                                                 OffsetDateTime startDate, OffsetDateTime endDate);
 
     long countEventsBySource(String source, String facilityId,
@@ -59,11 +59,11 @@ public interface InboundEventRepository extends ReadOnlyRepository<InboundEvent,
     List<Object[]> eventCountByFacilityFromMv(OffsetDateTime startDate, OffsetDateTime endDate);
 
     // Events page — clinical volume from mv_event_volume_hourly (event_time) + processing from mv_daily_event_kpis.
-    List<Object[]> eventVolumeByResourceType(String facilityId, String source, OffsetDateTime startDate, OffsetDateTime endDate);
-    List<Object[]> eventVolumeByFacilityAndType(String facilityId, String source, String resourceType, OffsetDateTime startDate, OffsetDateTime endDate);
-    List<Object[]> eventVolumeBySource(String facilityId, OffsetDateTime startDate, OffsetDateTime endDate);
-    List<Object[]> eventVolumeTrends(String interval, String facilityId, String source, OffsetDateTime startDate, OffsetDateTime endDate);
-    Object[] eventProcessingKpis(String facilityId, OffsetDateTime startDate, OffsetDateTime endDate);
+    List<Object[]> eventVolumeByResourceType(String facilityId, String source, String district, OffsetDateTime startDate, OffsetDateTime endDate);
+    List<Object[]> eventVolumeByFacilityAndType(String facilityId, String source, String resourceType, String district, OffsetDateTime startDate, OffsetDateTime endDate);
+    List<Object[]> eventVolumeBySource(String facilityId, String district, OffsetDateTime startDate, OffsetDateTime endDate);
+    List<Object[]> eventVolumeTrends(String interval, String facilityId, String source, String district, OffsetDateTime startDate, OffsetDateTime endDate);
+    Object[] eventProcessingKpis(String facilityId, String district, OffsetDateTime startDate, OffsetDateTime endDate);
 
     /** Returns true if this facility transmitted ≥1 successful HIE submission in the range. */
     boolean facilityTransmittedInRange(String facilityId,

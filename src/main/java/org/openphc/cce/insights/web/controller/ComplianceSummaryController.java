@@ -24,11 +24,12 @@ public class ComplianceSummaryController {
     @GetMapping("/protocols/compliance-summary")
     public ResponseEntity<ApiResponse<ComplianceSummaryDto>> getAllProtocolsComplianceSummary(
             @RequestParam(required = false) String facilityId,
+            @RequestParam(required = false) String district,
             @RequestParam(required = false) OffsetDateTime startDate,
             @RequestParam(required = false) OffsetDateTime endDate,
             @RequestParam(defaultValue = "enrollment") String dateFilterMode) {
         ComplianceSummaryDto summary = complianceSummaryService.getAllProtocolsComplianceSummary(
-                facilityId, startDate, endDate, dateFilterMode);
+                facilityId, district, startDate, endDate, dateFilterMode);
         return ResponseEntity.ok(ApiResponse.ok(summary));
     }
 
@@ -36,11 +37,12 @@ public class ComplianceSummaryController {
     public ResponseEntity<ApiResponse<ComplianceSummaryDto>> getProtocolComplianceSummary(
             @PathVariable UUID protocolDefinitionId,
             @RequestParam(required = false) String facilityId,
+            @RequestParam(required = false) String district,
             @RequestParam(required = false) OffsetDateTime startDate,
             @RequestParam(required = false) OffsetDateTime endDate,
             @RequestParam(defaultValue = "enrollment") String dateFilterMode) {
         ComplianceSummaryDto summary = complianceSummaryService.getProtocolComplianceSummary(
-                protocolDefinitionId, facilityId, startDate, endDate, dateFilterMode);
+                protocolDefinitionId, facilityId, district, startDate, endDate, dateFilterMode);
         return ResponseEntity.ok(ApiResponse.ok(summary));
     }
 
@@ -60,6 +62,7 @@ public class ComplianceSummaryController {
             @PathVariable UUID protocolDefinitionId,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String facilityId,
+            @RequestParam(required = false) String district,
             @RequestParam(required = false) String patientId,
             @RequestParam(required = false) OffsetDateTime startDate,
             @RequestParam(required = false) OffsetDateTime endDate,
@@ -71,7 +74,7 @@ public class ComplianceSummaryController {
             try { offset = Integer.parseInt(cursor); } catch (NumberFormatException ignored) {}
         }
         var result = complianceSummaryService.getProtocolPatients(
-                protocolDefinitionId, status, facilityId, patientId, startDate, endDate, dateFilterMode, limit, offset);
+                protocolDefinitionId, status, facilityId, district, patientId, startDate, endDate, dateFilterMode, limit, offset);
         long totalCount = result.totalCount();
         boolean hasMore = offset + result.patients().size() < totalCount;
         String nextCursor = hasMore ? String.valueOf(offset + limit) : null;

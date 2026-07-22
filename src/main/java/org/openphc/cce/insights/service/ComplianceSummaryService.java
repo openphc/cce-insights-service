@@ -32,10 +32,21 @@ public class ComplianceSummaryService {
     private final ComplianceEventLogRepository complianceEventLogRepository;
     private final DailyKpiRepository dailyKpiRepository;
     private final InboundEventRepository inboundEventRepository;
+    private final FacilityDirectory facilityDirectory;
+
+    /** Distinct patients across the district's facilities (null when no district selected). */
+    private Set<String> patientsInDistrict(String district) {
+        List<String> facilities = facilityDirectory.facilityIdsInDistrict(district);
+        if (facilities == null) return null;
+        Set<String> patients = new HashSet<>();
+        for (String fid : facilities) patients.addAll(protocolInstanceRepository.findPatientIdsAtFacility(fid));
+        return patients;
+    }
 
     @Cacheable(value = "analytics",
-            key = "'compliance-all-' + (#facilityId ?: 'all') + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all') + '-' + #dateFilterMode")
+            key = "'compliance-all-' + (#facilityId ?: 'all') + '-' + (#district ?: 'all') + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all') + '-' + #dateFilterMode")
     public ComplianceSummaryDto getAllProtocolsComplianceSummary(String facilityId,
+                                                                 String district,
                                                                  OffsetDateTime startDate,
                                                                  OffsetDateTime endDate,
                                                                  String dateFilterMode) {
@@ -51,7 +62,7 @@ public class ComplianceSummaryService {
         // breakdown keep their existing sources (protocol-step snapshot + occurrence-date deviations),
         // which are cohort-independent.
         if ("eventTime".equalsIgnoreCase(dateFilterMode)) {
-            return buildAllProtocolsEventTimeSummary(facilityId, startDate, endDate, snapshotDate, hasFacility);
+            return buildAllProtocolsEventTimeSummary(facilityId, district, startDate, endDate, snapshotDate, hasFacility);
         }
         long enrolledInPeriod = (startDate != null || endDate != null)
                 ? (hasFacility
@@ -70,7 +81,7 @@ public class ComplianceSummaryService {
                         .deviationCount(0).deviationBreakdown(Map.of())
                         .build();
             }
-            DeviationCounts dev = occurrenceDeviations(facilityId, startDate, endDate);
+            DeviationCounts dev = occurrenceDeviations(facilityId, district, startDate, endDate);
             long effectiveEnrollments = enrolledInPeriod >= 0 ? enrolledInPeriod : totalEnrollments;
             // Compliant/non-compliant on the CLINICAL clock when a date range is set: non-compliant =
             // cohort patients (enrolled in window) that have a deviation whose OCCURRENCE date is in the
@@ -129,7 +140,7 @@ public class ComplianceSummaryService {
             compliantPatients = Math.min(totalEnrollments, toLong(dm[0]));
         }
         double complianceRate  = (double) compliantPatients / totalEnrollments;
-        DeviationCounts dev = occurrenceDeviations(facilityId, startDate, endDate);
+        DeviationCounts dev = occurrenceDeviations(facilityId, null, startDate, endDate);
 
         return ComplianceSummaryDto.builder()
                 .totalEnrollments(totalEnrollments)
@@ -156,12 +167,13 @@ public class ComplianceSummaryService {
      * enrollment path.
      */
     private ComplianceSummaryDto buildAllProtocolsEventTimeSummary(String facilityId,
+                                                                   String district,
                                                                    OffsetDateTime startDate,
                                                                    OffsetDateTime endDate,
                                                                    LocalDate snapshotDate,
                                                                    boolean hasFacility) {
         long tracked = inboundEventRepository.countDistinctPatientsWithMatchedEvents(
-                facilityId, startDate, endDate);
+                facilityId, district, startDate, endDate);
         if (tracked == 0) {
             return ComplianceSummaryDto.builder()
                     .totalEnrollments(0).compliantPatients(0).complianceRate(0.0)
@@ -170,12 +182,18 @@ public class ComplianceSummaryService {
                     .build();
         }
         long nonCompliant = deviationRepository.countDistinctNonCompliantAmongMatched(
-                facilityId, startDate, endDate);
+                facilityId, district, startDate, endDate);
         long compliant = Math.max(0, tracked - nonCompliant);
+        // Step metrics from ONE live source across all three scopes so they reconcile: single facility
+        // → per-facility aggregate; a district → per-district aggregate; otherwise all facilities. (The
+        // old all-facilities daily-snapshot MV has no facility dimension — it couldn't be district-
+        // filtered and its per-day snapshot didn't reconcile with the live per-facility numbers.)
         Object[] stepArr = hasFacility
                 ? stepInstanceRepository.aggregateStepMetricsByFacility(facilityId)
-                : dailyKpiRepository.getComplianceKpisAll(snapshotDate);
-        DeviationCounts dev = occurrenceDeviations(facilityId, startDate, endDate);
+                : (district != null && !district.isBlank())
+                        ? stepInstanceRepository.aggregateStepMetricsByDistrict(district)
+                        : stepInstanceRepository.aggregateStepMetricsAll();
+        DeviationCounts dev = occurrenceDeviations(facilityId, district, startDate, endDate);
         return ComplianceSummaryDto.builder()
                 .totalEnrollments(tracked)
                 .compliantPatients(compliant)
@@ -208,10 +226,10 @@ public class ComplianceSummaryService {
      * source and clock as the Deviations page, so the compliance-page deviation card reconciles
      * with it. Null dates widen to all-time. Passing {@code null} protocol = all protocols.
      */
-    private DeviationCounts occurrenceDeviations(String facilityId,
+    private DeviationCounts occurrenceDeviations(String facilityId, String district,
                                                  OffsetDateTime startDate, OffsetDateTime endDate) {
         long overdue = 0, missed = 0, orderViolation = 0, total = 0;
-        for (Object[] row : deviationRepository.countByTypeFiltered(null, facilityId, startDate, endDate)) {
+        for (Object[] row : deviationRepository.countByTypeFiltered(null, facilityId, district, startDate, endDate)) {
             long cnt = toLong(row[1]);
             total += cnt;
             switch ((String) row[0]) {
@@ -225,8 +243,9 @@ public class ComplianceSummaryService {
     }
 
     @Cacheable(value = "analytics",
-            key = "'compliance-' + #protocolDefinitionId + '-' + (#facilityId ?: 'all') + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all') + '-' + #dateFilterMode")
+            key = "'compliance-' + #protocolDefinitionId + '-' + (#facilityId ?: 'all') + '-' + (#district ?: 'all') + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all') + '-' + #dateFilterMode")
     public ComplianceSummaryDto getProtocolComplianceSummary(UUID protocolDefinitionId, String facilityId,
+                                                              String district,
                                                               OffsetDateTime startDate,
                                                               OffsetDateTime endDate,
                                                               String dateFilterMode) {
@@ -252,6 +271,13 @@ public class ComplianceSummaryService {
                     protocolInstanceRepository.findPatientIdsAtFacility(facilityId));
             scoped = scoped.stream()
                     .filter(pi -> patientsAtFacility.contains(pi.getPatientId()))
+                    .collect(Collectors.toList());
+        }
+        // Global district scope — keep only patients assigned to a facility in the district.
+        Set<String> districtPatients = patientsInDistrict(district);
+        if (districtPatients != null) {
+            scoped = scoped.stream()
+                    .filter(pi -> districtPatients.contains(pi.getPatientId()))
                     .collect(Collectors.toList());
         }
         long totalEnrollments = scoped.size();   // one row per patient (latest enrollment)
@@ -314,9 +340,10 @@ public class ComplianceSummaryService {
     }
 
     @Cacheable(value = "analytics",
-            key = "'protocol-patients-' + #protocolDefinitionId + '-' + #statusFilter + '-' + (#facilityIdFilter ?: 'all') + '-' + #patientIdFilter + '-' + #startDate + '-' + #endDate + '-' + #dateFilterMode + '-' + #limit + '-' + #offset")
+            key = "'protocol-patients-' + #protocolDefinitionId + '-' + #statusFilter + '-' + (#facilityIdFilter ?: 'all') + '-' + (#district ?: 'all') + '-' + #patientIdFilter + '-' + #startDate + '-' + #endDate + '-' + #dateFilterMode + '-' + #limit + '-' + #offset")
     public ProtocolPatientsPage getProtocolPatients(UUID protocolDefinitionId, String statusFilter,
                                                     String facilityIdFilter,
+                                                    String district,
                                                     String patientIdFilter,
                                                     OffsetDateTime startDate, OffsetDateTime endDate,
                                                     String dateFilterMode,
@@ -338,6 +365,14 @@ public class ComplianceSummaryService {
                     .collect(Collectors.toSet());
             instances = instances.stream()
                     .filter(pi -> patientIdsAtFacility.contains(pi.getPatientId()))
+                    .collect(Collectors.toList());
+        }
+
+        // Global district scope.
+        Set<String> districtPatients = patientsInDistrict(district);
+        if (districtPatients != null) {
+            instances = instances.stream()
+                    .filter(pi -> districtPatients.contains(pi.getPatientId()))
                     .collect(Collectors.toList());
         }
 

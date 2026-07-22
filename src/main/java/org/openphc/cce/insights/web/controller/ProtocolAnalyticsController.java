@@ -28,10 +28,11 @@ public class ProtocolAnalyticsController {
     public ResponseEntity<ApiResponse<StepAnalyticsDto>> getStepAnalytics(
             @PathVariable UUID protocolDefinitionId,
             @RequestParam(required = false) String facilityId,
+            @RequestParam(required = false) String district,
             @RequestParam(required = false) OffsetDateTime startDate,
             @RequestParam(required = false) OffsetDateTime endDate) {
         StepAnalyticsDto analytics = protocolAnalyticsService.getStepAnalytics(
-                protocolDefinitionId, facilityId, startDate, endDate);
+                protocolDefinitionId, facilityId, district, startDate, endDate);
         return ResponseEntity.ok(ApiResponse.ok(analytics));
     }
 

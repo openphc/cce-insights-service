@@ -69,8 +69,8 @@ public class ProtocolAnalyticsService {
     }
 
     @Cacheable(value = "analytics",
-            key = "'step-analytics-' + #protocolDefinitionId + '-' + (#facilityId ?: 'all') + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all')")
-    public StepAnalyticsDto getStepAnalytics(UUID protocolDefinitionId, String facilityId,
+            key = "'step-analytics-' + #protocolDefinitionId + '-' + (#facilityId ?: 'all') + '-' + (#district ?: 'all') + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all')")
+    public StepAnalyticsDto getStepAnalytics(UUID protocolDefinitionId, String facilityId, String district,
                                               OffsetDateTime startDate, OffsetDateTime endDate) {
         ProtocolDefinition pd = protocolDefinitionRepository.findById(protocolDefinitionId)
                 .orElseThrow(() -> new EntityNotFoundException(
@@ -85,8 +85,8 @@ public class ProtocolAnalyticsService {
         //  state history, so transitions that happened in the period aren't isolated.)
         List<Object[]> rows = (facilityId != null && !facilityId.isEmpty())
                 ? stepInstanceRepository.findStepAnalyticsByFacility(
-                        protocolDefinitionId, facilityId, startDate, endDate)
-                : stepInstanceRepository.findStepAnalytics(protocolDefinitionId, startDate, endDate);
+                        protocolDefinitionId, facilityId, district, startDate, endDate)
+                : stepInstanceRepository.findStepAnalytics(protocolDefinitionId, district, startDate, endDate);
 
         List<StepAnalyticsDto.StepMetric> steps = rows.stream().map(row -> {
             String actionId = (String) row[0];

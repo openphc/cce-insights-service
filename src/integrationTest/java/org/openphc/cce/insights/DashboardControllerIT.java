@@ -31,6 +31,9 @@ class DashboardControllerIT extends AbstractIntegrationTest {
     @MockitoBean
     private DashboardService dashboardService;
 
+    @MockitoBean
+    private org.openphc.cce.insights.service.FacilityDirectory facilityDirectory;
+
     @Test
     void getReferrals_returnsTotalAndFacilityBreakdown() throws Exception {
         ReferralsKpiDto dto = ReferralsKpiDto.builder()

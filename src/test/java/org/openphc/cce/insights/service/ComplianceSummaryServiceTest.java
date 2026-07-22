@@ -34,8 +34,11 @@ class ComplianceSummaryServiceTest {
     private final DailyKpiRepository dailyKpi = mock(DailyKpiRepository.class);
     private final InboundEventRepository inbound = mock(InboundEventRepository.class);
 
+    private final FacilityDirectory facilityDirectory = mock(FacilityDirectory.class);
+
     private final ComplianceSummaryService service = new ComplianceSummaryService(
-            protocolDef, protocolInstance, stepInstance, deviation, complianceEventLog, dailyKpi, inbound);
+            protocolDef, protocolInstance, stepInstance, deviation, complianceEventLog, dailyKpi, inbound,
+            facilityDirectory);
 
     /** step-metric aggregate row: [completed, overdue, missed, due, pending, early, onTime, late, totalSteps, ...]. */
     private static Object[] stepRow() {
@@ -46,25 +49,25 @@ class ComplianceSummaryServiceTest {
     void getAllProtocolsComplianceSummary_eventTimeMode_isMatchedEventCohortMinusDeviators() {
         OffsetDateTime start = OffsetDateTime.parse("2026-04-01T00:00:00Z");
         OffsetDateTime end   = OffsetDateTime.parse("2026-07-01T00:00:00Z");
-        when(inbound.countDistinctPatientsWithMatchedEvents(any(), any(), any())).thenReturn(8L);
-        when(deviation.countDistinctNonCompliantAmongMatched(any(), any(), any())).thenReturn(2L);
-        when(dailyKpi.getComplianceKpisAll(any())).thenReturn(stepRow());
-        when(deviation.countByTypeFiltered(any(), any(), any(), any()))
+        when(inbound.countDistinctPatientsWithMatchedEvents(any(), any(), any(), any())).thenReturn(8L);
+        when(deviation.countDistinctNonCompliantAmongMatched(any(), any(), any(), any())).thenReturn(2L);
+        when(stepInstance.aggregateStepMetricsAll()).thenReturn(stepRow());
+        when(deviation.countByTypeFiltered(any(), any(), any(), any(), any()))
                 .thenReturn(List.of(new Object[]{"OVERDUE", 1L}, new Object[]{"MISSED", 1L}));
 
-        ComplianceSummaryDto dto = service.getAllProtocolsComplianceSummary(null, start, end, "eventTime");
+        ComplianceSummaryDto dto = service.getAllProtocolsComplianceSummary(null, null, start, end, "eventTime");
 
         assertThat(dto.getTotalEnrollments()).isEqualTo(8);        // tracked = matched-event cohort
         assertThat(dto.getCompliantPatients()).isEqualTo(6);       // 8 - 2
         assertThat(dto.getComplianceRate()).isEqualTo(75.0);       // 6 / 8
-        assertThat(dto.getStepMetrics().getTotalSteps()).isEqualTo(60);   // step snapshot preserved
+        assertThat(dto.getStepMetrics().getTotalSteps()).isEqualTo(60);   // live all-facilities step aggregate
     }
 
     @Test
     void getAllProtocolsComplianceSummary_eventTimeMode_zeroTrackedIsEmpty() {
-        when(inbound.countDistinctPatientsWithMatchedEvents(any(), any(), any())).thenReturn(0L);
+        when(inbound.countDistinctPatientsWithMatchedEvents(any(), any(), any(), any())).thenReturn(0L);
 
-        ComplianceSummaryDto dto = service.getAllProtocolsComplianceSummary(null, null, null, "eventTime");
+        ComplianceSummaryDto dto = service.getAllProtocolsComplianceSummary(null, null, null, null, "eventTime");
 
         assertThat(dto.getTotalEnrollments()).isZero();
         assertThat(dto.getCompliantPatients()).isZero();

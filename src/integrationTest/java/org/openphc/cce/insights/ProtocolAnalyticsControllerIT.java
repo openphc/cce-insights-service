@@ -37,7 +37,7 @@ class ProtocolAnalyticsControllerIT extends AbstractIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        when(protocolAnalyticsService.getStepAnalytics(eq(PROTOCOL_ID), any(), any(), any()))
+        when(protocolAnalyticsService.getStepAnalytics(eq(PROTOCOL_ID), any(), any(), any(), any()))
                 .thenReturn(StepAnalyticsDto.builder()
                         .protocolDefinitionId(PROTOCOL_ID)
                         .protocolCanonical("http://example.org/anc|1.0")
@@ -77,7 +77,7 @@ class ProtocolAnalyticsControllerIT extends AbstractIntegrationTest {
                                 .period("2026-03").enrollments(3).build()))
                         .build());
 
-        when(protocolAnalyticsService.getStepAnalytics(eq(UNKNOWN_ID), any(), any(), any()))
+        when(protocolAnalyticsService.getStepAnalytics(eq(UNKNOWN_ID), any(), any(), any(), any()))
                 .thenThrow(new EntityNotFoundException("Protocol definition not found: " + UNKNOWN_ID));
     }
 

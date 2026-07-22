@@ -100,15 +100,24 @@ public class InboundEventRepositoryImpl
     // Excludes events not considered by any protocol (Consent onboarding, zero-match). Optional
     // facilityId ('' = all) and optional dates (null = unbounded).
     @Override
-    public long countDistinctPatientsWithMatchedEvents(String facilityId,
+    public long countDistinctPatientsWithMatchedEvents(String facilityId, String district,
                                                        OffsetDateTime startDate, OffsetDateTime endDate) {
         String fid = str(facilityId);
         var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
         Long r = dsl.select(DSL.field("uniq(iel." + INBOUND_EVENT_LOGS.SUBJECT.getName() + ")", Long.class))
                     .from(iel)
                     .where(matchedCohortCondition(fid, startDate, endDate))
+                    .and(districtScope("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName(), district))
                     .fetchOne(0, Long.class);
         return r != null ? r : 0L;
+    }
+
+    /** "district blank OR facility_id in the district's facilities" — resolved via the facility ref. */
+    private org.jooq.Condition districtScope(String facilityColumn, String district) {
+        String d = str(district);
+        return DSL.condition("? = '' OR " + facilityColumn
+                + " IN (SELECT facility_id FROM facility" + finalClause()
+                + " WHERE _is_deleted = 0 AND lower(district_name) = lower(?))", d, d);
     }
 
     /** WHERE clause (alias iel) selecting the "considered-by-a-protocol" inbound-event cohort. */
@@ -425,13 +434,14 @@ public class InboundEventRepositoryImpl
     // ── Events page: clinical event volume from mv_event_volume_hourly (event_time, ACCEPTED) ──
 
     @Override
-    public List<Object[]> eventVolumeByResourceType(String facilityId, String source,
+    public List<Object[]> eventVolumeByResourceType(String facilityId, String source, String district,
                                                      OffsetDateTime startDate, OffsetDateTime endDate) {
         String fid = str(facilityId); String src = str(source);
         return dsl.select(DSL.field("resource_type"), DSL.field("sum(event_count)", Long.class))
                   .from(DSL.table("mv_event_volume_hourly"))
                   .where(DSL.condition("resource_type != ''"))
                   .and(DSL.condition("? = '' OR facility_id = ?", fid, fid))
+                  .and(districtScope("facility_id", district))
                   .and(DSL.condition("? = '' OR source = ?", src, src))
                   .and(DSL.condition("toDate(hour) >= toDate(parseDateTime64BestEffort(?))", dtStart(startDate)))
                   .and(DSL.condition("toDate(hour) <= toDate(parseDateTime64BestEffort(?))", dtEnd(endDate)))
@@ -441,7 +451,7 @@ public class InboundEventRepositoryImpl
     }
 
     @Override
-    public List<Object[]> eventVolumeByFacilityAndType(String facilityId, String source, String resourceType,
+    public List<Object[]> eventVolumeByFacilityAndType(String facilityId, String source, String resourceType, String district,
                                                         OffsetDateTime startDate, OffsetDateTime endDate) {
         String fid = str(facilityId); String src = str(source); String rt = str(resourceType);
         // No facility_id != '' filter: facility-less events (RelatedPerson/Patient/etc.) come through
@@ -449,6 +459,7 @@ public class InboundEventRepositoryImpl
         return dsl.select(DSL.field("facility_id"), DSL.field("resource_type"), DSL.field("sum(event_count)", Long.class))
                   .from(DSL.table("mv_event_volume_hourly"))
                   .where(DSL.condition("? = '' OR facility_id = ?", fid, fid))
+                  .and(districtScope("facility_id", district))
                   .and(DSL.condition("? = '' OR source = ?", src, src))
                   .and(DSL.condition("? = '' OR resource_type = ?", rt, rt))
                   .and(DSL.condition("toDate(hour) >= toDate(parseDateTime64BestEffort(?))", dtStart(startDate)))
@@ -458,12 +469,13 @@ public class InboundEventRepositoryImpl
     }
 
     @Override
-    public List<Object[]> eventVolumeBySource(String facilityId, OffsetDateTime startDate, OffsetDateTime endDate) {
+    public List<Object[]> eventVolumeBySource(String facilityId, String district, OffsetDateTime startDate, OffsetDateTime endDate) {
         String fid = str(facilityId);
         return dsl.select(DSL.field("source"), DSL.field("sum(event_count)", Long.class))
                   .from(DSL.table("mv_event_volume_hourly"))
                   .where(DSL.condition("source != ''"))
                   .and(DSL.condition("? = '' OR facility_id = ?", fid, fid))
+                  .and(districtScope("facility_id", district))
                   .and(DSL.condition("toDate(hour) >= toDate(parseDateTime64BestEffort(?))", dtStart(startDate)))
                   .and(DSL.condition("toDate(hour) <= toDate(parseDateTime64BestEffort(?))", dtEnd(endDate)))
                   .groupBy(DSL.field("source"))
@@ -471,7 +483,7 @@ public class InboundEventRepositoryImpl
     }
 
     @Override
-    public List<Object[]> eventVolumeTrends(String interval, String facilityId, String source,
+    public List<Object[]> eventVolumeTrends(String interval, String facilityId, String source, String district,
                                             OffsetDateTime startDate, OffsetDateTime endDate) {
         String fid = str(facilityId); String src = str(source);
         String periodExpr = dateTruncExpr(interval, "hour");
@@ -479,6 +491,7 @@ public class InboundEventRepositoryImpl
                           DSL.field("sum(event_count)", Long.class).as("cnt"))
                   .from(DSL.table("mv_event_volume_hourly"))
                   .where(DSL.condition("? = '' OR facility_id = ?", fid, fid))
+                  .and(districtScope("facility_id", district))
                   .and(DSL.condition("? = '' OR source = ?", src, src))
                   .and(DSL.condition("toDate(hour) >= toDate(parseDateTime64BestEffort(?))", dtStart(startDate)))
                   .and(DSL.condition("toDate(hour) <= toDate(parseDateTime64BestEffort(?))", dtEnd(endDate)))
@@ -488,7 +501,7 @@ public class InboundEventRepositoryImpl
     }
 
     @Override
-    public Object[] eventProcessingKpis(String facilityId, OffsetDateTime startDate, OffsetDateTime endDate) {
+    public Object[] eventProcessingKpis(String facilityId, String district, OffsetDateTime startDate, OffsetDateTime endDate) {
         // Events page cards from mv_daily_event_kpis (event_time day × facility). total/matched/
         // zeromatch/duplicate/pipeline_loss all over the SAME inbound event set → rates reconcile.
         String fid = str(facilityId);
@@ -501,6 +514,7 @@ public class InboundEventRepositoryImpl
                     DSL.field("sum(pipeline_loss_count)", Long.class))
                   .from(iel)
                   .where(DSL.condition("? = '' OR facility_id = ?", fid, fid))
+                  .and(districtScope("facility_id", district))
                   .and(DSL.condition("? != '1' OR snapshot_date >= toDate(parseDateTime64BestEffort(?))",
                           startDate == null ? "0" : "1", dtStart(startDate)))
                   .and(DSL.condition("? != '1' OR snapshot_date <= toDate(parseDateTime64BestEffort(?))",

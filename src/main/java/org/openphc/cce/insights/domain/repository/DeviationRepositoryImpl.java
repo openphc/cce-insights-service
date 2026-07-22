@@ -220,8 +220,16 @@ public class DeviationRepositoryImpl
         return new PageImpl<>(content, pageable, total != null ? total : 0L);
     }
 
+    /** "district blank OR facility column in the district's facilities" — resolved via facility ref. */
+    private org.jooq.Condition districtScope(String facilityColumn, String district) {
+        String d = str(district);
+        return DSL.condition("? = '' OR " + facilityColumn
+                + " IN (SELECT facility_id FROM facility" + finalClause()
+                + " WHERE _is_deleted = 0 AND lower(district_name) = lower(?))", d, d);
+    }
+
     @Override
-    public List<Object[]> findFilteredDeviations(String deviationType, String facilityId,
+    public List<Object[]> findFilteredDeviations(String deviationType, String facilityId, String district,
                                                   UUID protocolDefinitionId,
                                                   OffsetDateTime startDate, OffsetDateTime endDate,
                                                   int lim) {
@@ -254,6 +262,7 @@ public class DeviationRepositoryImpl
                   .where(DSL.condition(
                           "? = '' OR d." + DEVIATIONS.DEVIATION_TYPE.getName() + " = ?", dtype, dtype))
                   .and(DSL.condition("? = '' OR pf.facility_id = ?", fid, fid))
+                  .and(districtScope("pf.facility_id", district))
                   .and(DSL.condition(
                           "toUUIDOrNull(?) IS NULL OR pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUIDOrNull(?)",
                           pid, pid))
@@ -277,7 +286,7 @@ public class DeviationRepositoryImpl
 
     @Override
     public List<Object[]> findDeviationTrends(String interval, OffsetDateTime startDate,
-                                               OffsetDateTime endDate, String facilityId,
+                                               OffsetDateTime endDate, String facilityId, String district,
                                                UUID protocolDefinitionId) {
         // MV-first: read mv_daily_deviation_kpis. Buckets on the clinical occurrence day
         // (snapshot_date); deviation_count is additive so sum() rolls up per interval.
@@ -292,6 +301,7 @@ public class DeviationRepositoryImpl
                   .where(DSL.condition("snapshot_date >= toDate(parseDateTime64BestEffort(?))", dtStart(startDate)))
                   .and(DSL.condition("snapshot_date <= toDate(parseDateTime64BestEffort(?))", dtEnd(endDate)))
                   .and(DSL.condition("? = '' OR facility_id = ?", fid, fid))
+                  .and(districtScope("facility_id", district))
                   .and(DSL.condition("toUUIDOrNull(?) IS NULL OR protocol_definition_id = ?", pid, pid))
                   .groupBy(
                           DSL.field(DSL.sql("period")),
@@ -302,7 +312,7 @@ public class DeviationRepositoryImpl
     }
 
     @Override
-    public List<Object[]> findDeviationsByAction(UUID protocolDefId, OffsetDateTime startDate,
+    public List<Object[]> findDeviationsByAction(UUID protocolDefId, String district, OffsetDateTime startDate,
                                                   OffsetDateTime endDate) {
         // MV-first: read mv_daily_deviation_kpis grouped by action. Counts are additive (sum/sumIf);
         // affected patients is a uniq STATE merged over the range (uniqMerge) so distinct patients are
@@ -321,6 +331,7 @@ public class DeviationRepositoryImpl
                   .where(DSL.condition("toUUIDOrNull(?) IS NULL OR protocol_definition_id = ?", pid, pid))
                   .and(DSL.condition("snapshot_date >= toDate(parseDateTime64BestEffort(?))", dtStart(startDate)))
                   .and(DSL.condition("snapshot_date <= toDate(parseDateTime64BestEffort(?))", dtEnd(endDate)))
+                  .and(districtScope("facility_id", district))
                   .groupBy(
                           DSL.field("action_id"),
                           DSL.field("protocol_definition_id"))
@@ -395,7 +406,7 @@ public class DeviationRepositoryImpl
     }
 
     @Override
-    public List<Object[]> countByTypeFiltered(UUID protocolDefinitionId, String facilityId,
+    public List<Object[]> countByTypeFiltered(UUID protocolDefinitionId, String facilityId, String district,
                                               OffsetDateTime startDate, OffsetDateTime endDate) {
         // MV-first: read the pre-aggregated mv_daily_deviation_kpis (one row per occurrence-day × dims)
         // instead of a live 4-table join. Each deviation is counted once on its clinical occurrence
@@ -409,6 +420,7 @@ public class DeviationRepositoryImpl
                   .where(DSL.condition("snapshot_date >= toDate(parseDateTime64BestEffort(?))", dtStart(startDate)))
                   .and(DSL.condition("snapshot_date <= toDate(parseDateTime64BestEffort(?))", dtEnd(endDate)))
                   .and(DSL.condition("? = '' OR facility_id = ?", fid, fid))
+                  .and(districtScope("facility_id", district))
                   .and(DSL.condition("toUUIDOrNull(?) IS NULL OR protocol_definition_id = ?", pid, pid))
                   .groupBy(DSL.field("deviation_type"))
                   .fetch()
@@ -637,9 +649,10 @@ public class DeviationRepositoryImpl
     // clinical OCCURRENCE date is in [start,end] (NOT detected_at — matches the Deviations page).
     // The cohort is a ClickHouse IN-subquery (not a bound-param list → no max_query_size risk).
     @Override
-    public long countDistinctNonCompliantAmongMatched(String facilityId,
+    public long countDistinctNonCompliantAmongMatched(String facilityId, String district,
                                                        OffsetDateTime startDate, OffsetDateTime endDate) {
         String fid = str(facilityId);
+        String dist = str(district);
         var d  = finalAs(DEVIATIONS, "d");
         var si = finalAs(STEP_INSTANCES, "si");   // for occurredAt() clinical date
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
@@ -650,6 +663,8 @@ public class DeviationRepositoryImpl
                 + " SELECT iel.subject FROM inbound_event_logs iel" + finalClause()
                 + " WHERE iel.status = 'ACCEPTED' AND iel.subject != ''"
                 + " AND (? = '' OR iel.facility_id = ?)"
+                + " AND (? = '' OR iel.facility_id IN (SELECT facility_id FROM facility" + finalClause()
+                + " WHERE _is_deleted = 0 AND lower(district_name) = lower(?)))"
                 + " AND iel.cloudevents_id IN (SELECT cel.cloudevents_id FROM compliance_event_logs cel"
                 + finalClause() + " WHERE cel.processing_status = 'MATCHED')"
                 + " AND (? != '1' OR iel.event_time >= parseDateTime64BestEffort(?))"
@@ -657,6 +672,7 @@ public class DeviationRepositoryImpl
 
         org.jooq.Condition where = DSL.condition(cohortIn,
                 fid, fid,
+                dist, dist,
                 startDate == null ? "0" : "1", dtStart(startDate),
                 endDate   == null ? "0" : "1", dtEnd(endDate));
         // Deviation OCCURRENCE (clinical) in range — NOT detected_at, NO enrolled_at.

@@ -14,10 +14,10 @@ public interface StepInstanceRepository extends ReadOnlyRepository<StepInstance,
 
     List<Object[]> countByProtocolInstanceIdGroupByState(UUID protocolInstanceId);
 
-    List<Object[]> findStepAnalytics(UUID protocolDefId,
+    List<Object[]> findStepAnalytics(UUID protocolDefId, String district,
                                      OffsetDateTime startDate, OffsetDateTime endDate);
 
-    List<Object[]> findStepAnalyticsByFacility(UUID protocolDefId, String facilityId,
+    List<Object[]> findStepAnalyticsByFacility(UUID protocolDefId, String facilityId, String district,
                                                 OffsetDateTime startDate, OffsetDateTime endDate);
 
     /** Scoped to enrollments in date range (when set) and optionally to a single facility. */
@@ -53,6 +53,10 @@ public interface StepInstanceRepository extends ReadOnlyRepository<StepInstance,
     Object[] aggregateStepMetricsAll();
 
     Object[] aggregateStepMetricsByFacility(String facilityId);
+
+    /** Same step-state aggregate as {@link #aggregateStepMetricsByFacility}, but over every facility
+     *  in the given district (all-protocols Transactions when a district is selected). */
+    Object[] aggregateStepMetricsByDistrict(String district);
 
     Object[] aggregateStepMetricsByProtocolAndFacility(UUID protocolDefinitionId, String facilityId);
 }

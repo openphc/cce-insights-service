@@ -106,9 +106,9 @@ public class DashboardService {
         // Compliant = tracked − non-compliant (a tracked patient with no in-range deviation, enrolled
         // or not, is compliant, per the RI-36 decision).
         long totalPatients = inboundEventRepository.countDistinctPatientsWithMatchedEvents(
-                facilityId, startDate, endDate);
+                facilityId, null, startDate, endDate);
         long patientsWithDeviations = deviationRepository.countDistinctNonCompliantAmongMatched(
-                facilityId, startDate, endDate);
+                facilityId, null, startDate, endDate);
 
         long compliantPatients = Math.max(0, totalPatients - patientsWithDeviations);
         double patientComplianceRate = totalPatients > 0

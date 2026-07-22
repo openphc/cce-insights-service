@@ -291,7 +291,7 @@ public class StepInstanceRepositoryImpl
     }
 
     @Override
-    public List<Object[]> findStepAnalytics(UUID protocolDefId,
+    public List<Object[]> findStepAnalytics(UUID protocolDefId, String district,
                                             OffsetDateTime startDate, OffsetDateTime endDate) {
         var stepInstances = finalAs(STEP_INSTANCES, "si");
         var protocolInstances = finalAs(PROTOCOL_INSTANCES, "pi");
@@ -327,14 +327,14 @@ public class StepInstanceRepositoryImpl
                 .where(DSL.condition(
                         "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
                         protocolDefId.toString()))
-                .and(matchedActivityBetween(startDate, endDate))
+                .and(matchedActivityBetween(district, startDate, endDate))
                 .groupBy(DSL.field("si." + STEP_INSTANCES.ACTION_ID.getName()))
                 .fetch()
                 .map(StepInstanceRepositoryImpl::toStepAnalyticsRow);
     }
 
     @Override
-    public List<Object[]> findStepAnalyticsByFacility(UUID protocolDefId, String facilityId,
+    public List<Object[]> findStepAnalyticsByFacility(UUID protocolDefId, String facilityId, String district,
                                                        OffsetDateTime startDate, OffsetDateTime endDate) {
         var stepInstances = finalAs(STEP_INSTANCES, "si");
         var protocolInstances = finalAs(PROTOCOL_INSTANCES, "pi");
@@ -374,7 +374,7 @@ public class StepInstanceRepositoryImpl
                         "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
                         protocolDefId.toString()))
                 .and(DSL.field("pf.facility_id").eq(facilityId))
-                .and(matchedActivityBetween(startDate, endDate))
+                .and(matchedActivityBetween(district, startDate, endDate))
                 .groupBy(DSL.field("si." + STEP_INSTANCES.ACTION_ID.getName()))
                 .fetch()
                 .map(StepInstanceRepositoryImpl::toStepAnalyticsRow);
@@ -438,6 +438,11 @@ public class StepInstanceRepositoryImpl
      * with the rest of the Compliance page. Null dates leave that bound open.
      */
     private org.jooq.Condition matchedActivityBetween(OffsetDateTime startDate, OffsetDateTime endDate) {
+        return matchedActivityBetween(null, startDate, endDate);
+    }
+
+    private org.jooq.Condition matchedActivityBetween(String district,
+                                                      OffsetDateTime startDate, OffsetDateTime endDate) {
         String pid = "pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName();
         StringBuilder sql = new StringBuilder(
                 pid + " IN (SELECT iel.subject FROM inbound_event_logs iel" + finalClause()
@@ -445,6 +450,11 @@ public class StepInstanceRepositoryImpl
                 + " AND iel.cloudevents_id IN (SELECT cel.cloudevents_id FROM compliance_event_logs cel"
                 + finalClause() + " WHERE cel.processing_status = 'MATCHED')");
         java.util.List<Object> binds = new java.util.ArrayList<>();
+        if (district != null && !district.isBlank()) {
+            sql.append(" AND iel.facility_id IN (SELECT facility_id FROM facility" + finalClause()
+                    + " WHERE _is_deleted = 0 AND lower(district_name) = lower(?))");
+            binds.add(district);
+        }
         if (startDate != null) {
             sql.append(" AND iel.event_time >= parseDateTime64BestEffort(?)");
             binds.add(startDate.toString());
@@ -631,6 +641,37 @@ public class StepInstanceRepositoryImpl
                 .leftJoin(si).on(DSL.condition(
                         "si." + STEP_INSTANCES.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
                 .where(DSL.field("pf.facility_id").eq(facilityId))
+                .fetchOne();
+        return r != null ? r.intoArray() : new Object[]{0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L};
+    }
+
+    @Override
+    public Object[] aggregateStepMetricsByDistrict(String district) {
+        var si = finalAs(STEP_INSTANCES, "si");
+        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        var pf = MV_PATIENT_FACILITY_LATEST.as("pf");
+        String state = "si." + STEP_INSTANCES.STATE.getName();
+        String cs    = "si." + STEP_INSTANCES.COMPLETION_STATUS.getName();
+
+        org.jooq.Record r = dsl.select(
+                    DSL.field("countIf(" + state + " IN ('COMPLETED','SKIPPED'))", Long.class).as("completed"),
+                    DSL.field("countIf(" + state + " = 'OVERDUE')",                Long.class).as("overdue"),
+                    DSL.field("countIf(" + state + " = 'MISSED')",                 Long.class).as("missed"),
+                    DSL.field("countIf(" + state + " = 'DUE')",                    Long.class).as("due"),
+                    DSL.field("countIf(" + state + " = 'PENDING')",                Long.class).as("pending"),
+                    DSL.field("countIf(" + cs    + " = 'EARLY')",                  Long.class).as("early"),
+                    DSL.field("countIf(" + cs    + " = 'ON_TIME')",                Long.class).as("on_time"),
+                    DSL.field("countIf(" + cs    + " = 'LATE')",                   Long.class).as("late"),
+                    DSL.field("countIf(" + state + " != '')",                      Long.class).as("total_steps"),
+                    DSL.field("uniq(pi.id)",                                        Long.class).as("total_enrollments")
+                )
+                .from(pi)
+                .join(pf).on(DSL.condition(
+                        "pf.patient_id = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
+                .leftJoin(si).on(DSL.condition(
+                        "si." + STEP_INSTANCES.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                .where(DSL.condition("pf.facility_id IN (SELECT facility_id FROM facility" + finalClause()
+                        + " WHERE _is_deleted = 0 AND lower(district_name) = lower(?))", district))
                 .fetchOne();
         return r != null ? r.intoArray() : new Object[]{0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L};
     }
