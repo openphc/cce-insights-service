@@ -1621,7 +1621,7 @@ Per-facility e-Buzima adoption tracking against the agreed expected-visit baseli
 
 ### 12.1 GET `/v1/insights/facilities/adoption`
 
-Per-facility e-Buzima adoption KPIs, sorted by `reportingGapPerDay` desc (worst under-reporters first).
+Per-facility e-Buzima adoption KPIs, sorted by `adoptionRate` desc.
 
 **Required Scope:** `dashboard:read`
 
@@ -1633,12 +1633,14 @@ Per-facility e-Buzima adoption KPIs, sorted by `reportingGapPerDay` desc (worst 
 | `startDate` | ISO 8601 (`LocalDate`) | — | Start of date range — with `endDate`, aggregates across the range using calendar-day averages |
 | `endDate` | ISO 8601 (`LocalDate`) | — | End of date range |
 
-> Without date params, returns today's single-day snapshot. With `startDate`+`endDate`:
-> `periodRate = SUM(actual_patients) / (expected_per_day × calendar_days) × 100`;
-> `actualVisitsPerDay`/`reportingGapPerDay` are daily averages over the range. See
-> data-dictionary §3.13b for the full formula, including the zero-baseline handling.
+> Without date params, returns today's single-day snapshot (`expectedVisits` = the daily
+> baseline). With `startDate`+`endDate` (**RI-33**), the counts are **period totals**:
+> `expectedVisits = expected_per_day × calendar_days`, `actualVisits = SUM(actual_patients)`
+> over the range, `reportingGap = expectedVisits − actualVisits`, and
+> `adoptionRate = actualVisits / expectedVisits × 100`. See data-dictionary §3.13b for the
+> full formula, including the zero-baseline handling.
 
-**Response: `200 OK`**
+**Response: `200 OK`** (example: a 10-day period)
 
 ```json
 {
@@ -1646,18 +1648,18 @@ Per-facility e-Buzima adoption KPIs, sorted by `reportingGapPerDay` desc (worst 
     {
       "facilityId": "0031",
       "facilityName": "Kabuga HC",
-      "expectedVisitsPerDay": 12,
-      "actualVisitsPerDay": 3,
+      "expectedVisits": 120,
+      "actualVisits": 30,
       "adoptionRate": 25.0,
-      "reportingGapPerDay": 9
+      "reportingGap": 90
     },
     {
       "facilityId": "0002",
       "facilityName": "Kigali South HC",
-      "expectedVisitsPerDay": 10,
-      "actualVisitsPerDay": 9,
+      "expectedVisits": 100,
+      "actualVisits": 90,
       "adoptionRate": 90.0,
-      "reportingGapPerDay": 1
+      "reportingGap": 10
     }
   ]
 }

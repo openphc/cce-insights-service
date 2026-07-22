@@ -11,15 +11,13 @@ public class AdoptionKpiDto {
     private String facilityName;
     /** Facility's district (may be empty when the source has no district). Enables the district filter. */
     private String district;
-    /** Validated baseline from facility (set by programme staff). */
-    private long expectedVisitsPerDay;
-    /** Average daily distinct reporters, rounded UP to a whole number so a sparse
-     *  non-zero average (e.g. 1 visit over 90 days = 0.011/day) still shows as ≥ 1. */
-    private long actualVisitsPerDay;
-    /** actual / expected × 100 (period total when a date range is supplied). */
+    /** RI-33: expected patient visits over the WHOLE selected period = baseline/day × days in range
+     *  (not a per-day figure). For today's single-day snapshot this equals the daily baseline. */
+    private long expectedVisits;
+    /** Actual patient visits over the selected period — the sum of daily reporters across the range. */
+    private long actualVisits;
+    /** actualVisits / expectedVisits × 100 over the period. */
     private double adoptionRate;
-    /** {@code expectedVisitsPerDay − actualVisitsPerDay}; positive = under-reporting.
-     *  Always a whole number — derived from the displayed `actualVisitsPerDay` so the
-     *  three columns are guaranteed to reconcile. */
-    private long reportingGapPerDay;
+    /** {@code expectedVisits − actualVisits} over the period; positive = under-reporting. */
+    private long reportingGap;
 }

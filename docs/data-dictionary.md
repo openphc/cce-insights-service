@@ -646,22 +646,25 @@ reporting_gap     = expected_patients_per_day − actual_patients
 
 Multi-day (date-range) aggregation (via `DailyKpiRepository.getAdoptionKpisByDateRange`):
 
-The API response uses **daily averages** so the columns are directly comparable to the
-per-day baseline (`expectedVisitsPerDay`). The adoption rate is a period total.
+**RI-33 — period totals, not per-day.** The API response reports the expected and actual
+visit counts **over the whole selected period**. The expected figure scales with the number
+of days selected (baseline/day × days), so it is no longer a fixed per-1-day number.
 
 ```
-calendar_days         = (endDate − startDate) + 1
-total_actual          = SUM(actual_patients) across MV rows in range
+calendar_days   = (endDate − startDate) + 1
+baseline_per_day = max(expected_patients_per_day)
+total_actual    = SUM(actual_patients) across MV rows in range
 
-actualVisitsPerDay    = round(total_actual / calendar_days)
-expectedVisitsPerDay  = max(expected_patients_per_day)
-reportingGapPerDay    = expectedVisitsPerDay − actualVisitsPerDay
-adoptionRate (%)      = total_actual / (expectedVisitsPerDay × calendar_days) × 100
-                        (forced to 0 when expectedVisitsPerDay = 0 AND actualVisitsPerDay = 0)
+expectedVisits  = baseline_per_day × calendar_days
+actualVisits    = round(total_actual)
+reportingGap    = expectedVisits − actualVisits
+adoptionRate(%) = total_actual / (baseline_per_day × calendar_days) × 100
+                  (forced to 0 when baseline_per_day = 0 AND actualVisits = 0)
 ```
 
-> Days without an MV row contribute `0` to the daily average — that prevents a facility
-> with sparse reporting from being over-credited.
+> For a single-day snapshot (`calendar_days = 1`) `expectedVisits` equals the daily
+> baseline, so the today view is unchanged. Days without an MV row simply contribute `0`
+> to `total_actual` — a facility with sparse reporting is not over-credited.
 >
 > **Zero-baseline override:** a facility with no expected baseline and no actual visits
 > reports `adoptionRate = 0.0`, never a vacuous `100.0` — an unbaselined, inactive

@@ -62,7 +62,7 @@ public class AdoptionService {
                 result.add(buildDto(facilityId, facilityName, district, expectedFromMv,
                         sumActual, adoptionRate, calendarDays));
             } else {
-                result.add(emptyAdoptionDto(facilityId, facilityName, district, expectedFromRef));
+                result.add(emptyAdoptionDto(facilityId, facilityName, district, expectedFromRef, calendarDays));
             }
         }
 
@@ -72,43 +72,46 @@ public class AdoptionService {
     }
 
     /**
-     * Single place where the displayed values are produced:
-     *   actualVisitsPerDay = ceil(sum_actual ÷ calendarDays)
-     *   reportingGapPerDay = expected − actualVisitsPerDay
+     * Single place where the displayed values are produced (RI-33 — over the whole period):
+     *   expectedVisits = baseline/day × calendarDays
+     *   actualVisits   = round(sum_actual over the range)
+     *   reportingGap   = expectedVisits − actualVisits
      * UI just renders these — no client-side rounding can drift.
      */
     private static AdoptionKpiDto buildDto(String facilityId, String facilityName, String district,
                                             long expectedPerDay, double sumActual,
                                             double adoptionRatePct, long calendarDays) {
-        long actualVisitsPerDay = (long) Math.ceil(sumActual / (double) calendarDays);
-        long reportingGapPerDay = expectedPerDay == 0 ? 0L : expectedPerDay - actualVisitsPerDay;
+        long expectedVisits = expectedPerDay * calendarDays;
+        long actualVisits   = Math.round(sumActual);
+        long reportingGap   = expectedPerDay == 0 ? 0L : expectedVisits - actualVisits;
         // No expected baseline AND no actual visits → 0% (an inactive/unbaselined facility hasn't
         // "adopted"); never report a vacuous 100%.
-        double adoptionRate = (expectedPerDay == 0 && actualVisitsPerDay == 0) ? 0.0 : adoptionRatePct;
+        double adoptionRate = (expectedPerDay == 0 && actualVisits == 0) ? 0.0 : adoptionRatePct;
         return AdoptionKpiDto.builder()
                 .facilityId(facilityId)
                 .facilityName(facilityName)
                 .district(district)
-                .expectedVisitsPerDay(expectedPerDay)
-                .actualVisitsPerDay(actualVisitsPerDay)
+                .expectedVisits(expectedVisits)
+                .actualVisits(actualVisits)
                 .adoptionRate(adoptionRate)
-                .reportingGapPerDay(reportingGapPerDay)
+                .reportingGap(reportingGap)
                 .build();
     }
 
-    /** Matches mv_daily_adoption_kpis behaviour when expected baseline is zero. */
+    /** Matches mv_daily_adoption_kpis behaviour when a facility has no adoption row (RI-33: over range). */
     private static AdoptionKpiDto emptyAdoptionDto(String facilityId, String facilityName,
-                                                   String district, long expected) {
+                                                   String district, long expectedPerDay, long calendarDays) {
+        long expectedVisits = expectedPerDay * calendarDays;
         return AdoptionKpiDto.builder()
                 .facilityId(facilityId)
                 .facilityName(facilityName)
                 .district(district)
-                .expectedVisitsPerDay(expected)
-                .actualVisitsPerDay(0L)
+                .expectedVisits(expectedVisits)
+                .actualVisits(0L)
                 // No adoption row → 0 actual visits → 0% (whether or not an expected baseline exists);
                 // never a vacuous 100% for a facility with no expected baseline.
                 .adoptionRate(0.0)
-                .reportingGapPerDay(expected == 0 ? 0L : expected)
+                .reportingGap(expectedPerDay == 0 ? 0L : expectedVisits)
                 .build();
     }
 
