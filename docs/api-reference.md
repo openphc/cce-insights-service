@@ -1420,11 +1420,13 @@ Most commonly deviated-from protocol steps, grouped by `actionId`. Identifies sy
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `protocolDefinitionId` | UUID | — | Filter by protocol |
+| `facilityId` | String | — | **RI-49** — scope to a single facility (`mv_daily_deviation_kpis.facility_id`) |
+| `district` | String | — | Global district filter (blank = all) |
 | `startDate` | ISO 8601 (`OffsetDateTime`) | — | Deviations detected after |
 | `endDate` | ISO 8601 (`OffsetDateTime`) | — | Deviations detected before |
 
-> No `deviationType`, `facilityId`, or `limit` param exists on this endpoint — every
-> in-scope action is returned (sorted by `totalDeviations` desc), no pagination.
+> No `deviationType` or `limit` param exists on this endpoint — every in-scope action is
+> returned (sorted by `totalDeviations` desc), no pagination.
 
 **Response: `200 OK`**
 

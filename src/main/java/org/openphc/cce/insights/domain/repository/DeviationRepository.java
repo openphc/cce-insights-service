@@ -23,7 +23,7 @@ public interface DeviationRepository extends ReadOnlyRepository<Deviation, UUID>
                                        OffsetDateTime endDate, String facilityId, String district,
                                        UUID protocolDefinitionId);
 
-    List<Object[]> findDeviationsByAction(UUID protocolDefId, String district, OffsetDateTime startDate, OffsetDateTime endDate);
+    List<Object[]> findDeviationsByAction(UUID protocolDefId, String facilityId, String district, OffsetDateTime startDate, OffsetDateTime endDate);
 
     List<Object[]> findResolutionRate(UUID protocolDefId, OffsetDateTime startDate, OffsetDateTime endDate);
 

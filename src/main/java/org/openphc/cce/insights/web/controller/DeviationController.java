@@ -69,11 +69,12 @@ public class DeviationController {
     @GetMapping("/deviations/by-action")
     public ResponseEntity<ApiResponse<List<DeviationByActionDto>>> getDeviationsByAction(
             @RequestParam(required = false) UUID protocolDefinitionId,
+            @RequestParam(required = false) String facilityId,
             @RequestParam(required = false) String district,
             @RequestParam(required = false) OffsetDateTime startDate,
             @RequestParam(required = false) OffsetDateTime endDate) {
         List<DeviationByActionDto> results = deviationAnalyticsService.getDeviationsByAction(
-                protocolDefinitionId, district, startDate, endDate);
+                protocolDefinitionId, facilityId, district, startDate, endDate);
         return ResponseEntity.ok(ApiResponse.ok(results));
     }
 

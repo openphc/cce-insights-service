@@ -312,12 +312,14 @@ public class DeviationRepositoryImpl
     }
 
     @Override
-    public List<Object[]> findDeviationsByAction(UUID protocolDefId, String district, OffsetDateTime startDate,
-                                                  OffsetDateTime endDate) {
+    public List<Object[]> findDeviationsByAction(UUID protocolDefId, String facilityId, String district,
+                                                  OffsetDateTime startDate, OffsetDateTime endDate) {
         // MV-first: read mv_daily_deviation_kpis grouped by action. Counts are additive (sum/sumIf);
         // affected patients is a uniq STATE merged over the range (uniqMerge) so distinct patients are
         // correct across days. protocol_canonical is carried in the MV (any() — 1:1 with protocol).
+        // The MV is facility-grained, so facilityId scopes directly (same as the trends read).
         String pid = uuid(protocolDefId);
+        String fid = str(facilityId);
         return dsl.select(
                     DSL.field("action_id"),
                     DSL.field("protocol_definition_id"),
@@ -331,6 +333,7 @@ public class DeviationRepositoryImpl
                   .where(DSL.condition("toUUIDOrNull(?) IS NULL OR protocol_definition_id = ?", pid, pid))
                   .and(DSL.condition("snapshot_date >= toDate(parseDateTime64BestEffort(?))", dtStart(startDate)))
                   .and(DSL.condition("snapshot_date <= toDate(parseDateTime64BestEffort(?))", dtEnd(endDate)))
+                  .and(DSL.condition("? = '' OR facility_id = ?", fid, fid))
                   .and(districtScope("facility_id", district))
                   .groupBy(
                           DSL.field("action_id"),
