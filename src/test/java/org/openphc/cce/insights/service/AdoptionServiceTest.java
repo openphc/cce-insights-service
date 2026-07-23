@@ -52,15 +52,15 @@ class AdoptionServiceTest {
 
         AdoptionKpiDto dto = service.getAdoptionKpis().get(0);
 
-        assertThat(dto.getExpectedVisitsPerDay()).isEqualTo(10);
-        assertThat(dto.getActualVisitsPerDay()).isEqualTo(7);
+        assertThat(dto.getExpectedVisits()).isEqualTo(10);
+        assertThat(dto.getActualVisits()).isEqualTo(7);
         assertThat(dto.getAdoptionRate()).isEqualTo(70.0);
-        assertThat(dto.getReportingGapPerDay()).isEqualTo(3);
+        assertThat(dto.getReportingGap()).isEqualTo(3);
     }
 
     @Test
-    void getAdoptionKpisByDateRange_averagesOverCalendarDaysIncludingSilentDays() {
-        // 10 calendar days, 30 total visits → ceil(30 / 10) = 3 per day; gap = 8 - 3 = 5.
+    void getAdoptionKpisByDateRange_multipliesExpectedByDaysAndSumsActualOverPeriod() {
+        // RI-33: 10 calendar days, expected 8/day → 80 over the period; 30 total visits; gap = 80 − 30 = 50.
         LocalDate start = LocalDate.of(2026, 1, 1);
         LocalDate end = LocalDate.of(2026, 1, 10);
         when(repo.getAdoptionKpisByDateRange(start, end)).thenReturn(List.<Object[]>of(adoption("F-A", 8, 30.0, 37.5)));
@@ -68,8 +68,9 @@ class AdoptionServiceTest {
 
         AdoptionKpiDto dto = service.getAdoptionKpisByDateRange(start, end).get(0);
 
-        assertThat(dto.getActualVisitsPerDay()).isEqualTo(3);
-        assertThat(dto.getReportingGapPerDay()).isEqualTo(5);
+        assertThat(dto.getExpectedVisits()).isEqualTo(80);
+        assertThat(dto.getActualVisits()).isEqualTo(30);
+        assertThat(dto.getReportingGap()).isEqualTo(50);
     }
 
     @Test
@@ -82,9 +83,9 @@ class AdoptionServiceTest {
 
         assertThat(result).containsOnlyKeys("F-A", "F-B");
         AdoptionKpiDto b = result.get("F-B");
-        assertThat(b.getActualVisitsPerDay()).isZero();
+        assertThat(b.getActualVisits()).isZero();
         assertThat(b.getAdoptionRate()).isEqualTo(0.0);
-        assertThat(b.getReportingGapPerDay()).isEqualTo(6);
+        assertThat(b.getReportingGap()).isEqualTo(6);
     }
 
     @Test
@@ -123,8 +124,8 @@ class AdoptionServiceTest {
 
         AdoptionKpiDto dto = service.getAdoptionKpis().get(0);
 
-        assertThat(dto.getActualVisitsPerDay()).isZero();
+        assertThat(dto.getActualVisits()).isZero();
         assertThat(dto.getAdoptionRate()).isEqualTo(0.0);
-        assertThat(dto.getReportingGapPerDay()).isZero();
+        assertThat(dto.getReportingGap()).isZero();
     }
 }

@@ -289,16 +289,16 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
 
     @Override
     public List<Object[]> getAdoptionKpisByDateRange(LocalDate startDate, LocalDate endDate) {
-        // Period semantics, all aligned with UI labels "Expected Visits / Day", "Actual
-        // Visits / Day", "Reporting Gap / Day":
-        //   expectedVisitsPerDay = baseline from facility (per day)
-        //   actualVisitsPerDay   = AVG of daily reporters over the calendar range
-        //                          (sum of MV actual_patients ÷ calendar_days)
-        //   reportingGapPerDay   = expectedVisitsPerDay − actualVisitsPerDay
-        //   adoptionRate (%)     = total_actual / (expected × calendar_days) × 100
+        // RI-33 period semantics (the service turns these raw inputs into the displayed
+        // "Expected Visits (Period)", "Actual Visits (Period)", "Reporting Gap", "Adoption Rate"):
+        //   expected baseline/day = max(expected_patients_per_day) from facility
+        //   sum_actual            = SUM(mv actual_patients) over snapshot_date in range
+        //   expectedVisits        = baseline/day × calendarDays   (derived in the service)
+        //   actualVisits          = round(sum_actual)             (period total, not a daily avg)
+        //   adoptionRate (%)      = sum_actual / (baseline/day × calendarDays) × 100
         //
-        // Calendar days (not MV row count) is used so that a facility with sparse MV
-        // data is not double-credited — silent days contribute zero to the daily average.
+        // snapshot_date = toDate(event_time) in the MV, so this is a clinical event-time window.
+        // calendarDays (not MV row count) is the denominator so silent days don't over-credit.
         long calendarDays = ChronoUnit.DAYS.between(startDate, endDate) + 1;
 
         var facilityIds = dsl.select(DSL.field("facility_id"))

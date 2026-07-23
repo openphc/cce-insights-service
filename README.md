@@ -42,12 +42,12 @@ serves the option list. Ingestion endpoints are not district-scoped. See
 |-------|-----------|-------------|
 | Compliance Summaries | 4 | `/v1/insights/protocols/`, `/v1/insights/facilities/` |
 | Dashboard | 3 | `/v1/insights/dashboard/` |
-| Patient Compliance | 5 | `/v1/insights/patients/` |
-| Deviations | 4 | `/v1/insights/deviations/` |
+| Patient Compliance | 7 | `/v1/insights/patients/` |
+| Deviations | 6 | `/v1/insights/deviations/` |
 | Intelligence | 1 | `/v1/insights/intelligence/` |
 | Event Volume | 5 | `/v1/insights/events/` |
 | Protocol Analytics | 5 | `/v1/insights/protocols/{id}/` |
-| Facility Analytics | 1 | `/v1/insights/facilities/ranking` |
+| Facility Analytics | 5 | `/v1/insights/facilities/` (ranking, adoption, reference, activity-summary, activity-detail) |
 | Practitioner Analytics | 1 | `/v1/insights/practitioners/ranking` |
 | Patient Risk | 2 | `/v1/insights/patients/` |
 | Ingestion Analytics | 4 | `/v1/insights/ingestion/` |
