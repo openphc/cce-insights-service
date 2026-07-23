@@ -135,11 +135,11 @@ public class DeviationAnalyticsService {
                 .build();
     }
 
-    @Cacheable(value = "analytics", key = "'dev-action-' + #protocolDefId + '-' + (#district ?: 'all') + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all')")
-    public List<DeviationByActionDto> getDeviationsByAction(UUID protocolDefId, String district,
+    @Cacheable(value = "analytics", key = "'dev-action-' + #protocolDefId + '-' + (#facilityId ?: 'all') + '-' + (#district ?: 'all') + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all')")
+    public List<DeviationByActionDto> getDeviationsByAction(UUID protocolDefId, String facilityId, String district,
                                                              OffsetDateTime startDate,
                                                              OffsetDateTime endDate) {
-        List<Object[]> rows = deviationRepository.findDeviationsByAction(protocolDefId, district, startDate, endDate);
+        List<Object[]> rows = deviationRepository.findDeviationsByAction(protocolDefId, facilityId, district, startDate, endDate);
         return rows.stream().map(row -> DeviationByActionDto.builder()
                 .actionId((String) row[0])
                 .protocolDefinitionId(uuidOf(row[1]))

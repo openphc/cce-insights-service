@@ -17,6 +17,7 @@ import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -48,7 +49,7 @@ class DeviationControllerIT extends AbstractIntegrationTest {
                                 .last24Hours(1).last7Days(3).last30Days(5).build())
                         .build());
 
-        when(deviationAnalyticsService.getDeviationsByAction(any(), any(), any(), any()))
+        when(deviationAnalyticsService.getDeviationsByAction(any(), any(), any(), any(), any()))
                 .thenReturn(List.of(DeviationByActionDto.builder()
                         .actionId("visit-1").totalDeviations(2).build()));
 
@@ -84,6 +85,17 @@ class DeviationControllerIT extends AbstractIntegrationTest {
         mockMvc.perform(get("/v1/insights/deviations/by-action"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").isArray());
+    }
+
+    /** RI-49: the by-action ("Most Deviated Steps") endpoint passes facilityId through to the service. */
+    @Test
+    void getDeviationsByAction_passesFacilityIdToService() throws Exception {
+        mockMvc.perform(get("/v1/insights/deviations/by-action").param("facilityId", "0022"))
+                .andExpect(status().isOk());
+
+        verify(deviationAnalyticsService).getDeviationsByAction(
+                nullable(java.util.UUID.class), eq("0022"), nullable(String.class),
+                nullable(java.time.OffsetDateTime.class), nullable(java.time.OffsetDateTime.class));
     }
 
     @Test

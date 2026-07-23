@@ -1,6 +1,6 @@
 # CCE Insights Service
 
-**Read-only compliance analytics API** for the Clinical Care Engine (CCE) platform. Provides 35 REST endpoints serving protocol adherence metrics, deviation analytics, event volume trends, ingestion pipeline monitoring, patient risk analysis, intelligence delivery tracking, referral KPIs, and lookup/filter data (incl. a global district filter) for dashboards.
+**Read-only compliance analytics API** for the Clinical Care Engine (CCE) platform. Provides 35 REST endpoints serving protocol adherence metrics, deviation analytics, event volume trends, ingestion pipeline monitoring, patient risk analysis, intelligence delivery tracking, referral KPIs, and lookup/filter data (incl. a global district filter) for dashboards. 
 
 ## Architecture
 
