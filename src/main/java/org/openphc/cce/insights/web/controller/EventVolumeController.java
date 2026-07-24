@@ -58,6 +58,16 @@ public class EventVolumeController {
         return ResponseEntity.ok(ApiResponse.ok(counts));
     }
 
+    @GetMapping("/zero-match")
+    public ResponseEntity<ApiResponse<List<ZeroMatchEventDto>>> getZeroMatchEvents(
+            @RequestParam(required = false) String facilityId,
+            @RequestParam(required = false) String district,
+            @RequestParam(required = false) OffsetDateTime startDate,
+            @RequestParam(required = false) OffsetDateTime endDate) {
+        List<ZeroMatchEventDto> events = eventVolumeService.getZeroMatchEvents(facilityId, district, startDate, endDate);
+        return ResponseEntity.ok(ApiResponse.ok(events));
+    }
+
     @GetMapping("/by-facility")
     public ResponseEntity<ApiResponse<List<FacilityEventCountDto>>> getByFacility(
             @RequestParam(required = false) String facilityId,
