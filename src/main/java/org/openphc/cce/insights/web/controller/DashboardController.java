@@ -26,9 +26,10 @@ public class DashboardController {
     @GetMapping("/overview")
     public ResponseEntity<ApiResponse<DashboardOverviewDto>> getOverview(
             @RequestParam(required = false) String facilityId,
+            @RequestParam(required = false) String district,
             @RequestParam(required = false) OffsetDateTime startDate,
             @RequestParam(required = false) OffsetDateTime endDate) {
-        DashboardOverviewDto overview = dashboardService.getOverview(facilityId, startDate, endDate);
+        DashboardOverviewDto overview = dashboardService.getOverview(facilityId, district, startDate, endDate);
         return ResponseEntity.ok(ApiResponse.ok(overview));
     }
 
