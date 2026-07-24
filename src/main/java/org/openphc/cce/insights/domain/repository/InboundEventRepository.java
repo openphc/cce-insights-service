@@ -65,6 +65,19 @@ public interface InboundEventRepository extends ReadOnlyRepository<InboundEvent,
     List<Object[]> eventVolumeTrends(String interval, String facilityId, String source, String district, OffsetDateTime startDate, OffsetDateTime endDate);
     Object[] eventProcessingKpis(String facilityId, String district, OffsetDateTime startDate, OffsetDateTime endDate);
 
+    /**
+     * Zero-match event breakdown (Events page drill-down table): ACCEPTED inbound events whose
+     * compliance_event_logs.processing_status = 'ZERO_MATCH', grouped by resource type, clinical
+     * code, category and facility. Code/category are extracted ad-hoc from raw_payload (not
+     * materialized columns) since their JSON path varies by FHIR resourceType.
+     * Rows: {@code [resourceType(String), code(String), category(String), facilityId(String), count(Long)]}.
+     */
+    List<Object[]> findZeroMatchEvents(String facilityId, String district,
+                                        OffsetDateTime startDate, OffsetDateTime endDate);
+
+    /** Most recent inbound_event_logs.received_at across all events — pipeline freshness indicator. */
+    OffsetDateTime findLastReceivedAt();
+
     /** Returns true if this facility transmitted ≥1 successful HIE submission in the range. */
     boolean facilityTransmittedInRange(String facilityId,
                                        OffsetDateTime startDate, OffsetDateTime endDate);

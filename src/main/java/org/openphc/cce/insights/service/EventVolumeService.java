@@ -160,6 +160,28 @@ public class EventVolumeService {
         }).collect(Collectors.toList());
     }
 
+    @Cacheable(value = "metrics",
+            key = "'vol-zeromatch-' + (#facilityId ?: 'all') + '-' + (#district ?: 'all') + '-' + #startDate + '-' + #endDate")
+    public List<ZeroMatchEventDto> getZeroMatchEvents(String facilityId, String district,
+                                                       OffsetDateTime startDate, OffsetDateTime endDate) {
+        List<Object[]> rows = inboundEventRepository.findZeroMatchEvents(facilityId, district, startDate, endDate);
+        long total = rows.stream().mapToLong(r -> ((Number) r[4]).longValue()).sum();
+        return rows.stream()
+                .map(r -> {
+                    long count = ((Number) r[4]).longValue();
+                    double pct = total > 0 ? Math.round((double) count / total * 1000.0) / 10.0 : 0.0;
+                    return ZeroMatchEventDto.builder()
+                            .resourceType((String) r[0])
+                            .code((String) r[1])
+                            .category((String) r[2])
+                            .facilityId((String) r[3])
+                            .count(count)
+                            .percentage(pct)
+                            .build();
+                })
+                .collect(Collectors.toList());
+    }
+
     @Cacheable(value = "metrics", key = "'vol-trends-' + #interval + '-' + #facilityId + '-' + #source + '-' + (#district ?: 'all') + '-' + #startDate + '-' + #endDate")
     public EventVolumeTrendDto getTrends(String interval, OffsetDateTime startDate,
                                           OffsetDateTime endDate, String facilityId, String source, String district) {

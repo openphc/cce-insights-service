@@ -500,6 +500,81 @@ public class InboundEventRepositoryImpl
                   .fetch().map(r -> new Object[]{r.value1(), r.get(1, String.class), r.value3()});
     }
 
+    // Zero-match code/category are read ad-hoc from raw_payload (not materialized): the JSON path
+    // depends on the FHIR resourceType (Observation/ServiceRequest/Condition use `code`,
+    // MedicationRequest uses `medicationCodeableConcept`), so a single materialized column can't
+    // cover every shape. Mirrors the nested-if extraction style already used for facility_id
+    // (schema/01-create-tables.sql) — arrayElement()/JSONExtractString() on a missing path return
+    // '' rather than throwing, so no extra null-guards are needed.
+    private static String zeroMatchCodeExpr() {
+        String raw = "iel." + INBOUND_EVENT_LOGS.RAW_PAYLOAD.getName();
+        String codeCoding = "arrayElement(JSONExtractArrayRaw(" + raw + ", 'data', 'code', 'coding'), 1)";
+        String medCoding = "arrayElement(JSONExtractArrayRaw(" + raw + ", 'data', 'medicationCodeableConcept', 'coding'), 1)";
+        return "if(JSONExtractString(" + raw + ", 'data', 'code', 'text') != '', JSONExtractString(" + raw + ", 'data', 'code', 'text'), "
+             + "if(JSONExtractString(" + codeCoding + ", 'display') != '', JSONExtractString(" + codeCoding + ", 'display'), "
+             + "if(JSONExtractString(" + codeCoding + ", 'code') != '', JSONExtractString(" + codeCoding + ", 'code'), "
+             + "if(JSONExtractString(" + raw + ", 'data', 'medicationCodeableConcept', 'text') != '', JSONExtractString(" + raw + ", 'data', 'medicationCodeableConcept', 'text'), "
+             + "JSONExtractString(" + medCoding + ", 'display')))))";
+    }
+
+    private static String zeroMatchCategoryExpr() {
+        String raw = "iel." + INBOUND_EVENT_LOGS.RAW_PAYLOAD.getName();
+        String categoryFirst = "arrayElement(JSONExtractArrayRaw(" + raw + ", 'data', 'category'), 1)";
+        String categoryCoding = "arrayElement(JSONExtractArrayRaw(" + categoryFirst + ", 'coding'), 1)";
+        return "if(JSONExtractString(" + categoryFirst + ", 'text') != '', JSONExtractString(" + categoryFirst + ", 'text'), "
+             + "JSONExtractString(" + categoryCoding + ", 'display'))";
+    }
+
+    @Override
+    public List<Object[]> findZeroMatchEvents(String facilityId, String district,
+                                               OffsetDateTime startDate, OffsetDateTime endDate) {
+        String fid = str(facilityId);
+        var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
+        var cel = finalAs(COMPLIANCE_EVENT_LOGS, "cel");
+        return dsl.select(
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName()).as("resource_type"),
+                    DSL.field(DSL.sql(zeroMatchCodeExpr())).as("code"),
+                    DSL.field(DSL.sql(zeroMatchCategoryExpr())).as("category"),
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()).as("facility_id"),
+                    DSL.field("count()", Long.class).as("cnt"))
+                  .from(cel)
+                  .join(iel).on(DSL.condition(
+                          "iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName() +
+                          " = cel." + COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
+                  .where(DSL.field("cel." + COMPLIANCE_EVENT_LOGS.PROCESSING_STATUS.getName()).eq("ZERO_MATCH"))
+                  .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?", fid, fid))
+                  .and(districtScope("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName(), district))
+                  .and(DSL.condition(
+                          "iel." + INBOUND_EVENT_LOGS.EVENT_TIME.getName() + " >= parseDateTime64BestEffort(?)",
+                          dtStart(startDate)))
+                  .and(DSL.condition(
+                          "iel." + INBOUND_EVENT_LOGS.EVENT_TIME.getName() + " <= parseDateTime64BestEffort(?)",
+                          dtEnd(endDate)))
+                  .groupBy(
+                          DSL.field(DSL.sql("resource_type")),
+                          DSL.field(DSL.sql("code")),
+                          DSL.field(DSL.sql("category")),
+                          DSL.field(DSL.sql("facility_id")))
+                  .orderBy(DSL.field("cnt").desc())
+                  .fetch()
+                  .map(r -> new Object[]{
+                          r.get(0, String.class),
+                          r.get(1, String.class),
+                          r.get(2, String.class),
+                          r.get(3, String.class),
+                          r.get(4, Long.class)
+                  });
+    }
+
+    @Override
+    public OffsetDateTime findLastReceivedAt() {
+        var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
+        var r = dsl.select(DSL.field("max(iel." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName() + ")").as("last_received"))
+                    .from(iel)
+                    .fetchOne();
+        return r != null ? recordDateTime(r, "last_received") : null;
+    }
+
     @Override
     public Object[] eventProcessingKpis(String facilityId, String district, OffsetDateTime startDate, OffsetDateTime endDate) {
         // Events page cards from mv_daily_event_kpis (event_time day × facility). total/matched/

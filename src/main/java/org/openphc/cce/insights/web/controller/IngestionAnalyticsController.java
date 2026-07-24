@@ -27,6 +27,11 @@ public class IngestionAnalyticsController {
         return ResponseEntity.ok(ApiResponse.ok(funnel));
     }
 
+    @GetMapping("/last-event")
+    public ResponseEntity<ApiResponse<LastIngestedEventDto>> getLastIngestedEvent() {
+        return ResponseEntity.ok(ApiResponse.ok(ingestionAnalyticsService.getLastIngestedEvent()));
+    }
+
     @GetMapping("/rejections")
     public ResponseEntity<ApiResponse<RejectionAnalyticsDto>> getRejectionAnalytics(
             @RequestParam(required = false) String facilityId,

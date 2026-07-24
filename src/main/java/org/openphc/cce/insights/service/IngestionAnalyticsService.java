@@ -208,6 +208,16 @@ public class IngestionAnalyticsService {
                 .build();
     }
 
+    // Uncached (unlike the other methods here): this is a live freshness/health indicator, so the
+    // 15-minute "metrics" cache TTL would make the pipeline look stale for far longer than it is.
+    // Deliberately unfiltered by date range — it always reflects the true latest ingest, not the
+    // latest within whatever From/To the user has selected.
+    public LastIngestedEventDto getLastIngestedEvent() {
+        return LastIngestedEventDto.builder()
+                .lastEventTime(inboundEventRepository.findLastReceivedAt())
+                .build();
+    }
+
     private List<IngestionFunnelDto.TrendPoint> buildTrendPoints(List<Object[]> rows) {
         // rows: [period, status, count]
         Map<String, Map<String, Long>> periodMap = new LinkedHashMap<>();
