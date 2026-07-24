@@ -2026,8 +2026,17 @@ Top-line HIE transmission and deviation KPIs, plus the top/bottom 3 facilities b
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `facilityId` | String | — | Filter by facility |
-| `startDate` | ISO 8601 (`OffsetDateTime`) | — | Start of date range |
-| `endDate` | ISO 8601 (`OffsetDateTime`) | — | End of date range |
+| `district` | String | — | **RI-53** — filter by district (scopes the patient counts to that district's facilities) |
+| `startDate` | ISO 8601 (`OffsetDateTime`) | — | Start of date range (scoped by `event_time`) |
+| `endDate` | ISO 8601 (`OffsetDateTime`) | — | End of date range (scoped by `event_time`) |
+
+> **RI-53:** the Dashboard **"Patients Received by HIE"** indicator reads `patientsReceivedHIE` —
+> distinct **protocol-tracked** patients (`uniq(subject)` over ACCEPTED inbound events **matched to a
+> protocol**, `compliance_event_logs.processing_status = 'MATCHED'`) — **not** a raw source-filtered
+> count. It uses the shared matched-cohort query, scoped by **`event_time`**, facility and **`district`**
+> (resolved to the district's facilities via the facility reference), consistent with the other cards.
+> Events with a blank `facility_id` can't be district-attributed and are excluded when a district is
+> selected, so district totals may be less than the all-districts total.
 
 **Response: `200 OK`**
 
@@ -2154,6 +2163,14 @@ carrying `TRANSFER_ENCOUNTER`; dev/demo: an accepted event that completed a Refe
 "Compliant" = those matched to a Referral step in a tracked care journey; "Non-Compliant" =
 received − matched; rate = compliant ÷ received. Backed by the `mv_daily_referral_kpis`
 materialized view (`referral_count` = received, `matched_count` = compliant).
+
+> **RI-51:** the Dashboard **"Total Referrals"** national indicator reads this endpoint's
+> `totalReferralsReceived` (event count), and the Facility Ranking **Referrals** column + the
+> Facilities **"Referral Details"** card read its `byFacility[].count` — one source, so all three
+> agree and the per-facility counts sum to the national total. This count is **event-grained** (a
+> patient referred twice counts twice); it is deliberately distinct from `/patients/referrals/received-by-hie`
+> (distinct *patients*) and from the Compliance page's Service Workflow **Referral** step (patients
+> who *completed* the referral step).
 
 **Required Scope:** `dashboard:read`
 

@@ -30,13 +30,18 @@ public class DashboardService {
     private final PractitionerRankingService practitionerRankingService;
     private final DeviationAnalyticsService deviationAnalyticsService;
 
-    @Cacheable(value = "metrics", key = "'dashboard-overview-' + #facilityId + '-' + #startDate + '-' + #endDate")
+    @Cacheable(value = "metrics",
+            key = "'dashboard-overview-' + #facilityId + '-' + (#district ?: 'all') + '-' + #startDate + '-' + #endDate")
     public DashboardOverviewDto getOverview(String facilityId,
+                                             String district,
                                              OffsetDateTime startDate,
                                              OffsetDateTime endDate) {
-        // Patients received via HIE (source = 'ebuzima')
-        long patientsFromHIE = inboundEventRepository.countDistinctPatientSubjectsBySource(
-                "ebuzima", facilityId, startDate, endDate);
+        // RI-53 — "Patients Received by HIE" = distinct patients whose events are PROTOCOL-TRACKED
+        // (ACCEPTED + MATCHED to a protocol) in the range — NOT a raw source-filtered count. Uses the
+        // shared matched-cohort query, which is already event_time-scoped and honours the global
+        // district filter (facility reference), consistent with the other Dashboard cards.
+        long patientsFromHIE = inboundEventRepository.countDistinctPatientsWithMatchedEvents(
+                facilityId, district, startDate, endDate);
 
         // Patients from E-Buzima EMR direct (source = 'ebuzima-direct') — pending integration
         long totalPatientsEBuzima = inboundEventRepository.countDistinctPatientSubjectsBySource(
