@@ -25,6 +25,7 @@ public class PatientTimelineService {
     private final ProtocolDefinitionRepository protocolDefinitionRepository;
     private final DeviationRepository deviationRepository;
     private final ComplianceEventLogRepository complianceEventLogRepository;
+    private final DailyKpiRepository dailyKpiRepository;
     private final ObjectMapper objectMapper;
 
     public PatientTimelineDto getTimeline(String patientId,
@@ -44,6 +45,13 @@ public class PatientTimelineService {
                 .stream()
                 .collect(Collectors.groupingBy(Deviation::getProtocolInstanceId));
 
+        // facility_id -> facility_name, for steps whose backing FHIR resource type has no
+        // resolvable name field of its own (see resolveEventContext / extractFacilityName).
+        Map<String, String> facilityNameMap = new HashMap<>();
+        for (Object[] row : dailyKpiRepository.getFacilityReference()) {
+            facilityNameMap.put((String) row[0], (String) row[1]);
+        }
+
         List<PatientTimelineDto.ProtocolTimeline> protocols = new ArrayList<>();
         for (ProtocolInstance pi : instances) {
             List<StepInstance> steps = stepsByInstance.getOrDefault(pi.getId(), List.of());
@@ -60,7 +68,7 @@ public class PatientTimelineService {
             }
 
             // Build event context lookup: stepInstance.matchedEventId → EventContext (effectiveDateTime, practitioner, facilityId)
-            Map<UUID, EventContext> eventContextMap = resolveEventContext(steps);
+            Map<UUID, EventContext> eventContextMap = resolveEventContext(steps, facilityNameMap);
 
             // Deviations already loaded in batch above
             List<Deviation> deviations = deviationsByInstance.getOrDefault(pi.getId(), List.of());
@@ -266,7 +274,7 @@ public class PatientTimelineService {
      * Uses step_instance.completed_by_event_id → compliance_event_logs → inbound_event_logs.
      * Returns a map of stepInstance.id → EventContext.
      */
-    private Map<UUID, EventContext> resolveEventContext(List<StepInstance> steps) {
+    private Map<UUID, EventContext> resolveEventContext(List<StepInstance> steps, Map<String, String> facilityNameMap) {
         Map<UUID, EventContext> result = new HashMap<>();
         Map<UUID, UUID> stepToEvent = new LinkedHashMap<>();
         for (StepInstance si : steps) {
@@ -287,6 +295,12 @@ public class PatientTimelineService {
                 String practitioner = el.getData() != null ? extractPractitioner(el.getData()) : null;
                 String facilityId = resolveFacilityId(el);
                 String facilityName = el.getData() != null ? extractFacilityName(el.getData(), facilityId) : null;
+                // extractFacilityName only resolves a display name for FHIR resource types that carry
+                // one (Encounter); other types (e.g. Observation) only have the source-facility
+                // extension id, so fall back to the facility dimension lookup by that id.
+                if (facilityName == null && facilityId != null) {
+                    facilityName = facilityNameMap.get(facilityId);
+                }
                 if (effectiveDt != null || practitioner != null || facilityId != null || facilityName != null) {
                     result.put(entry.getKey(), new EventContext(effectiveDt, practitioner, facilityId, facilityName));
                 }
