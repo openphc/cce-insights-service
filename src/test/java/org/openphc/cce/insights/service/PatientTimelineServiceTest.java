@@ -12,6 +12,7 @@ import org.openphc.cce.insights.domain.enums.CompletionStatus;
 import org.openphc.cce.insights.domain.enums.ProtocolInstanceStatus;
 import org.openphc.cce.insights.domain.enums.StepState;
 import org.openphc.cce.insights.domain.repository.ComplianceEventLogRepository;
+import org.openphc.cce.insights.domain.repository.DailyKpiRepository;
 import org.openphc.cce.insights.domain.repository.DeviationRepository;
 import org.openphc.cce.insights.domain.repository.ProtocolDefinitionRepository;
 import org.openphc.cce.insights.domain.repository.ProtocolInstanceRepository;
@@ -53,6 +54,7 @@ class PatientTimelineServiceTest {
     private ProtocolDefinitionRepository protocolDefinitionRepository;
     private DeviationRepository deviationRepository;
     private ComplianceEventLogRepository complianceEventLogRepository;
+    private DailyKpiRepository dailyKpiRepository;
     private PatientTimelineService service;
 
     @BeforeEach
@@ -62,9 +64,11 @@ class PatientTimelineServiceTest {
         protocolDefinitionRepository = mock(ProtocolDefinitionRepository.class);
         deviationRepository = mock(DeviationRepository.class);
         complianceEventLogRepository = mock(ComplianceEventLogRepository.class);
+        dailyKpiRepository = mock(DailyKpiRepository.class);
+        when(dailyKpiRepository.getFacilityReference()).thenReturn(List.of());
         service = new PatientTimelineService(protocolInstanceRepository, stepInstanceRepository,
                 protocolDefinitionRepository, deviationRepository, complianceEventLogRepository,
-                new ObjectMapper());
+                dailyKpiRepository, new ObjectMapper());
 
         ProtocolInstance instance = ProtocolInstance.builder()
                 .id(PROTOCOL_INSTANCE_ID)
@@ -186,6 +190,28 @@ class PatientTimelineServiceTest {
         PatientTimelineDto.JourneyStep step = singleJourneyStep();
         assertThat(step.getFacilityId()).isEqualTo("0030");
         assertThat(step.getFacilityName()).isEqualTo("Kacyiru Health Center");
+    }
+
+    @Test
+    void observationBackedStep_fallsBackToFacilityDimensionLookupForName() {
+        // Observation (e.g. Vitals Recording / Chief Complaints) carries no location/hospitalization
+        // field extractFacilityName knows how to read — only the source-facility extension id.
+        // The facility dimension lookup (dailyKpiRepository) must fill in the name in that case.
+        String fhirJson = """
+                {
+                  "resourceType": "Observation",
+                  "extension": [
+                    { "url": "http://example.org/fhir/StructureDefinition/source-facility", "valueString": "1228" }
+                  ]
+                }
+                """;
+        stubEventData(fhirJson);
+        when(dailyKpiRepository.getFacilityReference())
+                .thenReturn(List.<Object[]>of(new Object[] { "1228", "Solace Ministries Health Center" }));
+
+        PatientTimelineDto.JourneyStep step = singleJourneyStep();
+        assertThat(step.getFacilityId()).isEqualTo("1228");
+        assertThat(step.getFacilityName()).isEqualTo("Solace Ministries Health Center");
     }
 
     @Test
