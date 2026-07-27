@@ -1329,11 +1329,12 @@ Facility leaderboard ranked by compliance rate, deviation count, or event volume
 
 ### 9.2 GET `/v1/insights/facilities/activity-summary`
 
-Active/inactive facility summary tile. **Active = facility with ≥1 protocol-tracked event**
-(an `ACCEPTED` inbound event whose `cloudevents_id` matched a protocol,
-`compliance_event_logs.processing_status='MATCHED'`), by clinical `event_time` — so the tile
-reconciles with the Facility Ranking "tracked patients". (Was previously "any ACCEPTED HIE
-submission" from `mv_event_volume_hourly`; see data dictionary §3.13a.)
+Active/inactive facility summary tile. **Active = facility with ≥1 `ACCEPTED` inbound event**
+by clinical `event_time` in the period — same definition as eBuzima Adoption's actual-visits
+count, so a facility with recorded activity is never "Inactive" just because that activity
+hasn't been matched to a protocol step. (RI-62: previously also required the event to be
+protocol-matched, `compliance_event_logs.processing_status='MATCHED'`; see data dictionary
+§3.13a for why that was reverted.)
 
 **Required Scope:** `dashboard:read`
 
@@ -1341,12 +1342,12 @@ submission" from `mv_event_volume_hourly`; see data dictionary §3.13a.)
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `facilityId` | String | — | Single-facility tile: reports 1 in-scope facility, active/inactive per whether it had a protocol-tracked event in the period |
-| `startDate` | ISO 8601 | — | Start of date range — counts facilities with ≥1 protocol-MATCHED event (event_time) in the period |
+| `facilityId` | String | — | Single-facility tile: reports 1 in-scope facility, active/inactive per whether it had an accepted event in the period |
+| `startDate` | ISO 8601 | — | Start of date range — counts facilities with ≥1 accepted event (event_time) in the period |
 | `endDate` | ISO 8601 | — | End of date range |
 
 > Without any filters, falls back to today's active-facility count.
-> "Inactive" = no protocol-tracked events (a facility may still be transmitting unmatched HIE events).
+> "Inactive" = no accepted events at all in the period.
 
 **Response: `200 OK`**
 
