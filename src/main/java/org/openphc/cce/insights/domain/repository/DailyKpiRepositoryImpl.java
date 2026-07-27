@@ -28,13 +28,15 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
     }
 
     // ── active-facility summary ───────────────────────────────────────────────
-    // A facility is ACTIVE if it has ≥1 event that is TRACKED BY A PROTOCOL in the period —
-    // an ACCEPTED inbound event (event_time-keyed) whose cloudevents_id matched a protocol
-    // (compliance_event_logs.processing_status='MATCHED'). This keeps the Facility Status tile
-    // consistent with the Facility Ranking "tracked patients" (both count protocol-tracked
-    // facilities). (Earlier this counted ANY ACCEPTED submission — pure HIE connectivity — which
-    // over-reported: a facility could be "active" while contributing nothing to any tracked care
-    // journey.) The matched-events subquery mirrors ProtocolInstanceRepositoryImpl/referral MV.
+    // A facility is ACTIVE if it has ≥1 ACCEPTED inbound event (event_time-keyed) today —
+    // same "any accepted event" definition as eBuzima Adoption's actual-visits count
+    // (mv_daily_adoption_kpis_mv), so a facility with recorded activity is never shown Inactive
+    // just because the compliance-matching pipeline hasn't (or never will) match that event to a
+    // protocol step. (This previously also required the event to be protocol-MATCHED
+    // (compliance_event_logs.processing_status='MATCHED'), on the theory that "active" should mean
+    // "contributing to a tracked care journey" — but that made Active/Inactive diverge from Adoption
+    // whenever matching lagged or failed, which is confusing and, per RI-62, wrong: connectivity/
+    // activity and protocol-tracking are different concepts and shouldn't share one flag.)
 
     @Override
     public Object[] getFacilityActivitySummary() {
@@ -48,14 +50,12 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
                              .from(DSL.table(DSL.sql("facility" + finalClause())))
                              .where(DSL.field("_is_deleted").eq(0));
 
-        // Active Facilities = distinct facilities with ≥1 protocol-MATCHED event today (event_time).
+        // Active Facilities = distinct facilities with ≥1 accepted event today (event_time).
         Long activeFacilities = dsl.select(DSL.field("uniq(facility_id)", Long.class))
             .from(DSL.table(DSL.sql("inbound_event_logs" + finalClause())))
             .where(DSL.field("status").eq("ACCEPTED"))
             .and(DSL.field("facility_id").ne(""))
             .and(DSL.field("facility_id").in(facilityIds))
-            .and(DSL.condition("cloudevents_id IN (SELECT cloudevents_id FROM compliance_event_logs"
-                    + finalClause() + " WHERE processing_status = 'MATCHED')"))
             .and(DSL.condition("toDate(event_time) = today()"))
             .fetchOne(0, Long.class);
 
@@ -66,7 +66,8 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
     }
 
     // ── active-facility summary, date range ───────────────────────────────────
-    // "Active" = facility with ≥1 protocol-MATCHED event (event_time) anywhere in the range.
+    // "Active" = facility with ≥1 ACCEPTED event (event_time) anywhere in the range
+    // (see getFacilityActivitySummary()).
 
     @Override
     public Object[] getFacilityActivitySummaryByDateRange(LocalDate startDate, LocalDate endDate) {
@@ -80,15 +81,12 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
                              .from(DSL.table(DSL.sql("facility" + finalClause())))
                              .where(DSL.field("_is_deleted").eq(0));
 
-        // Active = distinct facilities with ≥1 protocol-MATCHED event (event_time) in the range
-        // (see getFacilityActivitySummary()).
+        // Active = distinct facilities with ≥1 accepted event (event_time) in the range.
         Long activeFacilities = dsl.select(DSL.field("uniq(facility_id)", Long.class))
             .from(DSL.table(DSL.sql("inbound_event_logs" + finalClause())))
             .where(DSL.field("status").eq("ACCEPTED"))
             .and(DSL.field("facility_id").ne(""))
             .and(DSL.field("facility_id").in(facilityIds))
-            .and(DSL.condition("cloudevents_id IN (SELECT cloudevents_id FROM compliance_event_logs"
-                    + finalClause() + " WHERE processing_status = 'MATCHED')"))
             .and(DSL.condition("toDate(event_time) >= ?", startDate))
             .and(DSL.condition("toDate(event_time) <= ?", endDate))
             .fetchOne(0, Long.class);
@@ -104,15 +102,13 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
 
     @Override
     public List<Object[]> getFacilityActivityDetail(LocalDate startDate, LocalDate endDate) {
-        // ACTIVE = facility with ≥1 protocol-MATCHED event WITHIN [startDate, endDate] — the summary
+        // ACTIVE = facility with ≥1 ACCEPTED event WITHIN [startDate, endDate] — the summary
         // card's definition (event_time-keyed). This determines active/inactive.
         java.util.Set<String> activeInPeriod = new java.util.HashSet<>();
         dsl.select(DSL.field("facility_id", String.class))
            .from(DSL.table(DSL.sql("inbound_event_logs" + finalClause())))
            .where(DSL.field("status").eq("ACCEPTED"))
            .and(DSL.field("facility_id").ne(""))
-           .and(DSL.condition("cloudevents_id IN (SELECT cloudevents_id FROM compliance_event_logs"
-                   + finalClause() + " WHERE processing_status = 'MATCHED')"))
            .and(DSL.condition("toDate(event_time) >= ?", startDate))
            .and(DSL.condition("toDate(event_time) <= ?", endDate))
            .groupBy(DSL.field("facility_id"))

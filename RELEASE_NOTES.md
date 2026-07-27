@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### Facility Active/Inactive Derivation (RI-62)
+
+- **Active/Inactive facility status is accepted-only again** — reverted the requirement that
+  an inbound event also be protocol-matched (`compliance_event_logs.processing_status='MATCHED'`)
+  to count as "active". A facility is now active if it has ≥1 `ACCEPTED` inbound event in the
+  period, same definition as eBuzima Adoption's actual-visits count. This fixes a case where a
+  facility with real recorded activity showed "Inactive" purely because the compliance-matching
+  pipeline hadn't (or couldn't) match those events to a protocol step — connectivity/activity and
+  protocol-tracking are different concepts and shouldn't share one flag. Affects
+  `GET /v1/insights/facilities/activity-summary` and `/activity-detail`
+  (`DailyKpiRepositoryImpl.getFacilityActivitySummary`, `getFacilityActivitySummaryByDateRange`,
+  `getFacilityActivityDetail`); cascades to the Dashboard "Total Facilities" tile and the Facility
+  Ranking Status column. See `docs/data-dictionary.md` §3.13a for the updated formula and the
+  full history of this derivation.
+- **Facility Ranking table gets an "Events" column** — surfaces `FacilityRankingDto.totalEvents`
+  (already computed, accepted-only, previously fetched but not rendered on this table).
+
 ### Referrals KPI (new)
 
 - **`GET /v1/insights/dashboard/referrals`** — new dashboard endpoint returning

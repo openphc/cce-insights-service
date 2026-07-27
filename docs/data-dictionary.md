@@ -569,16 +569,22 @@ percentage = category_count / total_patients_at_facility * 100
 
 ### 3.13a Facility Activity Formulas
 
-A facility is **active** if it has ≥1 event that is **tracked by a protocol** in the period —
-an `ACCEPTED` inbound event (event_time-keyed) whose `cloudevents_id` matched a protocol
-(`compliance_event_logs.processing_status='MATCHED'`). This keeps the Facility Status tile
-consistent with the Facility Ranking "tracked patients" (both count protocol-tracked facilities).
+A facility is **active** if it has ≥1 `ACCEPTED` inbound event (event_time-keyed) in the
+period — the same "any accepted event" definition eBuzima Adoption's actual-visits count uses
+(`mv_daily_adoption_kpis`), so a facility with recorded activity is never shown Inactive just
+because the compliance-matching pipeline hasn't (or never will) match that event to a protocol
+step.
 
-> **Changed:** this previously counted **any** ACCEPTED HIE submission (pure connectivity, from
-> `mv_event_volume_hourly`). That over-reported — a facility transmitting only unmatched events
-> showed as "active" while contributing nothing to any tracked care journey, so the top tile
-> (e.g. 7 active) disagreed with the ranking (e.g. 3 with tracked patients). Active is now
-> protocol-tracked, so the two reconcile.
+> **Changed (RI-62):** this previously required the event to *also* be matched to a protocol
+> (`compliance_event_logs.processing_status='MATCHED'`), on the theory that "active" should mean
+> "contributing to a tracked care journey" (keeping it consistent with the Facility Ranking
+> "tracked patients" cohort). That made Active/Inactive diverge from Adoption whenever the
+> compliance-matching pipeline lagged or had a gap: a facility with real, recorded eBuzima visits
+> (`ACCEPTED`, unmatched) would show "Inactive" while its own Adoption row showed non-zero Actual
+> Visits — confusing, and arguably wrong, since connectivity/activity and protocol-tracking are
+> different concepts. Active is now accepted-only again, matching Adoption; "tracked patients" on
+> the Ranking table remains matched-only (unchanged) since that's a genuinely different question
+> ("is this patient in a tracked care journey", not "did this facility transmit anything").
 
 ```
 total_in_scope       = COUNT(*) FROM facility FINAL WHERE _is_deleted = 0
@@ -586,9 +592,6 @@ total_in_scope       = COUNT(*) FROM facility FINAL WHERE _is_deleted = 0
 active_facilities    = uniq(facility_id) FROM inbound_event_logs
                        WHERE status = 'ACCEPTED' AND facility_id != ''
                          AND facility_id IN (facility reference)
-                         AND cloudevents_id IN
-                             (SELECT cloudevents_id FROM compliance_event_logs
-                              WHERE processing_status = 'MATCHED')
                          AND toDate(event_time) BETWEEN startDate AND endDate
                        (toDate(event_time) = today() when no range)
 
@@ -597,20 +600,12 @@ inactive_facilities  = total_in_scope − active_facilities
 active_facility_rate = active_facilities / total_in_scope × 100
 ```
 
-> Note: `inactive` now means "no protocol-tracked events" — a facility may still be transmitting
-> raw HIE events that simply aren't matched to any protocol. Raw transmission volume is still
-> visible via the Events (period) column and the Events / Ingestion pages.
+> Note: `inactive` now means "no accepted events at all" in the period — same population as
+> zero `totalEvents` on the Facility Ranking table and zero Actual Visits on Adoption.
 
 > The denominator (`total_in_scope`) comes from `facility`, not from observed event data.
 > This ensures facilities that transmitted no events in the period are counted as inactive
 > (not omitted).
->
-> **Historical note:** earlier versions sourced `active_facilities` from
-> `mv_daily_facility_kpis.event_count`, which only counted compliance-matched events. A
-> facility that submitted accepted-but-unmatched HIE events (e.g. for unknown patients)
-> appeared as inactive while still showing non-zero events on the Events tab. The
-> definition above (now backed by `mv_event_volume_hourly` rather than
-> `inbound_event_logs`) replaces that path so all activity surfaces agree.
 
 **RI-29 drill-down detail** (`GET /v1/insights/facilities/activity-detail`, one row per
 in-scope facility — see API reference §9.3):
