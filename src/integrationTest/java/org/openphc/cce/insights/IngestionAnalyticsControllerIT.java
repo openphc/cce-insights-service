@@ -41,10 +41,10 @@ class IngestionAnalyticsControllerIT extends AbstractIntegrationTest {
                         IngestionFunnelDto.StatusBreakdown.builder().status("DUPLICATE").count(5).percentage(5.0).build()))
                 .build();
 
-        when(ingestionAnalyticsService.getIngestionFunnel(isNull(), isNull(), any(), any(), isNull()))
+        when(ingestionAnalyticsService.getIngestionFunnel(isNull(), isNull(), isNull(), any(), any(), isNull()))
                 .thenReturn(baseFunnel);
 
-        when(ingestionAnalyticsService.getIngestionFunnel(isNull(), isNull(), any(), any(), eq("monthly")))
+        when(ingestionAnalyticsService.getIngestionFunnel(isNull(), isNull(), isNull(), any(), any(), eq("monthly")))
                 .thenReturn(IngestionFunnelDto.builder()
                         .totalReceived(100).accepted(90).rejected(5).duplicate(5)
                         .acceptanceRate(90.0).rejectionRate(5.0).duplicateRate(5.0)
@@ -53,10 +53,10 @@ class IngestionAnalyticsControllerIT extends AbstractIntegrationTest {
                                 .period("2026-03").byStatus(Map.of("ACCEPTED", 90L)).total(100).build()))
                         .build());
 
-        when(ingestionAnalyticsService.getIngestionFunnel(isNull(), eq("ebuzima/kigali-south"), any(), any(), isNull()))
+        when(ingestionAnalyticsService.getIngestionFunnel(isNull(), eq("ebuzima/kigali-south"), isNull(), any(), any(), isNull()))
                 .thenReturn(baseFunnel);
 
-        when(ingestionAnalyticsService.getRejectionAnalytics(any(), any(), any(), any()))
+        when(ingestionAnalyticsService.getRejectionAnalytics(any(), any(), any(), any(), any()))
                 .thenReturn(RejectionAnalyticsDto.builder()
                         .totalRejected(5)
                         .byReason(List.of(RejectionAnalyticsDto.ReasonBreakdown.builder()
@@ -66,14 +66,14 @@ class IngestionAnalyticsControllerIT extends AbstractIntegrationTest {
                                 .topReasons(List.of()).build()))
                         .build());
 
-        when(ingestionAnalyticsService.getSourceDataQuality(any(), any(), any()))
+        when(ingestionAnalyticsService.getSourceDataQuality(any(), any(), any(), any()))
                 .thenReturn(SourceDataQualityDto.builder()
                         .sources(List.of(SourceDataQualityDto.SourceQuality.builder()
                                 .source("ebuzima-direct").totalEvents(50).accepted(45)
                                 .rejected(3).duplicate(2).acceptanceRate(90.0).build()))
                         .build());
 
-        when(ingestionAnalyticsService.getPipelineLoss(any(), any(), any()))
+        when(ingestionAnalyticsService.getPipelineLoss(any(), any(), any(), any()))
                 .thenReturn(PipelineLossDto.builder()
                         .totalAcceptedByCollector(90).totalInComplianceEventLog(85)
                         .lostEvents(5).lossRate(5.6)

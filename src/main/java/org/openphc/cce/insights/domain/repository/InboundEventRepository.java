@@ -32,28 +32,31 @@ public interface InboundEventRepository extends ReadOnlyRepository<InboundEvent,
                                                                    OffsetDateTime startDate,
                                                                    OffsetDateTime endDate);
 
-    List<Object[]> countByStatus(String facilityId, String source,
+    List<Object[]> countByStatus(String facilityId, String source, String district,
                                   OffsetDateTime startDate, OffsetDateTime endDate);
 
-    List<Object[]> countByRejectionReason(String facilityId, String source,
+    List<Object[]> countByRejectionReason(String facilityId, String source, String district,
                                            OffsetDateTime startDate, OffsetDateTime endDate);
 
     List<Object[]> findIngestionTrends(String interval, String facilityId, String source,
                                         OffsetDateTime startDate, OffsetDateTime endDate);
 
-    List<Object[]> countBySourceAndStatus(String facilityId, OffsetDateTime startDate, OffsetDateTime endDate);
+    List<Object[]> countBySourceAndStatus(String facilityId, String district,
+                                           OffsetDateTime startDate, OffsetDateTime endDate);
 
     List<Object[]> countBySourceAndRejectionReason(String facilityId,
                                                     OffsetDateTime startDate, OffsetDateTime endDate);
 
-    List<Object[]> findPipelineLossBySource(String facilityId, OffsetDateTime startDate, OffsetDateTime endDate);
+    List<Object[]> findPipelineLossBySource(String facilityId, String district,
+                                             OffsetDateTime startDate, OffsetDateTime endDate);
 
-    long countPipelineLoss(String facilityId, OffsetDateTime startDate, OffsetDateTime endDate);
+    long countPipelineLoss(String facilityId, String district, OffsetDateTime startDate, OffsetDateTime endDate);
 
     long countAccepted(String facilityId, OffsetDateTime startDate, OffsetDateTime endDate);
 
     // received_at (system-time) variant — Ingestion pipeline-loss denominator only.
-    long countAcceptedByReceivedAt(String facilityId, OffsetDateTime startDate, OffsetDateTime endDate);
+    long countAcceptedByReceivedAt(String facilityId, String district,
+                                    OffsetDateTime startDate, OffsetDateTime endDate);
 
     // Facility ranking "Events (period)" — grouped read of the event_time event-volume MV. [facility_id, count]
     List<Object[]> eventCountByFacilityFromMv(OffsetDateTime startDate, OffsetDateTime endDate);
@@ -76,7 +79,7 @@ public interface InboundEventRepository extends ReadOnlyRepository<InboundEvent,
                                         OffsetDateTime startDate, OffsetDateTime endDate);
 
     /** Most recent inbound_event_logs.received_at across all events — pipeline freshness indicator. */
-    OffsetDateTime findLastReceivedAt();
+    OffsetDateTime findLastReceivedAt(String facilityId, String district);
 
     /** Returns true if this facility transmitted ≥1 successful HIE submission in the range. */
     boolean facilityTransmittedInRange(String facilityId,

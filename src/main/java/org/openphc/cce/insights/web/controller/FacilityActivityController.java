@@ -29,10 +29,16 @@ public class FacilityActivityController {
     /**
      * GET /v1/insights/facilities/activity-summary
      *
-     * With startDate+endDate: counts facilities with ≥1 successful HIE submission in the period.
      * With facilityId: reports the single-facility tile (1 in-scope; 1 active/inactive depending on
-     *   whether that facility transmitted in the period).
-     * With district: counts recomputed over just that district's facilities (from the detail list).
+     *   whether that facility transmitted in the period) — checked FIRST, since it's the most
+     *   specific filter. If a district is ALSO given and the facility doesn't actually belong to it
+     *   (a self-contradictory combination), returns all-zero rather than silently ignoring the
+     *   facility filter — consistent with every other district+facility-filtered endpoint (e.g.
+     *   FacilityRankingController), which AND the two together instead of one overriding the other.
+     * With district (no facilityId): counts recomputed over just that district's facilities (from
+     *   the detail list).
+     * With startDate+endDate (no facilityId/district): counts facilities with ≥1 successful HIE
+     *   submission in the period.
      * Without filters: falls back to today's active-facility count from mv_event_volume_hourly.
      */
     @GetMapping("/activity-summary")
@@ -42,7 +48,27 @@ public class FacilityActivityController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         List<String> districtIds = facilityDirectory.facilityIdsInDistrict(district);
-        if (district != null && !district.isBlank() && districtIds != null) {
+        boolean hasDistrict = district != null && !district.isBlank() && districtIds != null;
+        boolean hasFacility = facilityId != null && !facilityId.isEmpty();
+
+        if (hasFacility) {
+            if (hasDistrict && districtIds != null && !districtIds.contains(facilityId)) {
+                return ResponseEntity.ok(ApiResponse.ok(FacilityActivitySummaryDto.builder()
+                        .totalInScope(0).activeFacilities(0).inactiveFacilities(0).activeFacilityRate(0.0)
+                        .build()));
+            }
+            LocalDate effectiveStart = startDate != null ? startDate
+                    : endDate != null ? endDate
+                    : LocalDate.now();
+            LocalDate effectiveEnd   = endDate   != null ? endDate
+                    : startDate != null ? startDate
+                    : LocalDate.now();
+            FacilityActivitySummaryDto dto = facilityActivityService.getActivitySummaryForFacility(
+                    facilityId, effectiveStart, effectiveEnd);
+            return ResponseEntity.ok(ApiResponse.ok(dto));
+        }
+
+        if (hasDistrict) {
             // District-scoped summary = counts recomputed over that district's facilities.
             LocalDate start = startDate != null ? startDate : endDate != null ? endDate : LocalDate.now();
             LocalDate end   = endDate   != null ? endDate   : startDate != null ? startDate : LocalDate.now();
@@ -61,16 +87,7 @@ public class FacilityActivityController {
         }
 
         FacilityActivitySummaryDto dto;
-        if (facilityId != null && !facilityId.isEmpty()) {
-            LocalDate effectiveStart = startDate != null ? startDate
-                    : endDate != null ? endDate
-                    : LocalDate.now();
-            LocalDate effectiveEnd   = endDate   != null ? endDate
-                    : startDate != null ? startDate
-                    : LocalDate.now();
-            dto = facilityActivityService.getActivitySummaryForFacility(
-                    facilityId, effectiveStart, effectiveEnd);
-        } else if (startDate != null || endDate != null) {
+        if (startDate != null || endDate != null) {
             dto = facilityActivityService.getActivitySummaryByDateRange(
                     startDate != null ? startDate : LocalDate.now(),
                     endDate   != null ? endDate   : LocalDate.now());

@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+### Global Facility Filter Parity + Ingestion District Support (RI-56)
+
+- **District filtering added to the Ingestion Analytics pipeline** — previously the only page
+  with no district support at all. `district` param added to `InboundEventRepository`/`Impl`
+  (`countByStatus`, `countByRejectionReason`, `countBySourceAndStatus`,
+  `findPipelineLossBySource`, `countPipelineLoss`, `countAcceptedByReceivedAt`), threaded through
+  `IngestionAnalyticsService.getIngestionFunnel/getRejectionAnalytics/getSourceDataQuality/getPipelineLoss/getLastIngestedEvent`,
+  and exposed on `IngestionAnalyticsController` (`/funnel`, `/rejections`, `/source-quality`,
+  `/pipeline-loss`, `/last-event`). Uses the same `districtScope(facilityColumn, district)`
+  helper already used across the rest of the codebase.
+- **Bug fix — `@Cacheable` keys missing `district`/`interval`:** the four cached Ingestion
+  service methods had their `district` (and `getIngestionFunnel`'s `interval`) parameter added
+  to the method signature, but the `@Cacheable` SpEL key expressions weren't updated to include
+  it — so Spring's cache returned the same result regardless of which district/interval was
+  requested. Fixed all 4 key expressions.
+- **Bug fix — `findLastReceivedAt` returning epoch instead of `null` for empty scopes:**
+  ClickHouse's `max()` over zero matching rows returns the column type's zero-value
+  (`1970-01-01T00:00:00Z`), not SQL `NULL`, since `received_at` is a non-nullable `DateTime64`.
+  A district/facility combination with genuinely no events showed "Jan 1, 1970" instead of "—".
+  Fixed by selecting `count()` alongside `max()` and returning `null` explicitly when the count
+  is zero.
+- **Bug fix — `FacilityActivityController.getActivitySummary` branch-order bug:** `district` was
+  checked before `facilityId`, so a combined `facilityId=X&district=Y` request silently dropped
+  the facility filter and returned district-only totals. Reordered so `facilityId` (the more
+  specific filter) is checked first, and added explicit handling for a self-contradictory
+  combination (facility doesn't belong to the given district) — returns an all-zero summary
+  rather than either filter silently winning. New regression coverage:
+  `FacilityActivityControllerIT`.
+
 ### Facility Active/Inactive Derivation (RI-62)
 
 - **Active/Inactive facility status is accepted-only again** — reverted the requirement that
