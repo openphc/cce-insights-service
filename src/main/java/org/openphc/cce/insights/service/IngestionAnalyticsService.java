@@ -16,11 +16,11 @@ public class IngestionAnalyticsService {
 
     private final InboundEventRepository inboundEventRepository;
 
-    @Cacheable(value = "metrics", key = "'funnel-' + #facilityId + '-' + #source + '-' + #startDate + '-' + #endDate")
-    public IngestionFunnelDto getIngestionFunnel(String facilityId, String source,
+    @Cacheable(value = "metrics", key = "'funnel-' + #facilityId + '-' + #source + '-' + #district + '-' + #startDate + '-' + #endDate + '-' + #interval")
+    public IngestionFunnelDto getIngestionFunnel(String facilityId, String source, String district,
                                                   OffsetDateTime startDate, OffsetDateTime endDate,
                                                   String interval) {
-        List<Object[]> statusRows = inboundEventRepository.countByStatus(facilityId, source, startDate, endDate);
+        List<Object[]> statusRows = inboundEventRepository.countByStatus(facilityId, source, district, startDate, endDate);
 
         long total = 0;
         long accepted = 0;
@@ -71,11 +71,11 @@ public class IngestionAnalyticsService {
                 .build();
     }
 
-    @Cacheable(value = "metrics", key = "'rejections-' + #facilityId + '-' + #source + '-' + #startDate + '-' + #endDate")
-    public RejectionAnalyticsDto getRejectionAnalytics(String facilityId, String source,
+    @Cacheable(value = "metrics", key = "'rejections-' + #facilityId + '-' + #source + '-' + #district + '-' + #startDate + '-' + #endDate")
+    public RejectionAnalyticsDto getRejectionAnalytics(String facilityId, String source, String district,
                                                         OffsetDateTime startDate, OffsetDateTime endDate) {
         List<Object[]> reasonRows = inboundEventRepository.countByRejectionReason(
-                facilityId, source, startDate, endDate);
+                facilityId, source, district, startDate, endDate);
 
         long totalRejected = reasonRows.stream().mapToLong(r -> ((Number) r[1]).longValue()).sum();
 
@@ -93,7 +93,7 @@ public class IngestionAnalyticsService {
 
         // Per-source rejection details
         List<Object[]> sourceStatusRows = inboundEventRepository.countBySourceAndStatus(
-                facilityId, startDate, endDate);
+                facilityId, district, startDate, endDate);
         List<Object[]> sourceReasonRows = inboundEventRepository.countBySourceAndRejectionReason(
                 facilityId, startDate, endDate);
 
@@ -146,10 +146,10 @@ public class IngestionAnalyticsService {
                 .build();
     }
 
-    @Cacheable(value = "metrics", key = "'quality-' + #facilityId + '-' + #startDate + '-' + #endDate")
-    public SourceDataQualityDto getSourceDataQuality(String facilityId,
+    @Cacheable(value = "metrics", key = "'quality-' + #facilityId + '-' + #district + '-' + #startDate + '-' + #endDate")
+    public SourceDataQualityDto getSourceDataQuality(String facilityId, String district,
                                                       OffsetDateTime startDate, OffsetDateTime endDate) {
-        List<Object[]> rows = inboundEventRepository.countBySourceAndStatus(facilityId, startDate, endDate);
+        List<Object[]> rows = inboundEventRepository.countBySourceAndStatus(facilityId, district, startDate, endDate);
 
         // source -> {status -> count}
         Map<String, Map<String, Long>> sourceMap = new LinkedHashMap<>();
@@ -183,15 +183,15 @@ public class IngestionAnalyticsService {
         return SourceDataQualityDto.builder().sources(sources).build();
     }
 
-    @Cacheable(value = "metrics", key = "'pipeline-loss-' + #facilityId + '-' + #startDate + '-' + #endDate")
-    public PipelineLossDto getPipelineLoss(String facilityId,
+    @Cacheable(value = "metrics", key = "'pipeline-loss-' + #facilityId + '-' + #district + '-' + #startDate + '-' + #endDate")
+    public PipelineLossDto getPipelineLoss(String facilityId, String district,
                                             OffsetDateTime startDate, OffsetDateTime endDate) {
-        long totalAccepted = inboundEventRepository.countAcceptedByReceivedAt(facilityId, startDate, endDate);
-        long lostCount = inboundEventRepository.countPipelineLoss(facilityId, startDate, endDate);
+        long totalAccepted = inboundEventRepository.countAcceptedByReceivedAt(facilityId, district, startDate, endDate);
+        long lostCount = inboundEventRepository.countPipelineLoss(facilityId, district, startDate, endDate);
         long inEventLog = totalAccepted - lostCount;
 
         List<Object[]> bySourceRows = inboundEventRepository.findPipelineLossBySource(
-                facilityId, startDate, endDate);
+                facilityId, district, startDate, endDate);
         List<PipelineLossDto.SourceLoss> bySource = bySourceRows.stream()
                 .map(row -> PipelineLossDto.SourceLoss.builder()
                         .source((String) row[0])
@@ -210,11 +210,12 @@ public class IngestionAnalyticsService {
 
     // Uncached (unlike the other methods here): this is a live freshness/health indicator, so the
     // 15-minute "metrics" cache TTL would make the pipeline look stale for far longer than it is.
-    // Deliberately unfiltered by date range — it always reflects the true latest ingest, not the
-    // latest within whatever From/To the user has selected.
-    public LastIngestedEventDto getLastIngestedEvent() {
+    // Respects facilityId/district (so "is THIS facility/district still sending data" works), but is
+    // deliberately unfiltered by date range — it always reflects the true latest ingest for the
+    // selected scope, not the latest within whatever From/To the user has selected.
+    public LastIngestedEventDto getLastIngestedEvent(String facilityId, String district) {
         return LastIngestedEventDto.builder()
-                .lastEventTime(inboundEventRepository.findLastReceivedAt())
+                .lastEventTime(inboundEventRepository.findLastReceivedAt(facilityId, district))
                 .build();
     }
 

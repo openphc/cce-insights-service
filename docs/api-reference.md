@@ -1343,11 +1343,18 @@ protocol-matched, `compliance_event_logs.processing_status='MATCHED'`; see data 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `facilityId` | String | — | Single-facility tile: reports 1 in-scope facility, active/inactive per whether it had an accepted event in the period |
+| `district` | String | — | Recomputes counts over just that district's facilities |
 | `startDate` | ISO 8601 | — | Start of date range — counts facilities with ≥1 accepted event (event_time) in the period |
 | `endDate` | ISO 8601 | — | End of date range |
 
 > Without any filters, falls back to today's active-facility count.
 > "Inactive" = no accepted events at all in the period.
+> `facilityId` takes precedence when both `facilityId` and `district` are given (checked first, as
+> the more specific filter) — **except** when the combination is self-contradictory (the facility
+> doesn't actually belong to that district), in which case the response is all-zero rather than
+> silently falling back to the district-only totals, matching how every other district+facility
+> filtered endpoint (e.g. `/facilities/ranking`) ANDs the two together instead of one overriding
+> the other.
 
 **Response: `200 OK`**
 
@@ -1374,6 +1381,7 @@ Drill-down behind the Active/Inactive facility cards (RI-29): one row per in-sco
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
+| `district` | String | — | Restrict rows to this district's facilities |
 | `startDate` | ISO 8601 | today | Start of date range |
 | `endDate` | ISO 8601 | today | End of date range |
 
@@ -1713,6 +1721,7 @@ Ingestion pipeline status breakdown. Shows how many events were received, accept
 |-----------|------|---------|-------------|
 | `facilityId` | String | — | Filter by facility FOSA ID |
 | `source` | String | — | Filter by source system |
+| `district` | String | — | Filter to a district's facilities |
 | `startDate` | ISO 8601 | — | Filter by `received_at` start |
 | `endDate` | ISO 8601 | — | Filter by `received_at` end |
 | `interval` | String | — | If provided, includes time-series trends. Values: `daily`, `weekly`, `monthly` |
@@ -1756,6 +1765,7 @@ Rejection reason analytics — breakdown by `rejection_reason` (from `RejectionR
 |-----------|------|---------|-------------|
 | `facilityId` | String | — | Filter by facility FOSA ID |
 | `source` | String | — | Filter by source system |
+| `district` | String | — | Filter to a district's facilities |
 | `startDate` | ISO 8601 | — | Filter by `received_at` start |
 | `endDate` | ISO 8601 | — | Filter by `received_at` end |
 
@@ -1827,6 +1837,7 @@ Source data quality scorecard — per-source acceptance, rejection, and duplicat
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `facilityId` | String | — | Filter by facility FOSA ID |
+| `district` | String | — | Filter to a district's facilities |
 | `startDate` | ISO 8601 | — | Filter by `received_at` start |
 | `endDate` | ISO 8601 | — | Filter by `received_at` end |
 
@@ -1874,6 +1885,7 @@ Detects events that were ACCEPTED by the Collector (published to Kafka) but neve
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `facilityId` | String | — | Filter by facility FOSA ID |
+| `district` | String | — | Filter to a district's facilities |
 | `startDate` | ISO 8601 | — | Filter by `received_at` start |
 | `endDate` | ISO 8601 | — | Filter by `received_at` end |
 
@@ -1895,6 +1907,44 @@ Detects events that were ACCEPTED by the Collector (published to Kafka) but neve
 ```
 
 **How it works:** Joins `inbound_event` (where `status = 'ACCEPTED'`) with `event_log` on `(cloudevents_id, source)`. Events in the first table with no match in the second are considered "lost" in the pipeline. A non-zero `lossRate` warrants investigation of Kafka consumer lag, compliance service errors, or dead-letter queues.
+
+---
+
+### 13.5 GET `/v1/insights/ingestion/last-event`
+
+Timestamp of the most recent inbound event received (by `received_at`), for the selected
+facility/district scope, across all sources — a pipeline freshness/health indicator, not a
+metric. Powers the Ingestion page's "Last Ingested Event" tile.
+
+**Required Scope:** `dashboard:read`
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `facilityId` | String | — | Filter by facility FOSA ID |
+| `district` | String | — | Filter to a district's facilities |
+
+> **Deliberately unfiltered by date range** — always reflects the true latest ingest for the
+> selected scope ("is this facility/district still sending data *right now*"), not the latest
+> within whatever From/To is selected elsewhere on the page. Also **uncached** (unlike every
+> other endpoint in this section), for the same reason — it needs to reflect data that arrived
+> seconds ago, not a cached value from the last TTL window.
+
+**Response: `200 OK`**
+
+```json
+{
+  "data": {
+    "lastEventTime": "2026-07-28T04:47:39Z"
+  }
+}
+```
+
+> `lastEventTime` is `null` when no event matches the given scope (distinguished from a genuine
+> epoch timestamp by checking the matched row count server-side, not by testing the timestamp
+> value — ClickHouse's `max()` over zero rows returns the column type's zero-value, `1970-01-01T00:00:00Z`,
+> not SQL `NULL`, since `received_at` is a non-nullable `DateTime64`).
 
 ---
 
@@ -1937,7 +1987,9 @@ Returns all protocol definitions for use in dropdown filters.
 
 ### 14.2 GET `/v1/insights/lookups/facilities`
 
-Returns the facility reference list (id + name), sourced from `facility`.
+Returns the facility reference list (id + name + district), sourced from `facility`. Backs the
+global Facility filter, which uses `district` to constrain its options to the currently
+selected District filter.
 
 **Required Scope:** `dashboard:read`
 
@@ -1946,10 +1998,28 @@ Returns the facility reference list (id + name), sourced from `facility`.
 ```json
 {
   "data": [
-    { "id": "FAC-KGL-001", "name": "Kigali South HC" },
-    { "id": "FAC-KGL-002", "name": "Muhima HC" },
-    { "id": "FAC-HYE-003", "name": "Huye District HC" }
+    { "id": "FAC-KGL-001", "name": "Kigali South HC", "district": "Kigali" },
+    { "id": "FAC-KGL-002", "name": "Muhima HC", "district": "Gasabo" },
+    { "id": "FAC-HYE-003", "name": "Huye District HC", "district": "" }
   ]
+}
+```
+
+> `district` may be an empty string when the source facility record has no district assigned.
+
+---
+
+### 14.2a GET `/v1/insights/lookups/districts`
+
+Distinct, non-empty district names sorted case-insensitively — feeds the global District filter.
+
+**Required Scope:** `dashboard:read`
+
+**Response: `200 OK`**
+
+```json
+{
+  "data": ["Gasabo", "Kicukiro", "Kigali", "Nyarugenge"]
 }
 ```
 

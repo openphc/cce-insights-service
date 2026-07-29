@@ -199,7 +199,7 @@ public class InboundEventRepositoryImpl
     }
 
     @Override
-    public List<Object[]> countByStatus(String facilityId, String source,
+    public List<Object[]> countByStatus(String facilityId, String source, String district,
                                          OffsetDateTime startDate, OffsetDateTime endDate) {
         String fid = str(facilityId);
         String src = str(source);
@@ -210,6 +210,7 @@ public class InboundEventRepositoryImpl
                   .from(iel)
                   .where(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?", fid, fid))
                   .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.SOURCE.getName() + " = ?", src, src))
+                  .and(districtScope("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName(), district))
                   .and(DSL.condition(
                           "iel." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
                           dtStart(startDate)))
@@ -222,7 +223,7 @@ public class InboundEventRepositoryImpl
     }
 
     @Override
-    public List<Object[]> countByRejectionReason(String facilityId, String source,
+    public List<Object[]> countByRejectionReason(String facilityId, String source, String district,
                                                    OffsetDateTime startDate, OffsetDateTime endDate) {
         String fid = str(facilityId);
         String src = str(source);
@@ -235,6 +236,7 @@ public class InboundEventRepositoryImpl
                   .and(DSL.field("iel." + INBOUND_EVENT_LOGS.REJECTION_REASON.getName()).ne(""))
                   .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?", fid, fid))
                   .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.SOURCE.getName() + " = ?", src, src))
+                  .and(districtScope("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName(), district))
                   .and(DSL.condition(
                           "iel." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
                           dtStart(startDate)))
@@ -277,7 +279,7 @@ public class InboundEventRepositoryImpl
     }
 
     @Override
-    public List<Object[]> countBySourceAndStatus(String facilityId,
+    public List<Object[]> countBySourceAndStatus(String facilityId, String district,
                                                    OffsetDateTime startDate, OffsetDateTime endDate) {
         String fid = str(facilityId);
         var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
@@ -288,6 +290,7 @@ public class InboundEventRepositoryImpl
                   .from(iel)
                   .where(DSL.field("iel." + INBOUND_EVENT_LOGS.SOURCE.getName()).ne(""))
                   .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?", fid, fid))
+                  .and(districtScope("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName(), district))
                   .and(DSL.condition(
                           "iel." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
                           dtStart(startDate)))
@@ -336,7 +339,7 @@ public class InboundEventRepositoryImpl
     }
 
     @Override
-    public List<Object[]> findPipelineLossBySource(String facilityId,
+    public List<Object[]> findPipelineLossBySource(String facilityId, String district,
                                                      OffsetDateTime startDate, OffsetDateTime endDate) {
         String fid = str(facilityId);
         var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
@@ -350,6 +353,7 @@ public class InboundEventRepositoryImpl
                   .where(DSL.field("iel." + INBOUND_EVENT_LOGS.STATUS.getName()).eq("ACCEPTED"))
                   .and(DSL.field("iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName()).notIn(celSubquery))
                   .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?", fid, fid))
+                  .and(districtScope("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName(), district))
                   .and(DSL.condition(
                           "iel." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
                           dtStart(startDate)))
@@ -363,7 +367,8 @@ public class InboundEventRepositoryImpl
     }
 
     @Override
-    public long countPipelineLoss(String facilityId, OffsetDateTime startDate, OffsetDateTime endDate) {
+    public long countPipelineLoss(String facilityId, String district,
+                                   OffsetDateTime startDate, OffsetDateTime endDate) {
         String fid = str(facilityId);
         var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
         var celSubquery = dsl.select(DSL.field(COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
@@ -373,6 +378,7 @@ public class InboundEventRepositoryImpl
                     .where(DSL.field("iel." + INBOUND_EVENT_LOGS.STATUS.getName()).eq("ACCEPTED"))
                     .and(DSL.field("iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName()).notIn(celSubquery))
                     .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?", fid, fid))
+                    .and(districtScope("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName(), district))
                     .and(DSL.condition(
                             "iel." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
                             dtStart(startDate)))
@@ -567,12 +573,21 @@ public class InboundEventRepositoryImpl
     }
 
     @Override
-    public OffsetDateTime findLastReceivedAt() {
+    public OffsetDateTime findLastReceivedAt(String facilityId, String district) {
+        String fid = str(facilityId);
         var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
-        var r = dsl.select(DSL.field("max(iel." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName() + ")").as("last_received"))
+        var r = dsl.select(
+                    DSL.field("max(iel." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName() + ")").as("last_received"),
+                    DSL.field("count()", Long.class).as("cnt"))
                     .from(iel)
+                    .where(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?", fid, fid))
+                    .and(districtScope("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName(), district))
                     .fetchOne();
-        return r != null ? recordDateTime(r, "last_received") : null;
+        // max() over zero matching rows returns the column type's zero-value (epoch), not SQL NULL,
+        // since received_at is a non-Nullable DateTime64 — check the row count to tell "no data"
+        // apart from a genuine epoch timestamp.
+        if (r == null || r.get("cnt", Long.class) == 0L) return null;
+        return recordDateTime(r, "last_received");
     }
 
     @Override
@@ -604,13 +619,15 @@ public class InboundEventRepositoryImpl
     // received_at (system-time) ACCEPTED count — for the Ingestion pipeline-loss denominator only.
     // The Ingestion page is the sole SYSTEM/technical view; countAccepted() stays event_time (clinical).
     @Override
-    public long countAcceptedByReceivedAt(String facilityId, OffsetDateTime startDate, OffsetDateTime endDate) {
+    public long countAcceptedByReceivedAt(String facilityId, String district,
+                                           OffsetDateTime startDate, OffsetDateTime endDate) {
         String fid = str(facilityId);
         var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
         Long r = dsl.select(DSL.field("count()", Long.class))
                     .from(iel)
                     .where(DSL.field("iel." + INBOUND_EVENT_LOGS.STATUS.getName()).eq("ACCEPTED"))
                     .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?", fid, fid))
+                    .and(districtScope("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName(), district))
                     .and(DSL.condition(
                             "iel." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
                             dtStart(startDate)))
