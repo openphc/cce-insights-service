@@ -66,6 +66,46 @@ public class DeviationController {
         return ResponseEntity.ok(ApiResponse.ok(summary));
     }
 
+    // deviationType -> internal sort column. Reuses the same OVERDUE/MISSED/ORDER_VIOLATION values
+    // every other deviations endpoint already accepts, rather than exposing raw SQL column names.
+    private static String sortColumnFor(String deviationType) {
+        if (deviationType == null) return "total_deviations";
+        return switch (deviationType) {
+            case "OVERDUE" -> "overdue_count";
+            case "MISSED" -> "missed_count";
+            case "ORDER_VIOLATION" -> "order_violation_count";
+            default -> "total_deviations";
+        };
+    }
+
+    @GetMapping("/deviations/by-facility")
+    public ResponseEntity<ApiResponse<List<DeviationByFacilityDto>>> getDeviationsByFacility(
+            @RequestParam(required = false) String facilityId,
+            @RequestParam(required = false) String district,
+            @RequestParam(required = false) UUID protocolDefinitionId,
+            @RequestParam(required = false) OffsetDateTime startDate,
+            @RequestParam(required = false) OffsetDateTime endDate,
+            @RequestParam(required = false) String deviationType,
+            @RequestParam(defaultValue = "20") int limit,
+            @RequestParam(required = false) String cursor) {
+        int offset = 0;
+        if (cursor != null && !cursor.isEmpty()) {
+            try { offset = Integer.parseInt(cursor); } catch (NumberFormatException ignored) {}
+        }
+        var result = deviationAnalyticsService.getDeviationsByFacility(
+                facilityId, district, protocolDefinitionId, startDate, endDate, sortColumnFor(deviationType), limit, offset);
+        long totalCount = result.totalCount();
+        boolean hasMore = offset + result.facilities().size() < totalCount;
+        String nextCursor = hasMore ? String.valueOf(offset + limit) : null;
+        var pagination = PaginationDto.builder()
+                .limit(limit)
+                .nextCursor(nextCursor)
+                .hasMore(hasMore)
+                .totalCount(totalCount)
+                .build();
+        return ResponseEntity.ok(ApiResponse.page(result.facilities(), pagination));
+    }
+
     @GetMapping("/deviations/by-action")
     public ResponseEntity<ApiResponse<List<DeviationByActionDto>>> getDeviationsByAction(
             @RequestParam(required = false) UUID protocolDefinitionId,

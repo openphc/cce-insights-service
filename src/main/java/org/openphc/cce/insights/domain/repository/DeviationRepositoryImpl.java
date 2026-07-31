@@ -560,6 +560,94 @@ public class DeviationRepositoryImpl
                   .map(r -> new Object[]{r.get(0, String.class), r.get(1, Long.class)});
     }
 
+    /** Shared WHERE clause for the by-facility(+type) queries — {@link
+     *  #findDeviationsByFacilityAndType} and {@link #countFacilitiesWithDeviations} must scope
+     *  identically or the pagination total won't match the page contents. */
+    private org.jooq.Condition byFacilityWhere(String fid, String district, String pid,
+                                               OffsetDateTime startDate, OffsetDateTime endDate) {
+        String detectedAt = occurredAt();
+        org.jooq.Condition where = DSL.field("pf.facility_id").ne("");
+        where = where.and(DSL.condition("? = '' OR pf.facility_id = ?", fid, fid));
+        where = where.and(districtScope("pf.facility_id", district));
+        where = where.and(DSL.condition(
+                "toUUIDOrNull(?) IS NULL OR pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUIDOrNull(?)",
+                pid, pid));
+        if (startDate != null) {
+            where = where.and(DSL.condition(
+                    detectedAt + " >= parseDateTime64BestEffort(?)", startDate.toString()));
+        }
+        if (endDate != null) {
+            where = where.and(DSL.condition(
+                    detectedAt + " <= parseDateTime64BestEffort(?)", endDate.toString()));
+        }
+        return where;
+    }
+
+    private static final java.util.Set<String> SORT_COLUMNS = java.util.Set.of(
+            "overdue_count", "missed_count", "order_violation_count", "total_deviations");
+
+    @Override
+    public List<Object[]> findDeviationsByFacilityAndType(String facilityId, String district, UUID protocolDefinitionId,
+                                                           OffsetDateTime startDate, OffsetDateTime endDate,
+                                                           String sortBy, int limit, int offset) {
+        String fid = str(facilityId);
+        String pid = uuid(protocolDefinitionId);
+        var d  = finalAs(DEVIATIONS, "d");
+        var si = finalAs(STEP_INSTANCES, "si");
+        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        var pf = DSL.table(DSL.sql("mv_patient_facility_latest pf" + finalClause()));
+        String devId = "d." + DEVIATIONS.ID.getName();
+        String devType = "d." + DEVIATIONS.DEVIATION_TYPE.getName();
+        // Whitelisted against SORT_COLUMNS — never interpolate an unvalidated value into ORDER BY.
+        String sortColumn = SORT_COLUMNS.contains(sortBy) ? sortBy : "total_deviations";
+
+        return dsl.select(
+                    DSL.field("pf.facility_id", String.class),
+                    DSL.field("uniqIf(" + devId + ", " + devType + " = 'OVERDUE')", Long.class).as("overdue_count"),
+                    DSL.field("uniqIf(" + devId + ", " + devType + " = 'MISSED')", Long.class).as("missed_count"),
+                    DSL.field("uniqIf(" + devId + ", " + devType + " = 'ORDER_VIOLATION')", Long.class).as("order_violation_count"),
+                    DSL.field("uniq(" + devId + ")", Long.class).as("total_deviations"))
+                  .from(d)
+                  .leftJoin(si).on(DSL.condition(
+                          "d." + DEVIATIONS.STEP_INSTANCE_ID.getName() + " = si.id"))
+                  .join(pi).on(DSL.condition(
+                          "d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                  .join(pf).on(DSL.condition(
+                          "pf.patient_id = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
+                  .where(byFacilityWhere(fid, district, pid, startDate, endDate))
+                  .groupBy(DSL.field("pf.facility_id"))
+                  .orderBy(DSL.field(sortColumn).desc())
+                  .limit(limit)
+                  .offset(offset)
+                  .fetch()
+                  .map(r -> new Object[]{
+                          r.get(0, String.class), r.get(1, Long.class), r.get(2, Long.class),
+                          r.get(3, Long.class), r.get(4, Long.class)});
+    }
+
+    @Override
+    public long countFacilitiesWithDeviations(String facilityId, String district, UUID protocolDefinitionId,
+                                              OffsetDateTime startDate, OffsetDateTime endDate) {
+        String fid = str(facilityId);
+        String pid = uuid(protocolDefinitionId);
+        var d  = finalAs(DEVIATIONS, "d");
+        var si = finalAs(STEP_INSTANCES, "si");
+        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        var pf = DSL.table(DSL.sql("mv_patient_facility_latest pf" + finalClause()));
+
+        Long r = dsl.select(DSL.field("uniq(pf.facility_id)", Long.class))
+                    .from(d)
+                    .leftJoin(si).on(DSL.condition(
+                            "d." + DEVIATIONS.STEP_INSTANCE_ID.getName() + " = si.id"))
+                    .join(pi).on(DSL.condition(
+                            "d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                    .join(pf).on(DSL.condition(
+                            "pf.patient_id = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
+                    .where(byFacilityWhere(fid, district, pid, startDate, endDate))
+                    .fetchOne(0, Long.class);
+        return r == null ? 0L : r;
+    }
+
     @Override
     public long countDistinctPatientsWithDeviations() {
         var d  = finalAs(DEVIATIONS, "d");
