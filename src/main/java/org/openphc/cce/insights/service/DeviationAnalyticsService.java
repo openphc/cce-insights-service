@@ -152,6 +152,25 @@ public class DeviationAnalyticsService {
                 .build()).collect(Collectors.toList());
     }
 
+    // RI-34 — "Deviations by Facility and Type" chart (Deviations page). Ranked by total deviations
+    // desc, offset-paginated. Not cached: pagination offset makes cache keys unbounded, and this
+    // isn't hit as heavily as the KPI tiles.
+    public DeviationsByFacilityPage getDeviationsByFacility(String facilityId, String district, UUID protocolDefinitionId,
+                                                             OffsetDateTime startDate, OffsetDateTime endDate,
+                                                             String sortBy, int limit, int offset) {
+        List<Object[]> rows = deviationRepository.findDeviationsByFacilityAndType(
+                facilityId, district, protocolDefinitionId, startDate, endDate, sortBy, limit, offset);
+        List<DeviationByFacilityDto> facilities = rows.stream().map(row -> DeviationByFacilityDto.builder()
+                .facilityId((String) row[0])
+                .overdueCount(((Number) row[1]).longValue())
+                .missedCount(((Number) row[2]).longValue())
+                .orderViolationCount(((Number) row[3]).longValue())
+                .totalDeviations(((Number) row[4]).longValue())
+                .build()).collect(Collectors.toList());
+        long totalCount = deviationRepository.countFacilitiesWithDeviations(facilityId, district, protocolDefinitionId, startDate, endDate);
+        return new DeviationsByFacilityPage(facilities, totalCount);
+    }
+
     @Cacheable(value = "analytics", key = "'dev-resolution-' + #protocolDefId + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all')")
     public DeviationResolutionDto getResolutionRate(UUID protocolDefId,
                                                      OffsetDateTime startDate,

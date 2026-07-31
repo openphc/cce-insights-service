@@ -104,4 +104,25 @@ public interface DeviationRepository extends ReadOnlyRepository<Deviation, UUID>
     Object[] aggregateDeviationMetricsByFacility(String facilityId);
 
     Object[] aggregateDeviationMetricsByProtocolAndFacility(UUID protocolDefinitionId, String facilityId);
+
+    /**
+     * RI-34 — deviations DETECTED within [startDate, endDate], grouped by facility and broken down
+     * by type, for the "Deviations by Facility and Type" chart. Same raw-table attribution as
+     * {@link #countDeviationsByFacility(OffsetDateTime, OffsetDateTime)} (via mv_patient_facility_latest),
+     * NOT mv_daily_deviation_kpis — summing that snapshot MV across days double-counts deviations
+     * (esp. OVERDUE, which re-appears in each day's snapshot until resolved); the raw deviations
+     * table has no such risk. {@code sortBy} selects which count ranks the page — one of
+     * "total_deviations" (default), "overdue_count", "missed_count", "order_violation_count",
+     * matching the chart's type-filter toggle (selecting a single type re-ranks by that type,
+     * not the total). Returns rows of
+     * [facility_id(String), overdue(long), missed(long), orderViolation(long), total(long)].
+     */
+    List<Object[]> findDeviationsByFacilityAndType(String facilityId, String district, UUID protocolDefinitionId,
+                                                   OffsetDateTime startDate, OffsetDateTime endDate,
+                                                   String sortBy, int limit, int offset);
+
+    /** Count of distinct facilities with at least one matching deviation — pagination total for
+     *  {@link #findDeviationsByFacilityAndType}. */
+    long countFacilitiesWithDeviations(String facilityId, String district, UUID protocolDefinitionId,
+                                       OffsetDateTime startDate, OffsetDateTime endDate);
 }

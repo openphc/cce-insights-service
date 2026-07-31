@@ -234,7 +234,10 @@ Always filter with `FINAL` and `WHERE snapshot_date = today()` for the current d
 > snapshot (open deviations as of that day), not a flow of new deviations, so summing
 > across days double-counts deviations that remain open. The Deviations page header
 > instead counts distinct rows from the `deviations` base table filtered by
-> `detected_at` — see `DeviationRepository.countByTypeFiltered`.
+> `detected_at` — see `DeviationRepository.countByTypeFiltered`. **RI-34**'s
+> `findDeviationsByFacilityAndType` (the "Deviations by Facility and Type" chart) follows
+> the same rule — it queries the raw `deviations` table via `mv_patient_facility_latest`,
+> not this MV.
 
 **`mv_daily_event_kpis`** — one row per `snapshot_date` (global pipeline summary)
 

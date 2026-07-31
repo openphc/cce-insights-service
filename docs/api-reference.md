@@ -28,7 +28,7 @@ facilities — behaving as "the union of the district's facilities". It is honor
 - Facility ranking, activity-summary, activity-detail, adoption (`/facilities/*`)
 - Dashboard referrals (`/dashboard/referrals`) and patient referrals (`/patients/referrals/received-by-hie`)
 - Compliance summaries (`/protocols[/{id}]/compliance-summary`, `/protocols/{id}/patients`) and step-analytics
-- Deviations (`/deviations`, `/deviations/kpis`, `/deviations/trends`, `/deviations/by-action`)
+- Deviations (`/deviations`, `/deviations/kpis`, `/deviations/trends`, `/deviations/by-action`, `/deviations/by-facility`)
 - Event volume (`/events/summary`, `/events/trends`, `/events/by-resource-type`, `/events/by-facility`)
 
 Not district-scoped by design: the **Ingestion** pipeline endpoints (`/ingestion/*`) — pipeline
@@ -1468,7 +1468,64 @@ Most commonly deviated-from protocol steps, grouped by `actionId`. Identifies sy
 
 ---
 
-### 10.2 GET `/v1/insights/deviations/resolution-rate`
+### 10.2 GET `/v1/insights/deviations/by-facility`
+
+**RI-34.** Facilities ranked by deviation count for the "Deviations by Facility and Type" chart
+(Deviations page). Same clinical-occurrence attribution as `/deviations/kpis` (via the raw
+`deviations` table joined through `mv_patient_facility_latest`, **not**
+`mv_daily_deviation_kpis` — summing that daily snapshot table across a date range double-counts
+deviations that remain `OVERDUE` across multiple days).
+
+**Required Scope:** `dashboard:read`
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `facilityId` | String | — | Scope to a single facility — returns at most one row |
+| `district` | String | — | Global district filter (blank = all) |
+| `protocolDefinitionId` | UUID | — | Filter by protocol |
+| `startDate` | ISO 8601 (`OffsetDateTime`) | — | Deviations detected after |
+| `endDate` | ISO 8601 (`OffsetDateTime`) | — | Deviations detected before |
+| `deviationType` | `OVERDUE` \| `MISSED` \| `ORDER_VIOLATION` | — | Re-ranks the page by that type's count instead of `totalDeviations` (matches the chart's type-filter toggle); does **not** filter out the other counts, all three are always returned per facility |
+| `limit` | int | `20` | Page size |
+| `cursor` | String | — | Opaque offset token from the previous page's `pagination.nextCursor` |
+
+**Response: `200 OK`**
+
+```json
+{
+  "data": [
+    {
+      "facilityId": "0002",
+      "overdueCount": 13,
+      "missedCount": 18,
+      "orderViolationCount": 11,
+      "totalDeviations": 42
+    },
+    {
+      "facilityId": "0015",
+      "overdueCount": 13,
+      "missedCount": 14,
+      "orderViolationCount": 9,
+      "totalDeviations": 36
+    }
+  ],
+  "pagination": {
+    "limit": 20,
+    "nextCursor": null,
+    "hasMore": false,
+    "totalCount": 2
+  }
+}
+```
+
+> Facility **name** is not included — the UI resolves it client-side via the facility lookup,
+> same as every other `facilityId`-only endpoint (`/events/by-facility`, `/facilities/ranking`).
+
+---
+
+### 10.3 GET `/v1/insights/deviations/resolution-rate`
 
 Percentage of `OVERDUE` steps that eventually reach `COMPLETED` (recovered) vs. those that progress to `MISSED` (unrecoverable). Measures the system's ability to recover from compliance delays.
 
@@ -2467,7 +2524,7 @@ Deviation counts broken down by type and severity, plus recent-activity windows.
 ```
 
 > There is no `resolvedDeviations` or `intelligenceActions` field on this endpoint —
-> resolution stats live at `/v1/insights/deviations/resolution-rate` (§10.2), and
+> resolution stats live at `/v1/insights/deviations/resolution-rate` (§10.3), and
 > delivery stats live at `/v1/insights/intelligence/summary` (§3.3). `byType` keys are
 > `overdue`/`missed`/`orderViolation` (lowercase); `bySeverity` keys are
 > `warning`/`critical` (`OVERDUE` → warning, `MISSED`/`ORDER_VIOLATION` → critical).
