@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Deviations by Facility and Type (RI-34)
+
+- **New endpoint `GET /v1/insights/deviations/by-facility`** — backs the Deviations page's
+  "Deviations by Facility and Type" chart. Facilities ranked by deviation count, broken down into
+  overdue/missed/order-violation, cursor-paginated, scoped by `facilityId`/`district`/
+  `protocolDefinitionId`/date range, and re-rankable by a single type via `deviationType`
+  (defaults to ranking by total).
+- `DeviationRepository.findDeviationsByFacilityAndType` follows the same raw-`deviations`-table
+  attribution as the existing `countDeviationsByFacility` (via `mv_patient_facility_latest`),
+  **not** `mv_daily_deviation_kpis` — summing that daily snapshot table across a date range
+  double-counts deviations that stay `OVERDUE` across multiple days (same pitfall already
+  documented for `countByTypeFiltered`).
+- Sort column is whitelisted server-side (`SORT_COLUMNS` in `DeviationRepositoryImpl`) — the
+  `deviationType` query param is never interpolated directly into `ORDER BY`.
+
 ### Global Facility Filter Parity + Ingestion District Support (RI-56)
 
 - **District filtering added to the Ingestion Analytics pipeline** — previously the only page
