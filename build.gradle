@@ -3,6 +3,7 @@ plugins {
     id 'org.springframework.boot' version '3.4.4'
     id 'io.spring.dependency-management' version '1.1.7'
     id 'jacoco'
+    id 'org.sonarqube' version '6.3.1.5724'
     id 'nu.studer.jooq' version '9.0'
 }
 
@@ -107,7 +108,40 @@ tasks.named('integrationTest') {
 }
 
 jacocoTestReport {
-    dependsOn test
+    // Both suites contribute: integrationTest is wired into check, so its
+    // ~54 tests run on every build. Reading only test.exec would discard
+    // everything they cover.
+    dependsOn test, integrationTest
+    executionData.setFrom(fileTree(layout.buildDirectory).include('jacoco/*.exec'))
+    reports {
+        xml.required = true      // the format Sonar ingests
+        html.required = true     // for local browsing
+    }
+    // jOOQ generates ~23k lines into src/generated/jooq, which is wired into
+    // sourceSets.main. Left in, generated classes outnumber hand-written ones
+    // and drag the coverage ratio to single digits.
+    afterEvaluate {
+        classDirectories.setFrom(files(classDirectories.files.collect {
+            fileTree(dir: it, exclude: ['org/openphc/cce/insights/jooq/**'])
+        }))
+    }
+}
+
+sonar {
+    properties {
+        property 'sonar.organization', 'openphc'
+        property 'sonar.projectKey', 'openphc_cce-insights-service'
+        property 'sonar.coverage.jacoco.xmlReportPaths',
+                 "${layout.buildDirectory.get()}/reports/jacoco/test/jacocoTestReport.xml"
+        // Generated jOOQ sources: analysing them yields issues nobody can act
+        // on, since the fix would be overwritten by the next generateJooq run.
+        property 'sonar.exclusions', 'src/generated/**'
+        property 'sonar.coverage.exclusions', 'src/generated/**'
+    }
+}
+
+tasks.named('sonar') {
+    dependsOn jacocoTestReport
 }
 
 // ── jOOQ code generation ──────────────────────────────────────────────────────
