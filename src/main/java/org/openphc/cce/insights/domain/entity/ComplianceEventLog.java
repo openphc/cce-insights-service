@@ -24,6 +24,7 @@ public class ComplianceEventLog {
     private String data;
     private String processingStatus;
     private String facilityId;
+    private String facilityName;
     private UUID protocolInstanceId;
     private UUID protocolDefinitionId;
     private String actionId;

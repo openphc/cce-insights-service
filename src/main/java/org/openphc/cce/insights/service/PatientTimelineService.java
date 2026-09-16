@@ -270,7 +270,16 @@ public class PatientTimelineService {
                 String effectiveDt = el.getData() != null ? extractEffectiveDateTime(el.getData()) : null;
                 String practitioner = el.getData() != null ? extractPractitioner(el.getData()) : null;
                 String facilityId = el.getFacilityId();
-                String facilityName = el.getData() != null ? extractFacilityName(el.getData()) : null;
+                // Prefer the envelope-sourced facilityname (tibERbu and any future adaptor that
+                // sets it directly) over re-deriving it from the FHIR body. Falls back to the
+                // existing body-derived extraction for sources that never populate the envelope
+                // attribute (e.g. ebuzima/CHW App, whose ServiceRequest.locationReference /
+                // Encounter.location[] shapes extractFacilityName already recognizes) - both paths
+                // stay live, neither replaces the other.
+                String facilityName = el.getFacilityName();
+                if (facilityName == null && el.getData() != null) {
+                    facilityName = extractFacilityName(el.getData());
+                }
                 if (effectiveDt != null || practitioner != null || facilityId != null || facilityName != null) {
                     result.put(entry.getKey(), new EventContext(effectiveDt, practitioner, facilityId, facilityName));
                 }

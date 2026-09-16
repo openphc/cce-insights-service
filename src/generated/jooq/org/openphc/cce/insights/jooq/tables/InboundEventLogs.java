@@ -102,6 +102,11 @@ public class InboundEventLogs extends TableImpl<Record> {
     public final TableField<Record, Object> UPDATED_AT = createField(DSL.name("updated_at"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
 
     /**
+     * The column <code>cce_analytics.inbound_event_logs.event_time</code>.
+     */
+    public final TableField<Record, Object> EVENT_TIME = createField(DSL.name("event_time"), DefaultDataType.getDefaultDataType("Nullable)"), this, "");
+
+    /**
      * The column <code>cce_analytics.inbound_event_logs._version</code>.
      */
     public final TableField<Record, Object> _VERSION = createField(DSL.name("_version"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
@@ -127,11 +132,6 @@ public class InboundEventLogs extends TableImpl<Record> {
     public final TableField<Record, Object> FACILITY_ID = createField(DSL.name("facility_id"), org.jooq.impl.SQLDataType.OTHER.nullable(false).defaultValue(DSL.field(DSL.raw("'JSONExtractString(raw_payload, ''facilityid'')'"), org.jooq.impl.SQLDataType.OTHER)), this, "");
 
     /**
-     * The column <code>cce_analytics.inbound_event_logs.event_time</code>.
-     */
-    public final TableField<Record, Object> EVENT_TIME = createField(DSL.name("event_time"), DefaultDataType.getDefaultDataType("Nullable)").defaultValue(DSL.field(DSL.raw("'toDateTime64OrNull(JSONExtractString(raw_payload, ''time''), 3)'"), org.jooq.impl.SQLDataType.OTHER)), this, "");
-
-    /**
      * The column <code>cce_analytics.inbound_event_logs.resource_type</code>.
      */
     public final TableField<Record, Object> RESOURCE_TYPE = createField(DSL.name("resource_type"), org.jooq.impl.SQLDataType.OTHER.nullable(false).defaultValue(DSL.field(DSL.raw("'JSONExtractString(JSONExtractRaw(raw_payload, ''data''), ''resourceType'')'"), org.jooq.impl.SQLDataType.OTHER)), this, "");
@@ -152,6 +152,11 @@ public class InboundEventLogs extends TableImpl<Record> {
      * The column <code>cce_analytics.inbound_event_logs.patient_id</code>.
      */
     public final TableField<Record, Object> PATIENT_ID = createField(DSL.name("patient_id"), org.jooq.impl.SQLDataType.OTHER.nullable(false).defaultValue(DSL.field(DSL.raw("'subject'"), org.jooq.impl.SQLDataType.OTHER)), this, "");
+
+    /**
+     * The column <code>cce_analytics.inbound_event_logs.facility_name</code>.
+     */
+    public final TableField<Record, Object> FACILITY_NAME = createField(DSL.name("facility_name"), org.jooq.impl.SQLDataType.OTHER.nullable(false).defaultValue(DSL.field(DSL.raw("'JSONExtractString(raw_payload, ''facilityname'')'"), org.jooq.impl.SQLDataType.OTHER)), this, "");
 
     private InboundEventLogs(Name alias, Table<Record> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);

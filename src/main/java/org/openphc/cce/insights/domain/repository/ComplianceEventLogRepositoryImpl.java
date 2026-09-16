@@ -48,6 +48,7 @@ public class ComplianceEventLogRepositoryImpl
                 .type(null)
                 .eventTime(null)
                 .facilityId(null)
+                .facilityName(null)
                 .build();
     }
 
@@ -64,6 +65,7 @@ public class ComplianceEventLogRepositoryImpl
                 .data(r.get("data", String.class))
                 .processingStatus(r.get("processing_status", String.class))
                 .facilityId(r.get("facility_id", String.class))
+                .facilityName(r.get("facility_name", String.class))
                 .protocolInstanceId(parseUUID(r.get("protocol_instance_id", String.class)))
                 .protocolDefinitionId(parseUUID(r.get("protocol_definition_id", String.class)))
                 .actionId(r.get("action_id", String.class))
@@ -91,6 +93,7 @@ public class ComplianceEventLogRepositoryImpl
                     DSL.field("COALESCE(cel." + COMPLIANCE_EVENT_LOGS.PROCESSING_STATUS.getName() +
                               ", iel." + INBOUND_EVENT_LOGS.STATUS.getName() + ")").as("processing_status"),
                     DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()).as("facility_id"),
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_NAME.getName()).as("facility_name"),
                     DSL.val("").as("protocol_instance_id"),
                     DSL.val("").as("protocol_definition_id"),
                     DSL.val("").as("action_id"),
@@ -110,6 +113,7 @@ public class ComplianceEventLogRepositoryImpl
         if (complianceEventIds == null || complianceEventIds.isEmpty()) return List.of();
         List<String> ids = complianceEventIds.stream().map(UUID::toString).toList();
         var cel = finalAs(COMPLIANCE_EVENT_LOGS, "cel");
+        var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
         return dsl.select(
                     DSL.field("cel." + COMPLIANCE_EVENT_LOGS.ID.getName()).as("id"),
                     DSL.field("cel." + COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName()).as("cloudevents_id"),
@@ -120,12 +124,16 @@ public class ComplianceEventLogRepositoryImpl
                     DSL.field("cel." + COMPLIANCE_EVENT_LOGS.SOURCE.getName()).as("source"),
                     DSL.field("cel." + COMPLIANCE_EVENT_LOGS.DATA.getName()).as("data"),
                     DSL.field("cel." + COMPLIANCE_EVENT_LOGS.PROCESSING_STATUS.getName()).as("processing_status"),
-                    DSL.val("").as("facility_id"),
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()).as("facility_id"),
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_NAME.getName()).as("facility_name"),
                     DSL.val("").as("protocol_instance_id"),
                     DSL.val("").as("protocol_definition_id"),
                     DSL.val("").as("action_id"),
                     DSL.val("").as("matched_step_instance_id"))
                   .from(cel)
+                  .leftJoin(iel).on(DSL.condition(
+                          "iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName() +
+                          " = cel." + COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
                   .where(DSL.field("cel." + COMPLIANCE_EVENT_LOGS.ID.getName()).in(ids))
                   .fetch()
                   .map(this::toComplianceEventLogJoined);
