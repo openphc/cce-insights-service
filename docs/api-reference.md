@@ -193,6 +193,42 @@ Full compliance timeline for a patient across all enrolled protocols. Combines e
         "protocolCanonical": "http://openphc.org/fhir/PlanDefinition/anc-high-risk|2.1",
         "status": "active",
         "complianceRate": 0.50,
+        "journey": [
+          {
+            "actionId": "anc-visit-1",
+            "parentActionId": null,
+            "stepName": "ANC Visit 1",
+            "status": "COMPLETED",
+            "completionCount": 1,
+            "effectiveDateTime": "2026-01-20T09:00:00Z",
+            "dueDate": "2026-01-20T00:00:00Z",
+            "completionStatus": "on_time",
+            "source": "ebuzima/kigali-south",
+            "practitioner": "Practitioner/PUID-0000195-9",
+            "facilityId": "0002",
+            "facilityName": "Kicukiro Health Center",
+            "requiredBehavior": "must",
+            "description": null,
+            "depth": 0
+          },
+          {
+            "actionId": "anc-visit-2",
+            "parentActionId": "anc-visit-1",
+            "stepName": "ANC Visit 2",
+            "status": "OVERDUE",
+            "completionCount": 0,
+            "effectiveDateTime": null,
+            "dueDate": "2026-02-15T00:00:00Z",
+            "completionStatus": null,
+            "source": null,
+            "practitioner": null,
+            "facilityId": null,
+            "facilityName": null,
+            "requiredBehavior": "must",
+            "description": null,
+            "depth": 1
+          }
+        ],
         "timeline": [
           {
             "timestamp": "2026-01-15T10:00:00Z",
@@ -218,6 +254,8 @@ Full compliance timeline for a patient across all enrolled protocols. Combines e
   }
 }
 ```
+
+> **Note:** `journey[].facilityId`/`facilityName` come from the completing event's own `inbound_event_logs.facility_id`/`facility_name` columns (both `MATERIALIZED` from the envelope's `facilityid`/`facilityname` extension attributes at insert time — see `deploy-scripts/data-pipeline/schema/01-create-tables.sql`, read via `ComplianceEventLogRepositoryImpl`), falling back to a body-derived extraction (`Encounter.location[].location.display`, `ServiceRequest.locationReference[].display`) only when the envelope carries no `facilityname`. Both are `null` for a step with no completing event yet (`NOT_STARTED`/`PENDING`), and independently `null`/empty whenever the underlying FHIR resource type has no organization-equivalent field at all (e.g. `Observation`, `Condition`, `MedicationRequest`).
 
 ### 2.2 GET `/v1/insights/patients/{patientId}/protocol-tracking`
 
