@@ -49,6 +49,16 @@ public abstract class AbstractClickHouseRepository<T, ID> implements ReadOnlyRep
                 : DSL.table(DSL.sql(table.getName() + " " + alias + " FINAL"));
     }
 
+    /**
+     * Same as {@link #finalAs} for the {@code facility} reference table, which has no generated
+     * jOOQ model (see {@code DailyKpiRepositoryImpl.getFacilityReference()} for the same raw-SQL
+     * pattern) — ReplacingMergeTree, so FINAL is needed to see the deduplicated, current row per
+     * facility_id.
+     */
+    protected Table<?> facilityFinal(String alias) {
+        return DSL.table(DSL.sql("facility " + alias + finalClause()));
+    }
+
     private Table<?> baseTable() {
         return DSL.table(DSL.sql(getTableName() + finalClause()));
     }
