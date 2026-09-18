@@ -81,6 +81,7 @@ public class ComplianceEventLogRepositoryImpl
     public List<ComplianceEventLog> findBySubjectOrderByEventTimeDesc(String subject) {
         var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
         var cel = finalAs(COMPLIANCE_EVENT_LOGS, "cel");
+        var fac = facilityFinal("fac");
         return dsl.select(
                     DSL.field("iel." + INBOUND_EVENT_LOGS.ID.getName()).as("id"),
                     DSL.field("iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName()).as("cloudevents_id"),
@@ -93,7 +94,12 @@ public class ComplianceEventLogRepositoryImpl
                     DSL.field("COALESCE(cel." + COMPLIANCE_EVENT_LOGS.PROCESSING_STATUS.getName() +
                               ", iel." + INBOUND_EVENT_LOGS.STATUS.getName() + ")").as("processing_status"),
                     DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()).as("facility_id"),
-                    DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_NAME.getName()).as("facility_name"),
+                    // facility.facility_name is the CURRENT known name for this facility_id — kept up
+                    // to date by FacilityService (compliance-service) as events arrive, so it resolves
+                    // correctly even for events ingested before that name was ever known. Falls back to
+                    // this event's own (possibly blank) snapshot only when the facility_id itself has no
+                    // reference row yet.
+                    DSL.field("COALESCE(fac.facility_name, iel." + INBOUND_EVENT_LOGS.FACILITY_NAME.getName() + ")").as("facility_name"),
                     DSL.val("").as("protocol_instance_id"),
                     DSL.val("").as("protocol_definition_id"),
                     DSL.val("").as("action_id"),
@@ -102,6 +108,8 @@ public class ComplianceEventLogRepositoryImpl
                   .leftJoin(cel).on(DSL.condition(
                           "cel." + COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName() +
                           " = iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
+                  .leftJoin(fac).on(DSL.condition(
+                          "fac.facility_id = iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()))
                   .where(DSL.field("iel." + INBOUND_EVENT_LOGS.SUBJECT.getName()).eq(subject))
                   .orderBy(DSL.field("iel." + INBOUND_EVENT_LOGS.EVENT_TIME.getName()).desc())
                   .fetch()
@@ -114,6 +122,7 @@ public class ComplianceEventLogRepositoryImpl
         List<String> ids = complianceEventIds.stream().map(UUID::toString).toList();
         var cel = finalAs(COMPLIANCE_EVENT_LOGS, "cel");
         var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
+        var fac = facilityFinal("fac");
         return dsl.select(
                     DSL.field("cel." + COMPLIANCE_EVENT_LOGS.ID.getName()).as("id"),
                     DSL.field("cel." + COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName()).as("cloudevents_id"),
@@ -125,7 +134,8 @@ public class ComplianceEventLogRepositoryImpl
                     DSL.field("cel." + COMPLIANCE_EVENT_LOGS.DATA.getName()).as("data"),
                     DSL.field("cel." + COMPLIANCE_EVENT_LOGS.PROCESSING_STATUS.getName()).as("processing_status"),
                     DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()).as("facility_id"),
-                    DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_NAME.getName()).as("facility_name"),
+                    // See findBySubjectOrderByEventTimeDesc above for why fac.facility_name is preferred.
+                    DSL.field("COALESCE(fac.facility_name, iel." + INBOUND_EVENT_LOGS.FACILITY_NAME.getName() + ")").as("facility_name"),
                     DSL.val("").as("protocol_instance_id"),
                     DSL.val("").as("protocol_definition_id"),
                     DSL.val("").as("action_id"),
@@ -134,6 +144,8 @@ public class ComplianceEventLogRepositoryImpl
                   .leftJoin(iel).on(DSL.condition(
                           "iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName() +
                           " = cel." + COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
+                  .leftJoin(fac).on(DSL.condition(
+                          "fac.facility_id = iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()))
                   .where(DSL.field("cel." + COMPLIANCE_EVENT_LOGS.ID.getName()).in(ids))
                   .fetch()
                   .map(this::toComplianceEventLogJoined);
