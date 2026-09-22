@@ -59,7 +59,9 @@ public abstract class AbstractClickHouseRepository<T, ID> implements ReadOnlyRep
         return DSL.table(DSL.sql("facility " + alias + finalClause()));
     }
 
-    private Table<?> baseTable() {
+    /** Overridable so a subclass can force FINAL regardless of {@code cce.clickhouse.use-final}
+     * for reference tables where dedup correctness matters more than the FINAL cost. */
+    protected Table<?> baseTable() {
         return DSL.table(DSL.sql(getTableName() + finalClause()));
     }
 

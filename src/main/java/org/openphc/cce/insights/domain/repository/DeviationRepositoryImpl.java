@@ -147,10 +147,12 @@ public class DeviationRepositoryImpl
 
     @Override
     public List<Object[]> findFilteredDeviations(String deviationType, String facilityId,
+                                                  UUID protocolDefinitionId,
                                                   OffsetDateTime startDate, OffsetDateTime endDate,
                                                   int lim) {
         String dtype = str(deviationType);
         String fid   = str(facilityId);
+        String pdid  = uuid(protocolDefinitionId);
         var d  = finalAs(DEVIATIONS, "d");
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
         var si = finalAs(STEP_INSTANCES, "si");
@@ -176,6 +178,9 @@ public class DeviationRepositoryImpl
                   .where(DSL.condition(
                           "? = '' OR d." + DEVIATIONS.DEVIATION_TYPE.getName() + " = ?", dtype, dtype))
                   .and(DSL.condition("? = '' OR pf.facility_id = ?", fid, fid))
+                  .and(DSL.condition(
+                          "toUUIDOrNull(?) IS NULL OR pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() +
+                          " = toUUIDOrNull(?)", pdid, pdid))
                   .and(DSL.condition(
                           "d." + DEVIATIONS.DETECTED_AT.getName() + " >= parseDateTime64BestEffort(?)",
                           dtStart(startDate)))
@@ -395,7 +400,8 @@ public class DeviationRepositoryImpl
     }
 
     @Override
-    public List<Object[]> countDeviationsByFacility() {
+    public List<Object[]> countDeviationsByFacility(UUID protocolDefinitionId) {
+        String pid = protocolDefinitionId != null ? protocolDefinitionId.toString() : "";
         var d   = finalAs(DEVIATIONS, "d");
         var pi  = finalAs(PROTOCOL_INSTANCES, "pi");
         var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
@@ -409,6 +415,9 @@ public class DeviationRepositoryImpl
                   .join(iel).on(DSL.condition(
                           "iel." + INBOUND_EVENT_LOGS.SUBJECT.getName() + " = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
                   .where(DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()).ne(""))
+                  .and(DSL.condition(
+                          "toUUIDOrNull(?) IS NULL OR pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() +
+                          " = toUUIDOrNull(?)", pid, pid))
                   .groupBy(DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()))
                   .fetch()
                   .map(r -> new Object[]{r.get(0, String.class), r.get(1, Long.class)});

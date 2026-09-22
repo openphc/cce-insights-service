@@ -65,9 +65,9 @@ public class DashboardService {
 
         // Top 3 and Bottom 3 facilities by compliance rate
         List<FacilityRankingDto> topFacilities = facilityRankingService.getRankings(
-                startDate, endDate, "complianceRate", "desc", 3);
+                startDate, endDate, "complianceRate", "desc", 3, null);
         List<FacilityRankingDto> bottomFacilities = facilityRankingService.getRankings(
-                startDate, endDate, "complianceRate", "asc", 3);
+                startDate, endDate, "complianceRate", "asc", 3, null);
 
         // Enrich facility rankings with HIE patient counts
         enrichFacilitiesWithHIE(topFacilities, facilityHIEPatients);
@@ -98,7 +98,7 @@ public class DashboardService {
 
         // Facility compliance — get all facilities (large limit)
         List<FacilityRankingDto> allFacilities = facilityRankingService.getRankings(
-                null, null, "complianceRate", "desc", 1000);
+                null, null, "complianceRate", "desc", 1000, null);
         long totalFacilities = allFacilities.size();
         long facilityAbove90 = allFacilities.stream()
                 .filter(f -> f.getComplianceRate() > 90.0)
@@ -112,7 +112,7 @@ public class DashboardService {
 
         // Practitioner compliance — get all practitioners (large limit)
         List<PractitionerRankingDto> allPractitioners = practitionerRankingService.getRankings(
-                "complianceRate", "desc", 1000, null, null, null);
+                "complianceRate", "desc", 1000, null, null, null, null);
         long totalPractitioners = allPractitioners.size();
         long practitionerAbove90 = allPractitioners.stream()
                 .filter(p -> p.getComplianceRate() > 90.0)

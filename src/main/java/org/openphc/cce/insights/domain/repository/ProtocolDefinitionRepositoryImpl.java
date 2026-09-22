@@ -2,6 +2,8 @@ package org.openphc.cce.insights.domain.repository;
 
 import org.jooq.DSLContext;
 import org.jooq.Record;
+import org.jooq.Table;
+import org.jooq.impl.DSL;
 import org.openphc.cce.insights.domain.entity.ProtocolDefinition;
 import org.springframework.stereotype.Repository;
 
@@ -21,6 +23,18 @@ public class ProtocolDefinitionRepositoryImpl
     @Override
     protected String getTableName() {
         return PROTOCOL_DEFINITIONS.getName();
+    }
+
+    /**
+     * protocol_definitions is a ReplacingMergeTree, and the global {@code cce.clickhouse.use-final}
+     * toggle defaults to false in application.yml (perf tradeoff for high-volume tables) - which
+     * left pre-/post-update rows for the same protocol id both visible until ClickHouse's background
+     * merge ran, showing duplicate entries in the UI's protocol filter. This table is small and rarely
+     * written, so always force FINAL here regardless of the global flag.
+     */
+    @Override
+    protected Table<?> baseTable() {
+        return DSL.table(DSL.sql(getTableName() + " FINAL"));
     }
 
     @Override

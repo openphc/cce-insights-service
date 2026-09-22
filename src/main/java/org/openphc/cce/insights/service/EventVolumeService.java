@@ -1,6 +1,9 @@
 package org.openphc.cce.insights.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.openphc.cce.insights.domain.repository.ComplianceEventLogRepository;
 import org.openphc.cce.insights.domain.repository.InboundEventRepository;
 import org.openphc.cce.insights.web.dto.*;
@@ -11,12 +14,14 @@ import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class EventVolumeService {
 
     private final ComplianceEventLogRepository complianceEventLogRepository;
     private final InboundEventRepository inboundEventRepository;
+    private final ObjectMapper objectMapper;
 
     @Cacheable(value = "metrics", key = "'vol-summary-' + #startDate + '-' + #endDate")
     public EventVolumeSummaryDto getSummary(OffsetDateTime startDate, OffsetDateTime endDate) {
@@ -128,17 +133,37 @@ public class EventVolumeService {
 
     @Cacheable(value = "metrics", key = "'vol-practitioner-' + #startDate + '-' + #endDate")
     public List<PractitionerEventCountDto> getByPractitioner(OffsetDateTime startDate, OffsetDateTime endDate) {
-        List<Object[]> rows = complianceEventLogRepository.countByPractitioner(null, startDate, endDate);
+        // countByPractitioner() relied on the unpopulated inbound_event_logs.practitioner_ref
+        // materialized column (see PractitionerExtractor) - parse each candidate event's resource
+        // body directly instead, same as PractitionerRankingService.
+        List<Object[]> rows = new ArrayList<>(); // [practitioner_ref, practitioner_display, resource_type, count=1]
+        for (Object[] candidate : complianceEventLogRepository.findPractitionerCandidateEvents(startDate, endDate, null)) {
+            String dataJson = (String) candidate[2];
+            if (dataJson == null || dataJson.isEmpty()) continue;
+            try {
+                JsonNode root = objectMapper.readTree(dataJson);
+                PractitionerExtractor.PractitionerRef found = PractitionerExtractor.extract(root);
+                if (found == null) continue;
+                String resourceType = root.has("resourceType") ? root.get("resourceType").asText(null) : null;
+                rows.add(new Object[]{found.reference(), found.display(), resourceType, 1L});
+            } catch (Exception e) {
+                log.debug("Failed to parse resource body for practitioner extraction: {}", e.getMessage());
+            }
+        }
         // rows: [practitioner_ref, practitioner_display, resource_type, count]
         Map<String, List<Object[]>> grouped = new LinkedHashMap<>();
         for (Object[] row : rows) {
             grouped.computeIfAbsent((String) row[0], k -> new ArrayList<>()).add(row);
         }
         return grouped.entrySet().stream().map(e -> {
-            List<ResourceTypeCountDto> byType = e.getValue().stream()
-                    .map(r -> ResourceTypeCountDto.builder()
-                            .resourceType((String) r[2])
-                            .count(((Number) r[3]).longValue())
+            Map<String, Long> countByResourceType = new LinkedHashMap<>();
+            for (Object[] r : e.getValue()) {
+                countByResourceType.merge((String) r[2], ((Number) r[3]).longValue(), Long::sum);
+            }
+            List<ResourceTypeCountDto> byType = countByResourceType.entrySet().stream()
+                    .map(rt -> ResourceTypeCountDto.builder()
+                            .resourceType(rt.getKey())
+                            .count(rt.getValue())
                             .build())
                     .collect(Collectors.toList());
             long total = byType.stream().mapToLong(ResourceTypeCountDto::getCount).sum();

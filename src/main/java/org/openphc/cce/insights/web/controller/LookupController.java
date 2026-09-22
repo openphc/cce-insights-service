@@ -6,6 +6,7 @@ import org.openphc.cce.insights.domain.repository.ComplianceEventLogRepository;
 import org.openphc.cce.insights.domain.repository.InboundEventRepository;
 import org.openphc.cce.insights.domain.repository.ProtocolDefinitionRepository;
 import org.openphc.cce.insights.domain.repository.ProtocolInstanceRepository;
+import org.openphc.cce.insights.service.PractitionerRankingService;
 import org.openphc.cce.insights.web.dto.ApiResponse;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.ResponseEntity;
@@ -30,6 +31,7 @@ public class LookupController {
     private final ProtocolInstanceRepository protocolInstanceRepository;
     private final ComplianceEventLogRepository complianceEventLogRepository;
     private final InboundEventRepository inboundEventRepository;
+    private final PractitionerRankingService practitionerRankingService;
     private final ObjectMapper objectMapper;
 
     @GetMapping("/protocols")
@@ -81,9 +83,8 @@ public class LookupController {
     }
 
     @GetMapping("/practitioners")
-    @Cacheable(value = "lookups", key = "'practitioners'")
     public ResponseEntity<ApiResponse<List<String>>> getPractitioners() {
-        List<String> practitioners = complianceEventLogRepository.findDistinctPractitioners();
+        List<String> practitioners = practitionerRankingService.getDistinctPractitionerRefs();
         return ResponseEntity.ok(ApiResponse.ok(practitioners));
     }
 

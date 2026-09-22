@@ -20,10 +20,11 @@ public class FacilityRankingService {
     private final DeviationRepository deviationRepository;
     private final StepInstanceRepository stepInstanceRepository;
 
-    @Cacheable(value = "analytics", key = "'rankings-' + #sortBy + '-' + #order + '-' + #limit + '-' + #startDate + '-' + #endDate")
+    @Cacheable(value = "analytics", key = "'rankings-' + #sortBy + '-' + #order + '-' + #limit + '-' + #startDate + '-' + #endDate + '-' + (#protocolDefinitionId ?: 'all')")
     public List<FacilityRankingDto> getRankings(OffsetDateTime startDate, OffsetDateTime endDate,
-                                                 String sortBy, String order, int limit) {
-        List<Object[]> facilityEvents = complianceEventLogRepository.findFacilityEventCounts(null);
+                                                 String sortBy, String order, int limit,
+                                                 java.util.UUID protocolDefinitionId) {
+        List<Object[]> facilityEvents = complianceEventLogRepository.findFacilityEventCounts(protocolDefinitionId);
 
         // Build facility name lookup
         Map<String, String> facilityNameMap = new LinkedHashMap<>();
@@ -39,19 +40,19 @@ public class FacilityRankingService {
             eventCountMap.put(facilityId, ((Number) row[2]).longValue());
         }
 
-        List<Object[]> activePatients = complianceEventLogRepository.findActivePatientsByFacility(null);
+        List<Object[]> activePatients = complianceEventLogRepository.findActivePatientsByFacility(protocolDefinitionId);
         for (Object[] row : activePatients) {
             activePatientMap.put((String) row[0], ((Number) row[1]).longValue());
         }
 
-        List<Object[]> deviationRows = deviationRepository.countDeviationsByFacility();
+        List<Object[]> deviationRows = deviationRepository.countDeviationsByFacility(protocolDefinitionId);
         Map<String, Long> deviationCountMap = new LinkedHashMap<>();
         for (Object[] row : deviationRows) {
             deviationCountMap.put((String) row[0], ((Number) row[1]).longValue());
         }
 
         // Step-based compliance: completed+skipped / total steps per facility
-        List<Object[]> stepComplianceRows = stepInstanceRepository.findStepComplianceByFacility();
+        List<Object[]> stepComplianceRows = stepInstanceRepository.findStepComplianceByFacility(protocolDefinitionId);
         Map<String, Long> totalStepsMap = new LinkedHashMap<>();
         Map<String, Long> completedStepsMap = new LinkedHashMap<>();
         for (Object[] row : stepComplianceRows) {
@@ -61,7 +62,7 @@ public class FacilityRankingService {
         }
 
         // Referral event counts per facility (outbound = initiated, inbound = closure)
-        List<Object[]> referralRows = stepInstanceRepository.findReferralEventCountsByFacility();
+        List<Object[]> referralRows = stepInstanceRepository.findReferralEventCountsByFacility(protocolDefinitionId);
         Map<String, Long> outboundEventsMap = new LinkedHashMap<>();
         Map<String, Long> inboundEventsMap = new LinkedHashMap<>();
         for (Object[] row : referralRows) {

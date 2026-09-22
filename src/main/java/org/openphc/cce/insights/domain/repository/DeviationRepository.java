@@ -16,6 +16,7 @@ public interface DeviationRepository extends ReadOnlyRepository<Deviation, UUID>
     Page<Deviation> findByDeviationType(DeviationType type, Pageable pageable);
 
     List<Object[]> findFilteredDeviations(String deviationType, String facilityId,
+                                          UUID protocolDefinitionId,
                                           OffsetDateTime startDate, OffsetDateTime endDate, int lim);
 
     List<Object[]> findDeviationTrends(String interval, OffsetDateTime startDate,
@@ -32,7 +33,7 @@ public interface DeviationRepository extends ReadOnlyRepository<Deviation, UUID>
     List<Object[]> findRepeatDeviationPatients(int minDeviations, String facilityId,
                                                OffsetDateTime startDate, OffsetDateTime endDate);
 
-    List<Object[]> countDeviationsByFacility();
+    List<Object[]> countDeviationsByFacility(UUID protocolDefinitionId);
 
     long countDistinctPatientsWithDeviations();
 

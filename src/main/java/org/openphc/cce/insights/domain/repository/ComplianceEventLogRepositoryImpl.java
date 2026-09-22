@@ -190,6 +190,35 @@ public class ComplianceEventLogRepositoryImpl
     }
 
     @Override
+    public List<Object[]> findPractitionerCandidateEvents(OffsetDateTime startDate, OffsetDateTime endDate,
+                                                           String facilityId) {
+        String fid = str(facilityId);
+        var cel = finalAs(COMPLIANCE_EVENT_LOGS, "cel");
+        var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
+        return dsl.select(
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.SUBJECT.getName()),
+                    DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()),
+                    DSL.field("JSONExtractRaw(iel." + INBOUND_EVENT_LOGS.RAW_PAYLOAD.getName() + ", 'data')"))
+                  .from(cel)
+                  .join(iel).on(DSL.condition(
+                          "iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName() +
+                          " = cel." + COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
+                  .where(DSL.field("cel." + COMPLIANCE_EVENT_LOGS.PROCESSING_STATUS.getName()).ne("DUPLICATE"))
+                  .and(DSL.field("iel." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName())
+                          .in("Encounter", "Observation", "MedicationRequest", "Procedure", "Consent"))
+                  .and(DSL.field("iel." + INBOUND_EVENT_LOGS.SUBJECT.getName()).ne(""))
+                  .and(DSL.condition(
+                          "iel." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
+                          dtStart(startDate)))
+                  .and(DSL.condition(
+                          "iel." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
+                          dtEnd(endDate)))
+                  .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?", fid, fid))
+                  .fetch()
+                  .map(r -> new Object[]{r.get(0, String.class), r.get(1, String.class), r.get(2, String.class)});
+    }
+
+    @Override
     public List<String> findDistinctPractitioners() {
         var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
         return dsl.selectDistinct(DSL.field("iel." + INBOUND_EVENT_LOGS.PRACTITIONER_REF.getName()))

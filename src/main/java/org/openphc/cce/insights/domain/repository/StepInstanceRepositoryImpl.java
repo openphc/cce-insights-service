@@ -405,7 +405,8 @@ public class StepInstanceRepositoryImpl
     }
 
     @Override
-    public List<Object[]> findStepComplianceByFacility() {
+    public List<Object[]> findStepComplianceByFacility(UUID protocolDefinitionId) {
+        String pid = protocolDefinitionId != null ? protocolDefinitionId.toString() : "";
         var stepInstances = finalAs(STEP_INSTANCES, "si");
         var protocolInstances = finalAs(PROTOCOL_INSTANCES, "pi");
         var patientFacility = MV_PATIENT_FACILITY_LATEST.as("pf");
@@ -423,13 +424,17 @@ public class StepInstanceRepositoryImpl
                         "pf.patient_id = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
                 .leftJoin(deviations).on(DSL.condition("d.step_instance_id = si.id"))
                 .where(DSL.field("pf.facility_id").ne(""))
+                .and(DSL.condition(
+                        "toUUIDOrNull(?) IS NULL OR pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() +
+                        " = toUUIDOrNull(?)", pid, pid))
                 .groupBy(DSL.field("pf.facility_id"))
                 .fetch()
                 .map(r -> toComplianceRow(r, "facility_id"));
     }
 
     @Override
-    public List<Object[]> findReferralEventCountsByFacility() {
+    public List<Object[]> findReferralEventCountsByFacility(UUID protocolDefinitionId) {
+        String pid = protocolDefinitionId != null ? protocolDefinitionId.toString() : "";
         var stepInstances = finalAs(STEP_INSTANCES, "si");
         var protocolInstances = finalAs(PROTOCOL_INSTANCES, "pi");
         var patientFacility = MV_PATIENT_FACILITY_LATEST.as("pf");
@@ -451,6 +456,9 @@ public class StepInstanceRepositoryImpl
                 .and(DSL.condition(
                         "(endsWith(" + actionId + ", '-referral') OR endsWith(" + actionId + ", '-referral-ack'))"))
                 .and(DSL.field("si." + STEP_INSTANCES.STATE.getName()).eq("COMPLETED"))
+                .and(DSL.condition(
+                        "toUUIDOrNull(?) IS NULL OR pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() +
+                        " = toUUIDOrNull(?)", pid, pid))
                 .groupBy(DSL.field("pf.facility_id"))
                 .fetch()
                 .map(StepInstanceRepositoryImpl::toReferralRow);
@@ -504,6 +512,28 @@ public class StepInstanceRepositoryImpl
                 .groupBy(DSL.field("iel.practitioner_ref"))
                 .fetch()
                 .map(r -> toComplianceRow(r, "practitioner_ref"));
+    }
+
+    @Override
+    public List<Object[]> findStepComplianceByPatientIds(List<String> patientIds) {
+        if (patientIds == null || patientIds.isEmpty()) return List.of();
+        var stepInstances = finalAs(STEP_INSTANCES, "si");
+        var protocolInstances = finalAs(PROTOCOL_INSTANCES, "pi");
+        var deviations = finalAs(DEVIATIONS, "d");
+
+        return dsl.select(
+                    DSL.field("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()).as("patient_id"),
+                    uniq("si.id").as("total_steps"),
+                    completedStepsAggregate("si")
+                )
+                .from(stepInstances)
+                .join(protocolInstances).on(DSL.condition(
+                        "si." + STEP_INSTANCES.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                .leftJoin(deviations).on(DSL.condition("d.step_instance_id = si.id"))
+                .where(DSL.field("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()).in(patientIds))
+                .groupBy(DSL.field("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
+                .fetch()
+                .map(r -> toComplianceRow(r, "patient_id"));
     }
 
     @Override
