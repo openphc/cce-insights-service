@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.openphc.cce.insights.domain.repository.DeviationRepository;
 import org.openphc.cce.insights.domain.repository.InboundEventRepository;
 import org.openphc.cce.insights.domain.repository.ProtocolInstanceRepository;
+import org.openphc.cce.insights.domain.repository.StepInstanceRepository;
 import org.openphc.cce.insights.web.dto.DashboardComplianceSummaryDto;
 import org.openphc.cce.insights.web.dto.DashboardOverviewDto;
 import org.openphc.cce.insights.web.dto.FacilityRankingDto;
@@ -23,6 +24,7 @@ public class DashboardService {
     private final InboundEventRepository inboundEventRepository;
     private final ProtocolInstanceRepository protocolInstanceRepository;
     private final DeviationRepository deviationRepository;
+    private final StepInstanceRepository stepInstanceRepository;
     private final FacilityRankingService facilityRankingService;
     private final PractitionerRankingService practitionerRankingService;
     private final DeviationAnalyticsService deviationAnalyticsService;
@@ -124,6 +126,14 @@ public class DashboardService {
                 .filter(p -> p.getComplianceRate() < 75.0)
                 .count();
 
+        // Consent funnel (consent-request -> consent-verification), across all protocols
+        Object[] consentRow = stepInstanceRepository.aggregateConsentMetrics();
+        long totalReceived = ((Number) consentRow[0]).longValue();
+        long totalVerified = ((Number) consentRow[1]).longValue();
+        double verificationRate = totalReceived > 0
+                ? Math.round((double) totalVerified / totalReceived * 1000.0) / 10.0
+                : 0.0;
+
         return DashboardComplianceSummaryDto.builder()
                 .patients(DashboardComplianceSummaryDto.PatientComplianceDto.builder()
                         .trackedPatients(totalPatients)
@@ -136,6 +146,11 @@ public class DashboardService {
                         .above90(facilityAbove90)
                         .between75And90(facilityBetween75And90)
                         .below75(facilityBelow75)
+                        .build())
+                .consent(DashboardComplianceSummaryDto.ConsentComplianceDto.builder()
+                        .totalReceived(totalReceived)
+                        .totalVerified(totalVerified)
+                        .verificationRate(verificationRate)
                         .build())
                 .practitioners(DashboardComplianceSummaryDto.PractitionerComplianceDto.builder()
                         .trackedPractitioners(totalPractitioners)

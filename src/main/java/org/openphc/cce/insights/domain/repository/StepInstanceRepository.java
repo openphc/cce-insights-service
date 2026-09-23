@@ -41,6 +41,15 @@ public interface StepInstanceRepository extends ReadOnlyRepository<StepInstance,
     // Batch load — replaces per-instance findByProtocolInstanceId calls in paged loops
     List<StepInstance> findByProtocolInstanceIdIn(List<UUID> ids);
 
+    /**
+     * Per-facility patient risk counts (on-track / at-risk / non-compliant), aggregated entirely
+     * in ClickHouse. Replaces the previous approach of loading every protocol_instance and step_instance
+     * into Java and joining them there, which broke on dev once the IN (...) clause grew past a few
+     * hundred ids (ClickHouse HTTP transport rejected the request — Code: 62, transport error: 400).
+     * Returns one row per facility: [facilityId, nonCompliantCount, atRiskCount, onTrackCount].
+     */
+    List<Object[]> findAtRiskHotspotCounts();
+
     // Returns one row per protocol: [protocolDefinitionId, protocolCanonical, enrollments, totalSteps, completedSteps]
     List<Object[]> findProtocolStepMetricsByFacility(String facilityId);
 
@@ -52,4 +61,8 @@ public interface StepInstanceRepository extends ReadOnlyRepository<StepInstance,
     Object[] aggregateStepMetricsByFacility(String facilityId);
 
     Object[] aggregateStepMetricsByProtocolAndFacility(UUID protocolDefinitionId, String facilityId);
+
+    // Returns single row: [totalReceived, totalVerified] — completed counts for the
+    // consent-request and consent-verification steps, across all protocols.
+    Object[] aggregateConsentMetrics();
 }

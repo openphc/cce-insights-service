@@ -397,6 +397,19 @@ public class PatientTimelineService {
             if (effectiveDt != null && !effectiveDt.isNull()) {
                 return effectiveDt.asText();
             }
+            // Fallback: Consent.verification[0].verificationDate - checked before the generic
+            // Consent.dateTime below, since a verified Consent carries BOTH: dateTime is when the
+            // consent was originally proposed, verificationDate is when THIS (verification) step
+            // actually happened. Real payloads have no effectiveDateTime/period/authoredOn/
+            // meta.lastUpdated at all for Consent, so without this the consent-verification step
+            // showed no timestamp.
+            JsonNode verification = root.path("verification");
+            if (verification.isArray() && !verification.isEmpty()) {
+                JsonNode verificationDate = verification.get(0).get("verificationDate");
+                if (verificationDate != null && !verificationDate.isNull()) {
+                    return verificationDate.asText();
+                }
+            }
             // Fallback: Encounter.period.start
             JsonNode periodStart = root.path("period").get("start");
             if (periodStart != null && !periodStart.isNull()) {
@@ -406,6 +419,12 @@ public class PatientTimelineService {
             JsonNode authoredOn = root.get("authoredOn");
             if (authoredOn != null && !authoredOn.isNull()) {
                 return authoredOn.asText();
+            }
+            // Fallback: Consent.dateTime (top-level - when the Consent record was proposed/created,
+            // i.e. the consent-request step's own timestamp)
+            JsonNode consentDateTime = root.get("dateTime");
+            if (consentDateTime != null && !consentDateTime.isNull()) {
+                return consentDateTime.asText();
             }
             // Fallback: meta.lastUpdated
             JsonNode lastUpdated = root.path("meta").get("lastUpdated");

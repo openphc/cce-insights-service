@@ -525,29 +525,34 @@ GROUP BY el.source, el.processing_status
 ORDER BY el.source;
 ```
 
-**At-Risk Patient Hotspots:**
+**At-Risk Patient Hotspots** (`StepInstanceRepository#findAtRiskHotspotCounts()`, backing `PatientRiskService#getAtRiskHotspots()`):
+
+A two-level aggregation done entirely in ClickHouse — per-patient risk flags first, then rolled up per facility:
+
 ```sql
 SELECT
-  el.facility_id,
-  COUNT(DISTINCT pi.patient_id) AS total_patients,
-  COUNT(DISTINCT pi.patient_id) FILTER (WHERE NOT EXISTS (
-    SELECT 1 FROM step_instance si WHERE si.protocol_instance_id = pi.id AND si.state IN ('OVERDUE', 'MISSED')
-  )) AS on_track_count,
-  COUNT(DISTINCT pi.patient_id) FILTER (WHERE EXISTS (
-    SELECT 1 FROM step_instance si WHERE si.protocol_instance_id = pi.id AND si.state = 'OVERDUE'
-  ) AND NOT EXISTS (
-    SELECT 1 FROM step_instance si WHERE si.protocol_instance_id = pi.id AND si.state = 'MISSED'
-  )) AS at_risk_count,
-  COUNT(DISTINCT pi.patient_id) FILTER (WHERE EXISTS (
-    SELECT 1 FROM step_instance si WHERE si.protocol_instance_id = pi.id AND si.state = 'MISSED'
-  )) AS non_compliant_count
-FROM protocol_instance pi
-JOIN event_log el ON el.protocol_instance_id = pi.id
-WHERE pi.status = 'ACTIVE'
-  AND el.facility_id IS NOT NULL
-GROUP BY el.facility_id
-ORDER BY non_compliant_count DESC;
+  per_patient.facility_id,
+  countIf(per_patient.has_missed = 1) AS non_compliant,
+  countIf(per_patient.has_missed = 0 AND per_patient.has_overdue = 1) AS at_risk,
+  countIf(per_patient.has_missed = 0 AND per_patient.has_overdue = 0) AS on_track
+FROM (
+  SELECT
+    pf.facility_id AS facility_id,
+    pi.patient_id AS patient_id,
+    maxIf(1, si.state = 'MISSED') AS has_missed,
+    maxIf(1, si.state = 'OVERDUE') AS has_overdue
+  FROM step_instances si
+  JOIN protocol_instances pi ON si.protocol_instance_id = pi.id
+  JOIN mv_patient_facility_latest pf ON pf.patient_id = pi.patient_id
+  WHERE pf.facility_id != ''
+  GROUP BY pf.facility_id, pi.patient_id
+) AS per_patient
+GROUP BY per_patient.facility_id;
 ```
+
+**Why the two-level shape:** an earlier version loaded every `protocol_instance` into Java (`ProtocolInstanceRepository.findAll()`, unfiltered — no facility/date scoping existed to filter by), then queried `step_instances WHERE protocol_instance_id IN (id1, id2, ...)` with one bind parameter per instance. That worked while the instance count was small, but once dev accumulated enough protocol instances the generated `IN (...)` clause got large enough that ClickHouse's HTTP transport rejected the request outright (`Code: 62, transport error: 400`) — surfaced to the frontend as a generic `503 Service unavailable — database may be down` via the `DataAccessException` handler, with the real cause invisible unless you read the service's own logs. The fix pushes the categorization into ClickHouse as a single query, so cost scales with data volume server-side instead of with instance count in a Java-constructed `IN` clause.
+
+Neither the old nor the current version applies `protocolDefinitionId`/`startDate`/`endDate`/pagination — the controller and service both accept these params, but the service ignores all of them and always returns a system-wide, unpaginated result. This predates the query-shape fix and is a separate, still-open gap (see [api-reference.md §12.1](api-reference.md#121-get-v1insightspatientsat-risk-hotspots)).
 
 **Repeat Deviation Patients:**
 ```sql
@@ -564,6 +569,19 @@ GROUP BY pi.patient_id
 HAVING COUNT(*) >= :minDeviations
 ORDER BY total_deviations DESC;
 ```
+
+**Consent Funnel Metrics** (`StepInstanceRepository#aggregateConsentMetrics()`, backing the Dashboard's `consent` block — see [api-reference.md §15.2](api-reference.md#152-get-v1insightsdashboardcompliance-summary)):
+
+Tiberbu-specific (Kenya SHA outpatient protocol). A single-row aggregate over `step_instances`, no join:
+
+```sql
+SELECT
+  countIf(action_id = 'consent-request'      AND state = 'COMPLETED') AS total_received,
+  countIf(action_id = 'consent-verification' AND state = 'COMPLETED') AS total_verified
+FROM step_instances;
+```
+
+System-wide, not scoped to a protocol — any protocol reusing these exact `action_id`s would be counted too. `verificationRate = totalVerified / totalReceived * 100` (in `DashboardService`), `0` when `totalReceived` is `0`.
 
 ---
 

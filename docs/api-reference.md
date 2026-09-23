@@ -257,6 +257,8 @@ Full compliance timeline for a patient across all enrolled protocols. Combines e
 
 > **Note:** `journey[].facilityId`/`facilityName` come from the completing event's own `inbound_event_logs.facility_id`/`facility_name` columns (both `MATERIALIZED` from the envelope's `facilityid`/`facilityname` extension attributes at insert time — see `deploy-scripts/data-pipeline/schema/01-create-tables.sql`, read via `ComplianceEventLogRepositoryImpl`), falling back to a body-derived extraction (`Encounter.location[].location.display`, `ServiceRequest.locationReference[].display`) only when the envelope carries no `facilityname`. Both are `null` for a step with no completing event yet (`NOT_STARTED`/`PENDING`), and independently `null`/empty whenever the underlying FHIR resource type has no organization-equivalent field at all (e.g. `Observation`, `Condition`, `MedicationRequest`).
 
+> **Note:** `journey[].effectiveDateTime` is `null` for a step with no completing event, otherwise read from the completing FHIR resource by `PatientTimelineService#extractEffectiveDateTime()`, trying fields in this order and returning the first present: `effectiveDateTime` → `Consent.verification[0].verificationDate` → `period.start` → `authoredOn` → `Consent.dateTime` (top-level) → `meta.lastUpdated`. The two `Consent`-specific fallbacks exist because `Consent` resources carry none of the generic fields — a real Kenya payload has `dateTime` (when the consent was proposed, i.e. the `consent-request` step's own timestamp) and, once verified, `verification[0].verificationDate` (when *that* verification happened — distinct from `dateTime`, checked first so a verified Consent doesn't report its proposal time for the `consent-verification` step). Before this fallback pair was added, both consent steps fell through to `meta.lastUpdated`, which real ingested Consent payloads don't populate either — so `consent-request`/`consent-verification` journey rows showed no timestamp at all.
+
 ### 2.2 GET `/v1/insights/patients/{patientId}/protocol-tracking`
 
 List all protocol instances for a patient.
@@ -1528,23 +1530,24 @@ Concentration of `at_risk` and `non_compliant` patients by facility. Directs fie
 
 **Required Scope:** `dashboard:read`
 
-**Query Parameters:**
+**Query Parameters** — accepted by the controller but **not currently applied**: `PatientRiskService.getAtRiskHotspots()` computes an unfiltered, un-paginated, system-wide result regardless of these values. Fix or remove before relying on them.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `protocolDefinitionId` | UUID | — | Filter by protocol |
-| `startDate` | ISO 8601 | — | Enrollments after this date |
-| `endDate` | ISO 8601 | — | Enrollments before this date |
-| `limit` | Integer | `50` | Page size (max 200) |
-| `cursor` | String | — | Pagination cursor |
+| `protocolDefinitionId` | UUID | — | *(accepted, not applied)* |
+| `startDate` | ISO 8601 | — | *(accepted, not applied)* |
+| `endDate` | ISO 8601 | — | *(accepted, not applied)* |
+| `limit` | Integer | `50` | *(accepted, not applied)* |
+| `cursor` | String | — | *(accepted, not applied)* |
 
-**Response: `200 OK`**
+**Response: `200 OK`** — a plain array, one row per facility that has at least one tracked patient. No `pagination` wrapper.
 
 ```json
 {
   "data": [
     {
       "facilityId": "0008",
+      "facilityName": "Kaliganj UHC",
       "totalPatients": 62,
       "onTrack": { "count": 18, "percentage": 29.0 },
       "atRisk": { "count": 24, "percentage": 38.7 },
@@ -1552,19 +1555,17 @@ Concentration of `at_risk` and `non_compliant` patients by facility. Directs fie
     },
     {
       "facilityId": "0002",
+      "facilityName": "0002",
       "totalPatients": 156,
       "onTrack": { "count": 95, "percentage": 60.9 },
       "atRisk": { "count": 38, "percentage": 24.4 },
       "nonCompliant": { "count": 23, "percentage": 14.7 }
     }
-  ],
-  "pagination": {
-    "limit": 50,
-    "next_cursor": null,
-    "has_more": false
-  }
+  ]
 }
 ```
+
+`facilityName` falls back to `facilityId` when `ComplianceEventLogRepository#findFacilityNames()` has no display name for that facility.
 
 **Compliance categories per patient** (computed):
 | Category | Condition |
@@ -1574,6 +1575,8 @@ Concentration of `at_risk` and `non_compliant` patients by facility. Directs fie
 | `non_compliant` | At least one `MISSED` step instance |
 
 > **Note:** A patient's compliance category is determined across **all active protocol instances** at the facility. If a patient is enrolled in two protocols and has a `MISSED` step in one, they are classified as `non_compliant` at that facility.
+
+**Implementation note (query scaling):** this endpoint used to build its result in Java — `ProtocolInstanceRepository.findAll()` (every protocol instance in the system) followed by `StepInstanceRepository.findByProtocolInstanceIdIn(ids)`, one `?` placeholder per instance. On dev, once the instance count grew large enough, that `IN (...)` clause made ClickHouse reject the request outright at the HTTP transport layer (`Code: 62, transport error: 400`), which the generic `DataAccessException` handler turned into a misleading `503 Service unavailable — database may be down`. It's now a single aggregated query — `StepInstanceRepository#findAtRiskHotspotCounts()` — that joins `step_instances` → `protocol_instances` → `mv_patient_facility_latest` and computes per-facility `on_track`/`at_risk`/`non_compliant` counts with `countIf`/`maxIf` entirely in ClickHouse, so it scales with data volume instead of instance count in Java.
 
 ---
 
@@ -1960,7 +1963,7 @@ Returns distinct patient IDs from protocol instances.
 
 ### 15.1 GET `/v1/insights/dashboard/overview`
 
-Aggregated dashboard KPIs — total patients, total enrollments, compliance rate, active deviations.
+HIE transmission KPIs, deviation summary, and top/bottom 3 facilities by compliance rate — the top section of the main Dashboard page.
 
 **Required Scope:** `dashboard:read`
 
@@ -1977,17 +1980,50 @@ Aggregated dashboard KPIs — total patients, total enrollments, compliance rate
 ```json
 {
   "data": {
-    "totalPatients": 150,
-    "totalEnrollments": 248,
-    "complianceRate": 0.72,
-    "activeDeviations": 34
+    "totalPatientsEBuzima": 340,
+    "patientsReceivedHIE": 298,
+    "transmissionRate": 87.6,
+    "activeFacilities": 5,
+    "activeDeviations": 62,
+    "newDeviations24h": 4,
+    "hieEventCount": 1204,
+    "topFacilities": [
+      {
+        "rank": 1,
+        "facilityId": "KE-SHRF-D601602F-C9AC-4CC5-9347",
+        "facilityName": "Aditmari UHC",
+        "totalEnrollments": 1,
+        "complianceRate": 100.0,
+        "activeDeviations": 0,
+        "totalEvents": 31,
+        "outboundEvents": 0,
+        "inboundEvents": 0,
+        "patientsFromHIE": 1
+      }
+    ],
+    "bottomFacilities": [
+      {
+        "rank": 1,
+        "facilityId": "NCD Upazila",
+        "facilityName": "NCD Upazila",
+        "totalEnrollments": 2,
+        "complianceRate": 39.3,
+        "activeDeviations": 4,
+        "totalEvents": 33,
+        "outboundEvents": 0,
+        "inboundEvents": 0,
+        "patientsFromHIE": 0
+      }
+    ]
   }
 }
 ```
 
+`topFacilities`/`bottomFacilities` are each the top 3 / bottom 3 facilities by `complianceRate` — same shape as `/v1/insights/facilities/ranking` (§9.1), unscoped by protocol (`protocolDefinitionId=null`).
+
 ### 15.2 GET `/v1/insights/dashboard/compliance-summary`
 
-Compliance summary across all protocols for dashboard display.
+Patient/facility/practitioner/consent compliance rollups for the Dashboard's four metric-card rows. Unlike 15.1, this is **not scoped** by `facilityId`/`startDate`/`endDate` — it aggregates across the whole system.
 
 **Required Scope:** `dashboard:read`
 
@@ -1996,17 +2032,38 @@ Compliance summary across all protocols for dashboard display.
 ```json
 {
   "data": {
-    "protocols": [
-      {
-        "protocolDefinitionId": "550e8400-...",
-        "protocolName": "ANC High Risk",
-        "totalEnrollments": 120,
-        "complianceRate": 0.75
-      }
-    ]
+    "patients": {
+      "trackedPatients": 17,
+      "compliantPatients": 12,
+      "nonCompliantPatients": 5,
+      "complianceRate": 70.6
+    },
+    "facilities": {
+      "trackedFacilities": 5,
+      "above90": 3,
+      "between75And90": 0,
+      "below75": 2
+    },
+    "consent": {
+      "totalReceived": 1,
+      "totalVerified": 1,
+      "verificationRate": 100.0
+    },
+    "practitioners": {
+      "trackedPractitioners": 4,
+      "above90": 2,
+      "between75And90": 1,
+      "below75": 1
+    }
   }
 }
 ```
+
+`patients.compliantPatients`/`nonCompliantPatients` split on presence of any `deviation` row, same definition as everywhere else in this service (see [data-dictionary.md](data-dictionary.md) — deviation-based, not match-based).
+
+`facilities`/`practitioners` bucket every tracked facility/practitioner into `above90` (>90% compliance), `between75And90` (75–90% inclusive), or `below75` (<75%) — the three buckets are disjoint and sum to the tracked count.
+
+`consent` is Tiberbu-specific (Kenya SHA outpatient protocol): a system-wide count of completed `consent-request` and `consent-verification` step instances, computed directly in ClickHouse via `StepInstanceRepository#aggregateConsentMetrics()` (`countIf(action_id = '...' AND state = 'COMPLETED')`, no join). `verificationRate = totalVerified / totalReceived * 100`, `0` when `totalReceived` is `0`. This counts step instances by `action_id` across **every** protocol in the system — a non-Kenya protocol that happens to reuse the action ids `consent-request`/`consent-verification` would be counted too; there is no protocol-scoping on this query.
 
 ---
 

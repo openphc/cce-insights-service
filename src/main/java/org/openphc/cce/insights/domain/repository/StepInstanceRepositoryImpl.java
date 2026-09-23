@@ -537,6 +537,45 @@ public class StepInstanceRepositoryImpl
     }
 
     @Override
+    public List<Object[]> findAtRiskHotspotCounts() {
+        var stepInstances = finalAs(STEP_INSTANCES, "si");
+        var protocolInstances = finalAs(PROTOCOL_INSTANCES, "pi");
+        var patientFacility = MV_PATIENT_FACILITY_LATEST.as("pf");
+        String state = "si." + STEP_INSTANCES.STATE.getName();
+        String patientId = "pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName();
+
+        var perPatient = dsl.select(
+                    DSL.field("pf.facility_id").as("facility_id"),
+                    DSL.field(patientId).as("patient_id"),
+                    DSL.field("maxIf(1, " + state + " = 'MISSED')", Integer.class).as("has_missed"),
+                    DSL.field("maxIf(1, " + state + " = 'OVERDUE')", Integer.class).as("has_overdue")
+                )
+                .from(stepInstances)
+                .join(protocolInstances).on(DSL.condition(
+                        "si." + STEP_INSTANCES.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                .join(patientFacility).on(DSL.condition("pf.patient_id = " + patientId))
+                .where(DSL.field("pf.facility_id").ne(""))
+                .groupBy(DSL.field("pf.facility_id"), DSL.field(patientId))
+                .asTable("per_patient");
+
+        return dsl.select(
+                    DSL.field("per_patient.facility_id", String.class).as("facility_id"),
+                    DSL.field("countIf(per_patient.has_missed = 1)", Long.class).as("non_compliant"),
+                    DSL.field("countIf(per_patient.has_missed = 0 AND per_patient.has_overdue = 1)", Long.class).as("at_risk"),
+                    DSL.field("countIf(per_patient.has_missed = 0 AND per_patient.has_overdue = 0)", Long.class).as("on_track")
+                )
+                .from(perPatient)
+                .groupBy(DSL.field("per_patient.facility_id"))
+                .fetch()
+                .map(r -> new Object[]{
+                        r.get("facility_id", String.class),
+                        r.get("non_compliant", Long.class),
+                        r.get("at_risk", Long.class),
+                        r.get("on_track", Long.class)
+                });
+    }
+
+    @Override
     public Object[] aggregateStepMetrics(UUID protocolDefinitionId) {
         var si = finalAs(STEP_INSTANCES, "si");
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
@@ -652,5 +691,22 @@ public class StepInstanceRepositoryImpl
                         "si." + STEP_INSTANCES.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
                 .fetchOne();
         return r != null ? r.intoArray() : new Object[]{0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L};
+    }
+
+    @Override
+    public Object[] aggregateConsentMetrics() {
+        var si = finalAs(STEP_INSTANCES, "si");
+        String state = "si." + STEP_INSTANCES.STATE.getName();
+        String actionId = "si." + STEP_INSTANCES.ACTION_ID.getName();
+
+        org.jooq.Record r = dsl.select(
+                    DSL.field("countIf(" + actionId + " = 'consent-request' AND " + state + " = 'COMPLETED')",
+                            Long.class).as("total_received"),
+                    DSL.field("countIf(" + actionId + " = 'consent-verification' AND " + state + " = 'COMPLETED')",
+                            Long.class).as("total_verified")
+                )
+                .from(si)
+                .fetchOne();
+        return r != null ? r.intoArray() : new Object[]{0L, 0L};
     }
 }
