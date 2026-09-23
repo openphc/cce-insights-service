@@ -21,20 +21,20 @@ public class StepAnalyticsDto {
         private long completedCount;
         private double completionRate;
         private TimelinessDistribution timelinessDistribution;
-        private long overdueCount;
-        private long missedCount;
-        private long skippedCount;
-        private long pendingCount;
+        private long overdueCount;       // sla_status = OVERDUE (includes steps completed late)
+        private long missedCount;        // sla_status = MISSED (includes steps completed after write-off)
+        private long notStartedCount;    // step_status = NOT_STARTED
+        private long slaUnjudgedCount;   // sla_status not yet set
         private Double avgDaysToComplete;
         private Double medianDaysToComplete;
         private String requiredBehavior;
     }
 
+    /** Completed steps by SLA verdict. 2.0.0 has no early/on-time split — both are MET. */
     @Data
     @Builder
     public static class TimelinessDistribution {
-        private long early;
-        private long onTime;
-        private long late;
+        private long completedOnTime;    // COMPLETED + MET
+        private long completedLate;      // COMPLETED + OVERDUE | MISSED
     }
 }

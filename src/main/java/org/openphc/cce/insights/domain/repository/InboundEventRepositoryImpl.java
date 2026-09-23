@@ -11,7 +11,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
-import static org.openphc.cce.insights.jooq.Tables.COMPLIANCE_EVENT_LOGS;
+import static org.openphc.cce.insights.jooq.Tables.MATCHER_EVENT_LOGS;
 import static org.openphc.cce.insights.jooq.Tables.INBOUND_EVENT_LOGS;
 
 @Repository
@@ -95,7 +95,7 @@ public class InboundEventRepositoryImpl
     // ── RI-36 tracked cohort ──────────────────────────────────────────────────────
     // Distinct patients whose events are "considered by a protocol" in the range: an ACCEPTED inbound
     // event whose event_time is in [start,end] AND whose cloudevents_id matched a protocol
-    // (compliance_event_logs.processing_status = 'MATCHED' — whether it created a new protocol_instance
+    // (matcher_event_logs.processing_status = 'MATCHED' — whether it created a new protocol_instance
     // or advanced an existing journey's step). Scoped by event_time (NOT enrolled_at) + facility.
     // Excludes events not considered by any protocol (Consent onboarding, zero-match). Optional
     // facilityId ('' = all) and optional dates (null = unbounded).
@@ -127,7 +127,7 @@ public class InboundEventRepositoryImpl
                 .and(DSL.field("iel." + INBOUND_EVENT_LOGS.SUBJECT.getName()).ne(""))
                 .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?", fid, fid))
                 .and(DSL.condition("iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName()
-                        + " IN (SELECT cel.cloudevents_id FROM compliance_event_logs cel" + finalClause()
+                        + " IN (SELECT cel.cloudevents_id FROM matcher_event_logs cel" + finalClause()
                         + " WHERE cel.processing_status = 'MATCHED')"))
                 .and(DSL.condition("? != '1' OR iel." + INBOUND_EVENT_LOGS.EVENT_TIME.getName()
                         + " >= parseDateTime64BestEffort(?)", startDate == null ? "0" : "1", dtStart(startDate)))
@@ -343,9 +343,9 @@ public class InboundEventRepositoryImpl
                                                      OffsetDateTime startDate, OffsetDateTime endDate) {
         String fid = str(facilityId);
         var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
-        // Subquery: accepted events whose cloudevents_id is not in compliance_event_logs
-        var celSubquery = dsl.select(DSL.field(COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
-                             .from(DSL.table(DSL.sql(COMPLIANCE_EVENT_LOGS.getName() + finalClause())));
+        // Subquery: accepted events whose cloudevents_id is not in matcher_event_logs
+        var celSubquery = dsl.select(DSL.field(MATCHER_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
+                             .from(DSL.table(DSL.sql(MATCHER_EVENT_LOGS.getName() + finalClause())));
         return dsl.select(
                     DSL.field("iel." + INBOUND_EVENT_LOGS.SOURCE.getName()),
                     DSL.field("count()", Long.class).as("lost_count"))
@@ -371,8 +371,8 @@ public class InboundEventRepositoryImpl
                                    OffsetDateTime startDate, OffsetDateTime endDate) {
         String fid = str(facilityId);
         var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
-        var celSubquery = dsl.select(DSL.field(COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
-                             .from(DSL.table(DSL.sql(COMPLIANCE_EVENT_LOGS.getName() + finalClause())));
+        var celSubquery = dsl.select(DSL.field(MATCHER_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
+                             .from(DSL.table(DSL.sql(MATCHER_EVENT_LOGS.getName() + finalClause())));
         Long r = dsl.select(DSL.field("count()", Long.class))
                     .from(iel)
                     .where(DSL.field("iel." + INBOUND_EVENT_LOGS.STATUS.getName()).eq("ACCEPTED"))
@@ -536,7 +536,7 @@ public class InboundEventRepositoryImpl
                                                OffsetDateTime startDate, OffsetDateTime endDate) {
         String fid = str(facilityId);
         var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
-        var cel = finalAs(COMPLIANCE_EVENT_LOGS, "cel");
+        var cel = finalAs(MATCHER_EVENT_LOGS, "cel");
         return dsl.select(
                     DSL.field("iel." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName()).as("resource_type"),
                     DSL.field(DSL.sql(zeroMatchCodeExpr())).as("code"),
@@ -546,8 +546,8 @@ public class InboundEventRepositoryImpl
                   .from(cel)
                   .join(iel).on(DSL.condition(
                           "iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName() +
-                          " = cel." + COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
-                  .where(DSL.field("cel." + COMPLIANCE_EVENT_LOGS.PROCESSING_STATUS.getName()).eq("ZERO_MATCH"))
+                          " = cel." + MATCHER_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
+                  .where(DSL.field("cel." + MATCHER_EVENT_LOGS.PROCESSING_STATUS.getName()).eq("ZERO_MATCH"))
                   .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?", fid, fid))
                   .and(districtScope("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName(), district))
                   .and(DSL.condition(
@@ -759,8 +759,8 @@ public class InboundEventRepositoryImpl
         // scheduled date). Same referral-step match the pipeline's mv_daily_referral_kpis uses (schema/07).
         String refSteps =
                 "(SELECT cel.cloudevents_id AS cid, max(si.completed_at) AS completed_at"
-                + " FROM compliance_event_logs cel" + finalClause()
-                + " JOIN step_instances si" + finalClause() + " ON si.completed_by_event_id = cel.id"
+                + " FROM matcher_event_logs cel" + finalClause()
+                + " JOIN step_instances si" + finalClause() + " ON si.matched_event_id = cel.id"
                 + " WHERE match(si.action_id, '^(.+-referral|referral)$')"
                 + " GROUP BY cel.cloudevents_id) rs";
         // (A) prod TRANSFER_ENCOUNTER Encounter (ingestion-based, no matched step — dated by event_time).

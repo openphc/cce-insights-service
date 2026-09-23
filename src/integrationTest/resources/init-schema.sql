@@ -1,5 +1,7 @@
 -- Schema for CCE Insights Service integration tests
--- Mirrors the Compliance Service schema (read-only)
+-- Mirrors the ccedb schema owned by the Protocol / Matcher / Step SLA services (read-only).
+-- NOTE: no test loads this file (the ITs are @WebMvcTest with mocked repositories); the service reads
+-- ClickHouse, whose DDL lives in cce-data-pipeline/schema. Kept in step with the 2.0.0 column names.
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
@@ -17,7 +19,6 @@ CREATE TABLE protocol_instance (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     protocol_definition_id UUID NOT NULL REFERENCES protocol_definition(id),
     patient_id VARCHAR(128) NOT NULL,
-    protocol_canonical VARCHAR(600) NOT NULL,
     status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
     enrolled_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -29,18 +30,25 @@ CREATE TABLE step_instance (
     protocol_instance_id UUID NOT NULL REFERENCES protocol_instance(id),
     action_id VARCHAR(256) NOT NULL,
     repeat_index INT NOT NULL DEFAULT 0,
-    state VARCHAR(32) NOT NULL DEFAULT 'PENDING',
+    step_status VARCHAR(32) NOT NULL DEFAULT 'NOT_STARTED',  -- NOT_STARTED | COMPLETED
+    sla_status VARCHAR(32),                                  -- NULL (not judged) | OVERDUE | MISSED | MET
     due_date TIMESTAMPTZ,
-    overdue_date TIMESTAMPTZ,
-    missed_date TIMESTAMPTZ,
     completed_at TIMESTAMPTZ,
     completed_by_source VARCHAR(256),
-    completion_status VARCHAR(32)
+    matched_event_id UUID
+);
+
+CREATE TABLE step_sla_state_transition (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    step_instance_id UUID NOT NULL REFERENCES step_instance(id),
+    transition_type VARCHAR(32) NOT NULL,  -- DUE_DATE_REACHED | MISSED_DATE_REACHED | MET_CONDITION_REACHED
+    process_by TIMESTAMPTZ NOT NULL,
+    is_processed BOOLEAN NOT NULL DEFAULT FALSE,
+    UNIQUE(step_instance_id, transition_type)
 );
 
 CREATE TABLE deviation (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    protocol_instance_id UUID NOT NULL REFERENCES protocol_instance(id),
     step_instance_id UUID NOT NULL REFERENCES step_instance(id),
     deviation_type VARCHAR(32) NOT NULL,
     detected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

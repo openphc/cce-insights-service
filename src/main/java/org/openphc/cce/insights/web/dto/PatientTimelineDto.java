@@ -29,11 +29,12 @@ public class PatientTimelineDto {
         private String actionId;
         private String parentActionId;
         private String stepName;
-        private String status;       // COMPLETED, PENDING, NOT_STARTED, OVERDUE, MISSED, SKIPPED
+        private String status;       // COMPLETED | OVERDUE | MISSED | NOT_STARTED (StepInstance.displayStatus())
+        private String stepStatus;   // NOT_STARTED | COMPLETED; null when no step_instance exists yet
+        private String slaStatus;    // OVERDUE | MISSED | MET; null = not yet judged
         private int completionCount;
         private String effectiveDateTime;
         private String dueDate;
-        private String completionStatus;
         private String source;
         private String practitioner;
         private String facilityId;
@@ -52,8 +53,9 @@ public class PatientTimelineDto {
         private String description;
         private String actionId;
         private String stepName;
-        private String state;
-        private String completionStatus;
+        private String state;        // ENROLLED, or the step's display status (see JourneyStep.status)
+        private String stepStatus;   // NOT_STARTED | COMPLETED (step events only)
+        private String slaStatus;    // OVERDUE | MISSED | MET; null = not yet judged
         private String source;
         private Integer daysOverdue;
         private String effectiveDateTime;

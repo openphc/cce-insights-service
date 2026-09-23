@@ -65,15 +65,14 @@ public class RollupStepCurrentMv extends TableImpl<Record> {
     public final TableField<Record, Object> ACTION_ID = createField(DSL.name("action_id"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
 
     /**
-     * The column <code>cce_analytics.rollup_step_current_mv.state</code>.
+     * The column <code>cce_analytics.rollup_step_current_mv.step_status</code>.
      */
-    public final TableField<Record, Object> STATE = createField(DSL.name("state"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
+    public final TableField<Record, Object> STEP_STATUS = createField(DSL.name("step_status"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
 
     /**
-     * The column
-     * <code>cce_analytics.rollup_step_current_mv.completion_status</code>.
+     * The column <code>cce_analytics.rollup_step_current_mv.sla_status</code>.
      */
-    public final TableField<Record, Object> COMPLETION_STATUS = createField(DSL.name("completion_status"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
+    public final TableField<Record, Object> SLA_STATUS = createField(DSL.name("sla_status"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
 
     /**
      * The column <code>cce_analytics.rollup_step_current_mv.is_deleted</code>.

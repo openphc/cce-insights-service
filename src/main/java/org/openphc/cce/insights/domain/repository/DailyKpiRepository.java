@@ -61,9 +61,9 @@ public interface DailyKpiRepository {
     /**
      * mv_daily_compliance_kpis — SUMs across ALL protocols for a specific snapshot day.
      * Pass {@code null} to use today's snapshot.
-     * Returns: [0] step_completed, [1] step_overdue, [2] step_missed, [3] step_due,
-     *          [4] step_pending, [5] step_early, [6] step_on_time, [7] step_late,
-     *          [8] step_total, [9] total_enrollments, [10] compliant_count,
+     * Returns: [0] step_completed, [1] step_not_started, [2] step_sla_met, [3] step_sla_overdue,
+     *          [4] step_sla_missed, [5] step_sla_unjudged, [6] step_completed_on_time,
+     *          [7] step_completed_late, [8] step_total, [9] total_enrollments, [10] compliant_count,
      *          [11] total_deviations, [12] overdue_deviations,
      *          [13] missed_deviations, [14] order_violation_deviations
      */

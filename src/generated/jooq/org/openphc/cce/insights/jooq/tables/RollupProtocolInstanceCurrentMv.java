@@ -69,12 +69,6 @@ public class RollupProtocolInstanceCurrentMv extends TableImpl<Record> {
 
     /**
      * The column
-     * <code>cce_analytics.rollup_protocol_instance_current_mv.protocol_canonical</code>.
-     */
-    public final TableField<Record, Object> PROTOCOL_CANONICAL = createField(DSL.name("protocol_canonical"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
-
-    /**
-     * The column
      * <code>cce_analytics.rollup_protocol_instance_current_mv.status</code>.
      */
     public final TableField<Record, Object> STATUS = createField(DSL.name("status"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");

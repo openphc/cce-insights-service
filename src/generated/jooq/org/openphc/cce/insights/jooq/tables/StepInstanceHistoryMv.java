@@ -60,15 +60,16 @@ public class StepInstanceHistoryMv extends TableImpl<Record> {
     public final TableField<Record, UUID> STEP_INSTANCE_ID = createField(DSL.name("step_instance_id"), SQLDataType.UUID.nullable(false), this, "");
 
     /**
-     * The column <code>cce_analytics.step_instance_history_mv.state</code>.
+     * The column
+     * <code>cce_analytics.step_instance_history_mv.step_status</code>.
      */
-    public final TableField<Record, Object> STATE = createField(DSL.name("state"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
+    public final TableField<Record, Object> STEP_STATUS = createField(DSL.name("step_status"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
 
     /**
      * The column
-     * <code>cce_analytics.step_instance_history_mv.completion_status</code>.
+     * <code>cce_analytics.step_instance_history_mv.sla_status</code>.
      */
-    public final TableField<Record, Object> COMPLETION_STATUS = createField(DSL.name("completion_status"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
+    public final TableField<Record, Object> SLA_STATUS = createField(DSL.name("sla_status"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
 
     /**
      * The column

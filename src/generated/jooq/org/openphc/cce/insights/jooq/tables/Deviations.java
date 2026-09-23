@@ -55,11 +55,6 @@ public class Deviations extends TableImpl<Record> {
     public final TableField<Record, UUID> ID = createField(DSL.name("id"), SQLDataType.UUID.nullable(false), this, "");
 
     /**
-     * The column <code>cce_analytics.deviations.protocol_instance_id</code>.
-     */
-    public final TableField<Record, UUID> PROTOCOL_INSTANCE_ID = createField(DSL.name("protocol_instance_id"), SQLDataType.UUID.nullable(false), this, "");
-
-    /**
      * The column <code>cce_analytics.deviations.step_instance_id</code>.
      */
     public final TableField<Record, UUID> STEP_INSTANCE_ID = createField(DSL.name("step_instance_id"), SQLDataType.UUID.nullable(false), this, "");

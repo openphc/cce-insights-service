@@ -72,24 +72,19 @@ public class StepInstances extends TableImpl<Record> {
     public final TableField<Record, Object> REPEAT_INDEX = createField(DSL.name("repeat_index"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
 
     /**
-     * The column <code>cce_analytics.step_instances.state</code>.
+     * The column <code>cce_analytics.step_instances.step_status</code>.
      */
-    public final TableField<Record, Object> STATE = createField(DSL.name("state"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
+    public final TableField<Record, Object> STEP_STATUS = createField(DSL.name("step_status"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
+
+    /**
+     * The column <code>cce_analytics.step_instances.sla_status</code>.
+     */
+    public final TableField<Record, Object> SLA_STATUS = createField(DSL.name("sla_status"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
 
     /**
      * The column <code>cce_analytics.step_instances.due_date</code>.
      */
     public final TableField<Record, Object> DUE_DATE = createField(DSL.name("due_date"), DefaultDataType.getDefaultDataType("Nullable)"), this, "");
-
-    /**
-     * The column <code>cce_analytics.step_instances.overdue_date</code>.
-     */
-    public final TableField<Record, Object> OVERDUE_DATE = createField(DSL.name("overdue_date"), DefaultDataType.getDefaultDataType("Nullable)"), this, "");
-
-    /**
-     * The column <code>cce_analytics.step_instances.missed_date</code>.
-     */
-    public final TableField<Record, Object> MISSED_DATE = createField(DSL.name("missed_date"), DefaultDataType.getDefaultDataType("Nullable)"), this, "");
 
     /**
      * The column <code>cce_analytics.step_instances.completed_at</code>.
@@ -102,15 +97,9 @@ public class StepInstances extends TableImpl<Record> {
     public final TableField<Record, Object> COMPLETED_BY_SOURCE = createField(DSL.name("completed_by_source"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
 
     /**
-     * The column <code>cce_analytics.step_instances.completion_status</code>.
+     * The column <code>cce_analytics.step_instances.matched_event_id</code>.
      */
-    public final TableField<Record, Object> COMPLETION_STATUS = createField(DSL.name("completion_status"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
-
-    /**
-     * The column
-     * <code>cce_analytics.step_instances.completed_by_event_id</code>.
-     */
-    public final TableField<Record, Object> COMPLETED_BY_EVENT_ID = createField(DSL.name("completed_by_event_id"), org.jooq.impl.SQLDataType.OTHER, this, "");
+    public final TableField<Record, Object> MATCHED_EVENT_ID = createField(DSL.name("matched_event_id"), org.jooq.impl.SQLDataType.OTHER, this, "");
 
     /**
      * The column <code>cce_analytics.step_instances.required_behavior</code>.
