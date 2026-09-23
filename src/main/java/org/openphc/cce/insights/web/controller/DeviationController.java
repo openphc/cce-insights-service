@@ -21,11 +21,12 @@ public class DeviationController {
     public ResponseEntity<ApiResponse<List<DeviationDto>>> getDeviations(
             @RequestParam(required = false) String deviationType,
             @RequestParam(required = false) String facilityId,
+            @RequestParam(required = false) UUID protocolDefinitionId,
             @RequestParam(required = false) OffsetDateTime startDate,
             @RequestParam(required = false) OffsetDateTime endDate,
             @RequestParam(defaultValue = "50") int limit) {
         List<DeviationDto> deviations = deviationAnalyticsService.getDeviations(
-                deviationType, facilityId, startDate, endDate, limit);
+                deviationType, facilityId, protocolDefinitionId, startDate, endDate, limit);
         return ResponseEntity.ok(ApiResponse.ok(deviations));
     }
 

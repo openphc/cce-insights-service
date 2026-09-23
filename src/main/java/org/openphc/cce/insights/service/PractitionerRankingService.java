@@ -1,9 +1,14 @@
 package org.openphc.cce.insights.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.openphc.cce.insights.domain.repository.DeviationRepository;
 import org.openphc.cce.insights.domain.repository.ComplianceEventLogRepository;
+import org.openphc.cce.insights.domain.repository.ProtocolInstanceRepository;
 import org.openphc.cce.insights.domain.repository.StepInstanceRepository;
+import org.openphc.cce.insights.domain.entity.ProtocolInstance;
 import org.openphc.cce.insights.web.dto.PractitionerRankingDto;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
@@ -12,6 +17,7 @@ import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class PractitionerRankingService {
@@ -19,14 +25,21 @@ public class PractitionerRankingService {
     private final ComplianceEventLogRepository complianceEventLogRepository;
     private final StepInstanceRepository stepInstanceRepository;
     private final DeviationRepository deviationRepository;
+    private final ProtocolInstanceRepository protocolInstanceRepository;
+    private final ObjectMapper objectMapper;
 
-    @Cacheable(value = "analytics", key = "'practitioner-rankings-' + #sortBy + '-' + #order + '-' + #limit + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all') + '-' + (#facilityId ?: 'all')")
+    @Cacheable(value = "analytics", key = "'practitioner-rankings-' + #sortBy + '-' + #order + '-' + #limit + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all') + '-' + (#facilityId ?: 'all') + '-' + (#protocolDefinitionId ?: 'all')")
     public List<PractitionerRankingDto> getRankings(String sortBy, String order, int limit,
                                                      OffsetDateTime startDate, OffsetDateTime endDate,
-                                                     String facilityId) {
+                                                     String facilityId, UUID protocolDefinitionId) {
 
-        // Practitioner summary: ref, display, facilityId, totalEvents, totalPatients
-        List<Object[]> summaryRows = complianceEventLogRepository.findPractitionerSummaryFiltered(startDate, endDate, facilityId);
+        // When scoped to a protocol, only patients enrolled in it count towards a
+        // practitioner's totals - candidate events are filtered against this set below.
+        Set<String> protocolPatientIds = null;
+        if (protocolDefinitionId != null) {
+            protocolPatientIds = protocolInstanceRepository.findByProtocolDefinitionId(protocolDefinitionId)
+                    .stream().map(ProtocolInstance::getPatientId).collect(Collectors.toSet());
+        }
 
         // Build facility name lookup
         Map<String, String> facilityNameMap = new LinkedHashMap<>();
@@ -34,33 +47,74 @@ public class PractitionerRankingService {
             facilityNameMap.put((String) row[0], (String) row[1]);
         }
 
-        // Aggregate by practitioner_ref (may appear in multiple facilities)
+        // Practitioner summary derived by parsing each candidate event's resource body directly -
+        // inbound_event_logs.practitioner_ref/practitioner_display are ClickHouse MATERIALIZED
+        // columns that look for a "practitionerRef"/"practitionerDisplay" field inside the
+        // CloudEvent body, which no real FHIR resource has and no adaptor has ever populated, so
+        // they're always empty. See PractitionerExtractor for the actual per-resource-type parsing.
         Map<String, String> displayMap = new LinkedHashMap<>();
         Map<String, String> facilityMap = new LinkedHashMap<>();
         Map<String, Long> eventCountMap = new LinkedHashMap<>();
-        Map<String, Long> patientCountMap = new LinkedHashMap<>();
+        Map<String, Set<String>> patientsByRef = new LinkedHashMap<>();
 
-        for (Object[] row : summaryRows) {
-            String ref = (String) row[0];
-            String display = (String) row[1];
-            String rowFacilityId = (String) row[2];
-            long events = ((Number) row[3]).longValue();
-            long patients = ((Number) row[4]).longValue();
+        List<Object[]> candidateEvents = complianceEventLogRepository
+                .findPractitionerCandidateEvents(startDate, endDate, facilityId);
+        for (Object[] row : candidateEvents) {
+            String subject = (String) row[0];
+            String rowFacilityId = (String) row[1];
+            String dataJson = (String) row[2];
+            if (dataJson == null || dataJson.isEmpty()) continue;
+            if (protocolPatientIds != null && !protocolPatientIds.contains(subject)) continue;
 
-            displayMap.putIfAbsent(ref, display);
+            PractitionerExtractor.PractitionerRef found;
+            try {
+                JsonNode root = objectMapper.readTree(dataJson);
+                found = PractitionerExtractor.extract(root);
+            } catch (Exception e) {
+                log.debug("Failed to parse resource body for practitioner extraction: {}", e.getMessage());
+                continue;
+            }
+            if (found == null) continue;
+
+            String ref = found.reference();
+            if (found.display() != null) {
+                displayMap.put(ref, found.display());
+            } else {
+                displayMap.putIfAbsent(ref, null);
+            }
             facilityMap.putIfAbsent(ref, rowFacilityId);
-            eventCountMap.merge(ref, events, Long::sum);
-            patientCountMap.merge(ref, patients, Long::sum);
+            eventCountMap.merge(ref, 1L, Long::sum);
+            patientsByRef.computeIfAbsent(ref, k -> new LinkedHashSet<>()).add(subject);
         }
 
-        // Step compliance by practitioner
-        List<Object[]> complianceRows = stepInstanceRepository.findStepComplianceByPractitionerFiltered(startDate, endDate, facilityId);
+        Map<String, Long> patientCountMap = new LinkedHashMap<>();
+        Set<String> allPatientIds = new LinkedHashSet<>();
+        for (Map.Entry<String, Set<String>> e : patientsByRef.entrySet()) {
+            patientCountMap.put(e.getKey(), (long) e.getValue().size());
+            allPatientIds.addAll(e.getValue());
+        }
+
+        // Step compliance per patient, then rolled up to every practitioner that patient maps to
+        // (a patient can see more than one practitioner across different events).
+        Map<String, long[]> complianceByPatient = new HashMap<>(); // patientId -> [total, completed]
+        for (Object[] row : stepInstanceRepository.findStepComplianceByPatientIds(new ArrayList<>(allPatientIds))) {
+            complianceByPatient.put((String) row[0],
+                    new long[]{((Number) row[1]).longValue(), ((Number) row[2]).longValue()});
+        }
+
         Map<String, Long> totalStepsMap = new LinkedHashMap<>();
         Map<String, Long> completedStepsMap = new LinkedHashMap<>();
-        for (Object[] row : complianceRows) {
-            String ref = (String) row[0];
-            totalStepsMap.put(ref, ((Number) row[1]).longValue());
-            completedStepsMap.put(ref, ((Number) row[2]).longValue());
+        for (Map.Entry<String, Set<String>> e : patientsByRef.entrySet()) {
+            long total = 0, completed = 0;
+            for (String patientId : e.getValue()) {
+                long[] c = complianceByPatient.get(patientId);
+                if (c != null) {
+                    total += c[0];
+                    completed += c[1];
+                }
+            }
+            totalStepsMap.put(e.getKey(), total);
+            completedStepsMap.put(e.getKey(), completed);
         }
 
         // Deviations by practitioner (via matched event)
@@ -124,5 +178,27 @@ public class PractitionerRankingService {
                     .build());
         }
         return ranked;
+    }
+
+    /**
+     * Distinct practitioner references seen across all time, for lookup dropdowns.
+     * Same extraction path as {@link #getRankings} - see its comment on why the
+     * inbound_event_logs.practitioner_ref column can't be used directly.
+     */
+    @Cacheable(value = "lookups", key = "'practitioners'")
+    public List<String> getDistinctPractitionerRefs() {
+        Set<String> refs = new TreeSet<>();
+        for (Object[] row : complianceEventLogRepository.findPractitionerCandidateEvents(null, null, null)) {
+            String dataJson = (String) row[2];
+            if (dataJson == null || dataJson.isEmpty()) continue;
+            try {
+                JsonNode root = objectMapper.readTree(dataJson);
+                PractitionerExtractor.PractitionerRef found = PractitionerExtractor.extract(root);
+                if (found != null) refs.add(found.reference());
+            } catch (Exception e) {
+                log.debug("Failed to parse resource body for practitioner extraction: {}", e.getMessage());
+            }
+        }
+        return new ArrayList<>(refs);
     }
 }

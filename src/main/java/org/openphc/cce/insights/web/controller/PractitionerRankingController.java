@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/v1/insights/practitioners")
@@ -24,9 +25,10 @@ public class PractitionerRankingController {
             @RequestParam(defaultValue = "50") int limit,
             @RequestParam(required = false) OffsetDateTime startDate,
             @RequestParam(required = false) OffsetDateTime endDate,
-            @RequestParam(required = false) String facilityId) {
+            @RequestParam(required = false) String facilityId,
+            @RequestParam(required = false) UUID protocolDefinitionId) {
         List<PractitionerRankingDto> rankings = practitionerRankingService.getRankings(
-                rankBy, order, limit, startDate, endDate, facilityId);
+                rankBy, order, limit, startDate, endDate, facilityId, protocolDefinitionId);
         return ResponseEntity.ok(ApiResponse.ok(rankings));
     }
 }

@@ -18,6 +18,16 @@ public interface ComplianceEventLogRepository extends ReadOnlyRepository<Complia
 
     List<String> findDistinctPractitioners();
 
+    /**
+     * Raw candidate rows (subject, facility_id, resource data JSON) for every non-duplicate
+     * inbound event whose resource type can carry a practitioner reference, within the given
+     * range/facility. Callers extract the actual practitioner via {@code PractitionerExtractor}
+     * rather than relying on the (currently unpopulated) {@code inbound_event_logs.practitioner_ref}
+     * materialized column - see its Javadoc for why.
+     */
+    List<Object[]> findPractitionerCandidateEvents(OffsetDateTime startDate, OffsetDateTime endDate,
+                                                    String facilityId);
+
     List<Object[]> countByResourceType(String facilityId, String source,
                                        OffsetDateTime startDate, OffsetDateTime endDate);
 

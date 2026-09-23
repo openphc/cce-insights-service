@@ -18,10 +18,11 @@ public class DeviationAnalyticsService {
     private final DeviationRepository deviationRepository;
 
     public List<DeviationDto> getDeviations(String deviationType, String facilityId,
+                                             UUID protocolDefinitionId,
                                              OffsetDateTime startDate, OffsetDateTime endDate,
                                              int limit) {
         List<Object[]> rows = deviationRepository.findFilteredDeviations(
-                deviationType, facilityId, startDate, endDate, limit);
+                deviationType, facilityId, protocolDefinitionId, startDate, endDate, limit);
         return rows.stream().map(row -> DeviationDto.builder()
                 .deviationId(uuidOf(row[0]))
                 .patientId((String) row[1])
