@@ -13,9 +13,6 @@ import org.jooq.impl.SchemaImpl;
 import org.openphc.cce.insights.jooq.tables.ActionDefinitions;
 import org.openphc.cce.insights.jooq.tables.ActionDefinitionsMv;
 import org.openphc.cce.insights.jooq.tables.ActionDefinitionsQueue;
-import org.openphc.cce.insights.jooq.tables.ComplianceEventLogs;
-import org.openphc.cce.insights.jooq.tables.ComplianceEventLogsMv;
-import org.openphc.cce.insights.jooq.tables.ComplianceEventLogsQueue;
 import org.openphc.cce.insights.jooq.tables.DestinationAdaptorMapping;
 import org.openphc.cce.insights.jooq.tables.DestinationAdaptorMappingMv;
 import org.openphc.cce.insights.jooq.tables.DestinationAdaptorMappingQueue;
@@ -38,8 +35,9 @@ import org.openphc.cce.insights.jooq.tables.IntelligenceDeliveriesQueue;
 import org.openphc.cce.insights.jooq.tables.IntelligenceEventLogs;
 import org.openphc.cce.insights.jooq.tables.IntelligenceEventLogsMv;
 import org.openphc.cce.insights.jooq.tables.IntelligenceEventLogsQueue;
-import org.openphc.cce.insights.jooq.tables.MvComplianceProcessingQuality;
-import org.openphc.cce.insights.jooq.tables.MvComplianceProcessingQualityMv;
+import org.openphc.cce.insights.jooq.tables.MatcherEventLogs;
+import org.openphc.cce.insights.jooq.tables.MatcherEventLogsMv;
+import org.openphc.cce.insights.jooq.tables.MatcherEventLogsQueue;
 import org.openphc.cce.insights.jooq.tables.MvDailyAdoptionKpis;
 import org.openphc.cce.insights.jooq.tables.MvDailyAdoptionKpisMv;
 import org.openphc.cce.insights.jooq.tables.MvDailyComplianceKpis;
@@ -68,6 +66,8 @@ import org.openphc.cce.insights.jooq.tables.MvIntelligenceByProtocol;
 import org.openphc.cce.insights.jooq.tables.MvIntelligenceByProtocolMv;
 import org.openphc.cce.insights.jooq.tables.MvIntelligenceSummary;
 import org.openphc.cce.insights.jooq.tables.MvIntelligenceSummaryMv;
+import org.openphc.cce.insights.jooq.tables.MvMatcherProcessingQuality;
+import org.openphc.cce.insights.jooq.tables.MvMatcherProcessingQualityMv;
 import org.openphc.cce.insights.jooq.tables.MvPatientFacilityLatest;
 import org.openphc.cce.insights.jooq.tables.MvPatientFacilityLatestMv;
 import org.openphc.cce.insights.jooq.tables.MvPractitionerSummary;
@@ -96,6 +96,9 @@ import org.openphc.cce.insights.jooq.tables.StepInstanceHistoryQueue;
 import org.openphc.cce.insights.jooq.tables.StepInstances;
 import org.openphc.cce.insights.jooq.tables.StepInstancesMv;
 import org.openphc.cce.insights.jooq.tables.StepInstancesQueue;
+import org.openphc.cce.insights.jooq.tables.StepSlaStateTransitions;
+import org.openphc.cce.insights.jooq.tables.StepSlaStateTransitionsMv;
+import org.openphc.cce.insights.jooq.tables.StepSlaStateTransitionsQueue;
 
 
 /**
@@ -125,21 +128,6 @@ public class CceAnalytics extends SchemaImpl {
      * The table <code>cce_analytics.action_definitions_queue</code>.
      */
     public final ActionDefinitionsQueue ACTION_DEFINITIONS_QUEUE = ActionDefinitionsQueue.ACTION_DEFINITIONS_QUEUE;
-
-    /**
-     * The table <code>cce_analytics.compliance_event_logs</code>.
-     */
-    public final ComplianceEventLogs COMPLIANCE_EVENT_LOGS = ComplianceEventLogs.COMPLIANCE_EVENT_LOGS;
-
-    /**
-     * The table <code>cce_analytics.compliance_event_logs_mv</code>.
-     */
-    public final ComplianceEventLogsMv COMPLIANCE_EVENT_LOGS_MV = ComplianceEventLogsMv.COMPLIANCE_EVENT_LOGS_MV;
-
-    /**
-     * The table <code>cce_analytics.compliance_event_logs_queue</code>.
-     */
-    public final ComplianceEventLogsQueue COMPLIANCE_EVENT_LOGS_QUEUE = ComplianceEventLogsQueue.COMPLIANCE_EVENT_LOGS_QUEUE;
 
     /**
      * The table <code>cce_analytics.destination_adaptor_mapping</code>.
@@ -252,14 +240,19 @@ public class CceAnalytics extends SchemaImpl {
     public final IntelligenceEventLogsQueue INTELLIGENCE_EVENT_LOGS_QUEUE = IntelligenceEventLogsQueue.INTELLIGENCE_EVENT_LOGS_QUEUE;
 
     /**
-     * The table <code>cce_analytics.mv_compliance_processing_quality</code>.
+     * The table <code>cce_analytics.matcher_event_logs</code>.
      */
-    public final MvComplianceProcessingQuality MV_COMPLIANCE_PROCESSING_QUALITY = MvComplianceProcessingQuality.MV_COMPLIANCE_PROCESSING_QUALITY;
+    public final MatcherEventLogs MATCHER_EVENT_LOGS = MatcherEventLogs.MATCHER_EVENT_LOGS;
 
     /**
-     * The table <code>cce_analytics.mv_compliance_processing_quality_mv</code>.
+     * The table <code>cce_analytics.matcher_event_logs_mv</code>.
      */
-    public final MvComplianceProcessingQualityMv MV_COMPLIANCE_PROCESSING_QUALITY_MV = MvComplianceProcessingQualityMv.MV_COMPLIANCE_PROCESSING_QUALITY_MV;
+    public final MatcherEventLogsMv MATCHER_EVENT_LOGS_MV = MatcherEventLogsMv.MATCHER_EVENT_LOGS_MV;
+
+    /**
+     * The table <code>cce_analytics.matcher_event_logs_queue</code>.
+     */
+    public final MatcherEventLogsQueue MATCHER_EVENT_LOGS_QUEUE = MatcherEventLogsQueue.MATCHER_EVENT_LOGS_QUEUE;
 
     /**
      * The table <code>cce_analytics.mv_daily_adoption_kpis</code>.
@@ -402,6 +395,16 @@ public class CceAnalytics extends SchemaImpl {
     public final MvIntelligenceSummaryMv MV_INTELLIGENCE_SUMMARY_MV = MvIntelligenceSummaryMv.MV_INTELLIGENCE_SUMMARY_MV;
 
     /**
+     * The table <code>cce_analytics.mv_matcher_processing_quality</code>.
+     */
+    public final MvMatcherProcessingQuality MV_MATCHER_PROCESSING_QUALITY = MvMatcherProcessingQuality.MV_MATCHER_PROCESSING_QUALITY;
+
+    /**
+     * The table <code>cce_analytics.mv_matcher_processing_quality_mv</code>.
+     */
+    public final MvMatcherProcessingQualityMv MV_MATCHER_PROCESSING_QUALITY_MV = MvMatcherProcessingQualityMv.MV_MATCHER_PROCESSING_QUALITY_MV;
+
+    /**
      * The table <code>cce_analytics.mv_patient_facility_latest</code>.
      */
     public final MvPatientFacilityLatest MV_PATIENT_FACILITY_LATEST = MvPatientFacilityLatest.MV_PATIENT_FACILITY_LATEST;
@@ -542,6 +545,21 @@ public class CceAnalytics extends SchemaImpl {
     public final StepInstancesQueue STEP_INSTANCES_QUEUE = StepInstancesQueue.STEP_INSTANCES_QUEUE;
 
     /**
+     * The table <code>cce_analytics.step_sla_state_transitions</code>.
+     */
+    public final StepSlaStateTransitions STEP_SLA_STATE_TRANSITIONS = StepSlaStateTransitions.STEP_SLA_STATE_TRANSITIONS;
+
+    /**
+     * The table <code>cce_analytics.step_sla_state_transitions_mv</code>.
+     */
+    public final StepSlaStateTransitionsMv STEP_SLA_STATE_TRANSITIONS_MV = StepSlaStateTransitionsMv.STEP_SLA_STATE_TRANSITIONS_MV;
+
+    /**
+     * The table <code>cce_analytics.step_sla_state_transitions_queue</code>.
+     */
+    public final StepSlaStateTransitionsQueue STEP_SLA_STATE_TRANSITIONS_QUEUE = StepSlaStateTransitionsQueue.STEP_SLA_STATE_TRANSITIONS_QUEUE;
+
+    /**
      * No further instances allowed
      */
     private CceAnalytics() {
@@ -560,9 +578,6 @@ public class CceAnalytics extends SchemaImpl {
             ActionDefinitions.ACTION_DEFINITIONS,
             ActionDefinitionsMv.ACTION_DEFINITIONS_MV,
             ActionDefinitionsQueue.ACTION_DEFINITIONS_QUEUE,
-            ComplianceEventLogs.COMPLIANCE_EVENT_LOGS,
-            ComplianceEventLogsMv.COMPLIANCE_EVENT_LOGS_MV,
-            ComplianceEventLogsQueue.COMPLIANCE_EVENT_LOGS_QUEUE,
             DestinationAdaptorMapping.DESTINATION_ADAPTOR_MAPPING,
             DestinationAdaptorMappingMv.DESTINATION_ADAPTOR_MAPPING_MV,
             DestinationAdaptorMappingQueue.DESTINATION_ADAPTOR_MAPPING_QUEUE,
@@ -585,8 +600,9 @@ public class CceAnalytics extends SchemaImpl {
             IntelligenceEventLogs.INTELLIGENCE_EVENT_LOGS,
             IntelligenceEventLogsMv.INTELLIGENCE_EVENT_LOGS_MV,
             IntelligenceEventLogsQueue.INTELLIGENCE_EVENT_LOGS_QUEUE,
-            MvComplianceProcessingQuality.MV_COMPLIANCE_PROCESSING_QUALITY,
-            MvComplianceProcessingQualityMv.MV_COMPLIANCE_PROCESSING_QUALITY_MV,
+            MatcherEventLogs.MATCHER_EVENT_LOGS,
+            MatcherEventLogsMv.MATCHER_EVENT_LOGS_MV,
+            MatcherEventLogsQueue.MATCHER_EVENT_LOGS_QUEUE,
             MvDailyAdoptionKpis.MV_DAILY_ADOPTION_KPIS,
             MvDailyAdoptionKpisMv.MV_DAILY_ADOPTION_KPIS_MV,
             MvDailyComplianceKpis.MV_DAILY_COMPLIANCE_KPIS,
@@ -615,6 +631,8 @@ public class CceAnalytics extends SchemaImpl {
             MvIntelligenceByProtocolMv.MV_INTELLIGENCE_BY_PROTOCOL_MV,
             MvIntelligenceSummary.MV_INTELLIGENCE_SUMMARY,
             MvIntelligenceSummaryMv.MV_INTELLIGENCE_SUMMARY_MV,
+            MvMatcherProcessingQuality.MV_MATCHER_PROCESSING_QUALITY,
+            MvMatcherProcessingQualityMv.MV_MATCHER_PROCESSING_QUALITY_MV,
             MvPatientFacilityLatest.MV_PATIENT_FACILITY_LATEST,
             MvPatientFacilityLatestMv.MV_PATIENT_FACILITY_LATEST_MV,
             MvPractitionerSummary.MV_PRACTITIONER_SUMMARY,
@@ -642,7 +660,10 @@ public class CceAnalytics extends SchemaImpl {
             StepInstanceHistoryQueue.STEP_INSTANCE_HISTORY_QUEUE,
             StepInstances.STEP_INSTANCES,
             StepInstancesMv.STEP_INSTANCES_MV,
-            StepInstancesQueue.STEP_INSTANCES_QUEUE
+            StepInstancesQueue.STEP_INSTANCES_QUEUE,
+            StepSlaStateTransitions.STEP_SLA_STATE_TRANSITIONS,
+            StepSlaStateTransitionsMv.STEP_SLA_STATE_TRANSITIONS_MV,
+            StepSlaStateTransitionsQueue.STEP_SLA_STATE_TRANSITIONS_QUEUE
         );
     }
 }

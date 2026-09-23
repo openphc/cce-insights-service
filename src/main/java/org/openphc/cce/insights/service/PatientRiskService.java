@@ -3,8 +3,8 @@ package org.openphc.cce.insights.service;
 import lombok.RequiredArgsConstructor;
 import org.openphc.cce.insights.domain.entity.ProtocolInstance;
 import org.openphc.cce.insights.domain.entity.StepInstance;
-import org.openphc.cce.insights.domain.enums.StepState;
-import org.openphc.cce.insights.domain.repository.ComplianceEventLogRepository;
+import org.openphc.cce.insights.domain.enums.SlaStatus;
+import org.openphc.cce.insights.domain.repository.MatcherEventLogRepository;
 import org.openphc.cce.insights.domain.repository.DailyKpiRepository;
 import org.openphc.cce.insights.domain.repository.DeviationRepository;
 import org.openphc.cce.insights.domain.repository.ProtocolInstanceRepository;
@@ -25,7 +25,7 @@ public class PatientRiskService {
     private final DeviationRepository deviationRepository;
     private final ProtocolInstanceRepository protocolInstanceRepository;
     private final StepInstanceRepository stepInstanceRepository;
-    private final ComplianceEventLogRepository complianceEventLogRepository;
+    private final MatcherEventLogRepository matcherEventLogRepository;
     private final DailyKpiRepository dailyKpiRepository;
 
     @Cacheable(value = "analytics",
@@ -33,7 +33,7 @@ public class PatientRiskService {
     public List<AtRiskHotspotDto> getAtRiskHotspots(UUID protocolDefinitionId,
                                                      OffsetDateTime startDate, OffsetDateTime endDate) {
         // Build facility -> set of patient IDs mapping
-        List<Object[]> facilityPatientRows = complianceEventLogRepository.findFacilityPatientMapping();
+        List<Object[]> facilityPatientRows = matcherEventLogRepository.findFacilityPatientMapping();
         Map<String, Set<String>> facilityPatients = new LinkedHashMap<>();
         for (Object[] row : facilityPatientRows) {
             String facilityId = (String) row[0];
@@ -81,8 +81,12 @@ public class PatientRiskService {
 
             for (String patientId : patients) {
                 List<StepInstance> steps = patientSteps.getOrDefault(patientId, Collections.emptyList());
-                boolean hasMissed = steps.stream().anyMatch(s -> s.getState() == StepState.MISSED);
-                boolean hasOverdue = steps.stream().anyMatch(s -> s.getState() == StepState.OVERDUE);
+                // Outstanding steps only: a step completed late keeps its OVERDUE/MISSED verdict but
+                // no longer puts the patient at risk (1.x: state MISSED / OVERDUE, never COMPLETED).
+                boolean hasMissed = steps.stream()
+                        .anyMatch(s -> !s.isCompleted() && s.getSlaStatus() == SlaStatus.MISSED);
+                boolean hasOverdue = steps.stream()
+                        .anyMatch(s -> !s.isCompleted() && s.getSlaStatus() == SlaStatus.OVERDUE);
                 if (hasMissed) nonCompliant++;
                 else if (hasOverdue) atRisk++;
                 else onTrack++;

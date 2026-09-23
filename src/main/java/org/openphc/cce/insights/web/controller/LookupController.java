@@ -2,7 +2,7 @@ package org.openphc.cce.insights.web.controller;
 
 import lombok.RequiredArgsConstructor;
 import org.openphc.cce.insights.domain.entity.ProtocolDefinition;
-import org.openphc.cce.insights.domain.repository.ComplianceEventLogRepository;
+import org.openphc.cce.insights.domain.repository.MatcherEventLogRepository;
 import org.openphc.cce.insights.domain.repository.DailyKpiRepository;
 import org.openphc.cce.insights.domain.repository.InboundEventRepository;
 import org.openphc.cce.insights.domain.repository.ProtocolDefinitionRepository;
@@ -29,7 +29,7 @@ public class LookupController {
 
     private final ProtocolDefinitionRepository protocolDefinitionRepository;
     private final ProtocolInstanceRepository protocolInstanceRepository;
-    private final ComplianceEventLogRepository complianceEventLogRepository;
+    private final MatcherEventLogRepository matcherEventLogRepository;
     private final DailyKpiRepository dailyKpiRepository;
     private final InboundEventRepository inboundEventRepository;
     private final org.openphc.cce.insights.service.FacilityDirectory facilityDirectory;
@@ -89,7 +89,7 @@ public class LookupController {
     @GetMapping("/practitioners")
     @Cacheable(value = "lookups", key = "'practitioners'")
     public ResponseEntity<ApiResponse<List<String>>> getPractitioners() {
-        List<String> practitioners = complianceEventLogRepository.findDistinctPractitioners();
+        List<String> practitioners = matcherEventLogRepository.findDistinctPractitioners();
         return ResponseEntity.ok(ApiResponse.ok(practitioners));
     }
 

@@ -1,7 +1,7 @@
 package org.openphc.cce.insights.service;
 
 import lombok.RequiredArgsConstructor;
-import org.openphc.cce.insights.domain.repository.ComplianceEventLogRepository;
+import org.openphc.cce.insights.domain.repository.MatcherEventLogRepository;
 import org.openphc.cce.insights.domain.repository.DailyKpiRepository;
 import org.openphc.cce.insights.domain.repository.DeviationRepository;
 import org.openphc.cce.insights.domain.repository.StepInstanceRepository;
@@ -17,7 +17,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class PractitionerRankingService {
 
-    private final ComplianceEventLogRepository complianceEventLogRepository;
+    private final MatcherEventLogRepository matcherEventLogRepository;
     private final DailyKpiRepository dailyKpiRepository;
     private final StepInstanceRepository stepInstanceRepository;
     private final DeviationRepository deviationRepository;
@@ -31,7 +31,7 @@ public class PractitionerRankingService {
         // Practitioner summary: ref, display, facilityId, totalEvents, totalPatients.
         // protocolDefinitionId narrows the rankings to practitioners with step rows in
         // the selected protocol (applied below when filtering step compliance).
-        List<Object[]> summaryRows = complianceEventLogRepository.findPractitionerSummaryFiltered(startDate, endDate, facilityId);
+        List<Object[]> summaryRows = matcherEventLogRepository.findPractitionerSummaryFiltered(startDate, endDate, facilityId);
 
         // Build facility name lookup from canonical facility table
         Map<String, String> facilityNameMap = new LinkedHashMap<>();

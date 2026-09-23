@@ -98,9 +98,15 @@ public class IntelligenceEventLogs extends TableImpl<Record> {
     public final TableField<Record, Object> INTELLIGENCE_DESTINATION = createField(DSL.name("intelligence_destination"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
 
     /**
-     * The column <code>cce_analytics.intelligence_event_logs.step_state</code>.
+     * The column
+     * <code>cce_analytics.intelligence_event_logs.step_status</code>.
      */
-    public final TableField<Record, Object> STEP_STATE = createField(DSL.name("step_state"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
+    public final TableField<Record, Object> STEP_STATUS = createField(DSL.name("step_status"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
+
+    /**
+     * The column <code>cce_analytics.intelligence_event_logs.sla_status</code>.
+     */
+    public final TableField<Record, Object> SLA_STATUS = createField(DSL.name("sla_status"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
 
     /**
      * The column

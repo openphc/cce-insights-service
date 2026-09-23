@@ -1,7 +1,7 @@
 package org.openphc.cce.insights.service;
 
 import org.junit.jupiter.api.Test;
-import org.openphc.cce.insights.domain.repository.ComplianceEventLogRepository;
+import org.openphc.cce.insights.domain.repository.MatcherEventLogRepository;
 import org.openphc.cce.insights.domain.repository.DailyKpiRepository;
 import org.openphc.cce.insights.domain.repository.InboundEventRepository;
 import org.openphc.cce.insights.web.dto.EventKpiDto;
@@ -22,7 +22,7 @@ import static org.mockito.Mockito.when;
  */
 class EventVolumeServiceTest {
 
-    private final ComplianceEventLogRepository complianceRepo = mock(ComplianceEventLogRepository.class);
+    private final MatcherEventLogRepository complianceRepo = mock(MatcherEventLogRepository.class);
     private final InboundEventRepository inboundRepo = mock(InboundEventRepository.class);
     private final DailyKpiRepository dailyKpiRepo = mock(DailyKpiRepository.class);
     private final EventVolumeService service = new EventVolumeService(complianceRepo, inboundRepo, dailyKpiRepo);

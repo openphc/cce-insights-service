@@ -69,6 +69,11 @@ public class FacilityMv extends TableImpl<Record> {
     public final TableField<Record, Object> EXPECTED_PATIENTS_PER_DAY = createField(DSL.name("expected_patients_per_day"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
 
     /**
+     * The column <code>cce_analytics.facility_mv.district_name</code>.
+     */
+    public final TableField<Record, Object> DISTRICT_NAME = createField(DSL.name("district_name"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
+
+    /**
      * The column <code>cce_analytics.facility_mv.created_at</code>.
      */
     public final TableField<Record, Object> CREATED_AT = createField(DSL.name("created_at"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");

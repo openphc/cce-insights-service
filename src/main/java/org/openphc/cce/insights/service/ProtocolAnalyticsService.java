@@ -21,7 +21,7 @@ public class ProtocolAnalyticsService {
     private final ProtocolDefinitionRepository protocolDefinitionRepository;
     private final ProtocolInstanceRepository protocolInstanceRepository;
     private final StepInstanceRepository stepInstanceRepository;
-    private final ComplianceEventLogRepository complianceEventLogRepository;
+    private final MatcherEventLogRepository matcherEventLogRepository;
     private final ObjectMapper objectMapper;
 
     @Cacheable(value = "analytics", key = "'action-order-' + #protocolDefinitionId")
@@ -80,9 +80,9 @@ public class ProtocolAnalyticsService {
         Map<String, String> requiredBehaviorMap = resolveRequiredBehaviorMap(pd);
 
         // Date range narrows the cohort to enrollments enrolled in the period; the
-        // step-state distribution is therefore reported relative to that cohort.
-        // (Step states are still "current state at observation time" — we don't replay
-        //  state history, so transitions that happened in the period aren't isolated.)
+        // step_status / sla_status distribution is therefore reported relative to that cohort.
+        // (Statuses are still "current status at observation time" — we don't replay
+        //  step_instance_history, so transitions that happened in the period aren't isolated.)
         List<Object[]> rows = (facilityId != null && !facilityId.isEmpty())
                 ? stepInstanceRepository.findStepAnalyticsByFacility(
                         protocolDefinitionId, facilityId, district, startDate, endDate)
@@ -100,16 +100,15 @@ public class ProtocolAnalyticsService {
                     .completedCount(completedCount)
                     .completionRate(completionRate)
                     .timelinessDistribution(StepAnalyticsDto.TimelinessDistribution.builder()
-                            .early(((Number) row[3]).longValue())
-                            .onTime(((Number) row[4]).longValue())
-                            .late(((Number) row[5]).longValue())
+                            .completedOnTime(((Number) row[3]).longValue())
+                            .completedLate(((Number) row[4]).longValue())
                             .build())
-                    .overdueCount(((Number) row[6]).longValue())
-                    .missedCount(((Number) row[7]).longValue())
-                    .skippedCount(((Number) row[8]).longValue())
-                    .pendingCount(((Number) row[9]).longValue())
-                    .avgDaysToComplete(row[10] != null ? ((Number) row[10]).doubleValue() : null)
-                    .medianDaysToComplete(row[11] != null ? ((Number) row[11]).doubleValue() : null)
+                    .overdueCount(((Number) row[5]).longValue())
+                    .missedCount(((Number) row[6]).longValue())
+                    .notStartedCount(((Number) row[7]).longValue())
+                    .slaUnjudgedCount(((Number) row[8]).longValue())
+                    .avgDaysToComplete(row[9] != null ? ((Number) row[9]).doubleValue() : null)
+                    .medianDaysToComplete(row[10] != null ? ((Number) row[10]).doubleValue() : null)
                     .requiredBehavior(requiredBehaviorMap.get(actionId))
                     .build();
         }).collect(Collectors.toList());
@@ -220,7 +219,7 @@ public class ProtocolAnalyticsService {
                                 protocolDefinitionId, startDate, endDate)
                         : protocolInstanceRepository.findByProtocolDefinitionId(protocolDefinitionId);
         if (facilityId != null && !facilityId.isEmpty()) {
-            java.util.Set<String> patientsAtFacility = complianceEventLogRepository
+            java.util.Set<String> patientsAtFacility = matcherEventLogRepository
                     .findPatientsByFacility(facilityId)
                     .stream().map(r -> (String) r[1])
                     .collect(Collectors.toSet());

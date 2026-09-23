@@ -4,7 +4,7 @@ import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Table;
 import org.jooq.impl.DSL;
-import org.openphc.cce.insights.domain.entity.ComplianceEventLog;
+import org.openphc.cce.insights.domain.entity.MatcherEventLog;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Repository;
 
@@ -12,38 +12,38 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
-import static org.openphc.cce.insights.jooq.Tables.COMPLIANCE_EVENT_LOGS;
+import static org.openphc.cce.insights.jooq.Tables.MATCHER_EVENT_LOGS;
 import static org.openphc.cce.insights.jooq.Tables.INBOUND_EVENT_LOGS;
 import static org.openphc.cce.insights.jooq.Tables.PROTOCOL_INSTANCES;
 
 @Repository
-public class ComplianceEventLogRepositoryImpl
-        extends AbstractClickHouseRepository<ComplianceEventLog, UUID>
-        implements ComplianceEventLogRepository {
+public class MatcherEventLogRepositoryImpl
+        extends AbstractClickHouseRepository<MatcherEventLog, UUID>
+        implements MatcherEventLogRepository {
 
-    public ComplianceEventLogRepositoryImpl(DSLContext dsl) {
+    public MatcherEventLogRepositoryImpl(DSLContext dsl) {
         super(dsl);
     }
 
     @Override
     protected String getTableName() {
-        return COMPLIANCE_EVENT_LOGS.getName();
+        return MATCHER_EVENT_LOGS.getName();
     }
 
     // ══════════════════════════════════════════════════════════════════════════════
     // Result mappers
     // ══════════════════════════════════════════════════════════════════════════════
 
-    /** Maps a base compliance_event_logs Record (no joined iel columns). */
+    /** Maps a base matcher_event_logs Record (no joined iel columns). */
     @Override
-    protected ComplianceEventLog fromRecord(Record r) {
-        return ComplianceEventLog.builder()
-                .id(r.get(COMPLIANCE_EVENT_LOGS.ID.getName(), UUID.class))
-                .cloudeventsId(r.get(COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName(), String.class))
-                .source(r.get(COMPLIANCE_EVENT_LOGS.SOURCE.getName(), String.class))
-                .data(r.get(COMPLIANCE_EVENT_LOGS.DATA.getName(), String.class))
-                .processingStatus(r.get(COMPLIANCE_EVENT_LOGS.PROCESSING_STATUS.getName(), String.class))
-                .receivedAt(recordDateTime(r, COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName()))
+    protected MatcherEventLog fromRecord(Record r) {
+        return MatcherEventLog.builder()
+                .id(r.get(MATCHER_EVENT_LOGS.ID.getName(), UUID.class))
+                .cloudeventsId(r.get(MATCHER_EVENT_LOGS.CLOUDEVENTS_ID.getName(), String.class))
+                .source(r.get(MATCHER_EVENT_LOGS.SOURCE.getName(), String.class))
+                .data(r.get(MATCHER_EVENT_LOGS.DATA.getName(), String.class))
+                .processingStatus(r.get(MATCHER_EVENT_LOGS.PROCESSING_STATUS.getName(), String.class))
+                .receivedAt(recordDateTime(r, MATCHER_EVENT_LOGS.RECEIVED_AT.getName()))
                 .subject(null)
                 .type(null)
                 .eventTime(null)
@@ -52,8 +52,8 @@ public class ComplianceEventLogRepositoryImpl
     }
 
     /** Maps a Record from queries that JOIN inbound_event_logs (full column set). */
-    private ComplianceEventLog toComplianceEventLogJoined(Record r) {
-        return ComplianceEventLog.builder()
+    private MatcherEventLog toMatcherEventLogJoined(Record r) {
+        return MatcherEventLog.builder()
                 .id(r.get("id", UUID.class))
                 .cloudeventsId(r.get("cloudevents_id", String.class))
                 .subject(r.get("subject", String.class))
@@ -76,9 +76,9 @@ public class ComplianceEventLogRepositoryImpl
     // ══════════════════════════════════════════════════════════════════════════════
 
     @Override
-    public List<ComplianceEventLog> findBySubjectOrderByEventTimeDesc(String subject) {
+    public List<MatcherEventLog> findBySubjectOrderByEventTimeDesc(String subject) {
         var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
-        var cel = finalAs(COMPLIANCE_EVENT_LOGS, "cel");
+        var cel = finalAs(MATCHER_EVENT_LOGS, "cel");
         return dsl.select(
                     DSL.field("iel." + INBOUND_EVENT_LOGS.ID.getName()).as("id"),
                     DSL.field("iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName()).as("cloudevents_id"),
@@ -88,7 +88,7 @@ public class ComplianceEventLogRepositoryImpl
                     DSL.field("iel." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName()).as("received_at"),
                     DSL.field("iel." + INBOUND_EVENT_LOGS.SOURCE.getName()).as("source"),
                     DSL.field("JSONExtractRaw(iel." + INBOUND_EVENT_LOGS.RAW_PAYLOAD.getName() + ", 'data')").as("data"),
-                    DSL.field("COALESCE(cel." + COMPLIANCE_EVENT_LOGS.PROCESSING_STATUS.getName() +
+                    DSL.field("COALESCE(cel." + MATCHER_EVENT_LOGS.PROCESSING_STATUS.getName() +
                               ", iel." + INBOUND_EVENT_LOGS.STATUS.getName() + ")").as("processing_status"),
                     DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()).as("facility_id"),
                     DSL.val("").as("protocol_instance_id"),
@@ -97,38 +97,38 @@ public class ComplianceEventLogRepositoryImpl
                     DSL.val("").as("matched_step_instance_id"))
                   .from(iel)
                   .leftJoin(cel).on(DSL.condition(
-                          "cel." + COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName() +
+                          "cel." + MATCHER_EVENT_LOGS.CLOUDEVENTS_ID.getName() +
                           " = iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
                   .where(DSL.field("iel." + INBOUND_EVENT_LOGS.SUBJECT.getName()).eq(subject))
                   .orderBy(DSL.field("iel." + INBOUND_EVENT_LOGS.EVENT_TIME.getName()).desc())
                   .fetch()
-                  .map(this::toComplianceEventLogJoined);
+                  .map(this::toMatcherEventLogJoined);
     }
 
     @Override
-    public List<ComplianceEventLog> findByComplianceEventIds(List<UUID> complianceEventIds) {
-        if (complianceEventIds == null || complianceEventIds.isEmpty()) return List.of();
-        List<String> ids = complianceEventIds.stream().map(UUID::toString).toList();
-        var cel = finalAs(COMPLIANCE_EVENT_LOGS, "cel");
+    public List<MatcherEventLog> findByMatcherEventIds(List<UUID> matcherEventIds) {
+        if (matcherEventIds == null || matcherEventIds.isEmpty()) return List.of();
+        List<String> ids = matcherEventIds.stream().map(UUID::toString).toList();
+        var cel = finalAs(MATCHER_EVENT_LOGS, "cel");
         return dsl.select(
-                    DSL.field("cel." + COMPLIANCE_EVENT_LOGS.ID.getName()).as("id"),
-                    DSL.field("cel." + COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName()).as("cloudevents_id"),
+                    DSL.field("cel." + MATCHER_EVENT_LOGS.ID.getName()).as("id"),
+                    DSL.field("cel." + MATCHER_EVENT_LOGS.CLOUDEVENTS_ID.getName()).as("cloudevents_id"),
                     DSL.val("").as("subject"),
                     DSL.val("").as("event_type"),
-                    DSL.field("cel." + COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName()).as("event_time"),
-                    DSL.field("cel." + COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName()).as("received_at"),
-                    DSL.field("cel." + COMPLIANCE_EVENT_LOGS.SOURCE.getName()).as("source"),
-                    DSL.field("cel." + COMPLIANCE_EVENT_LOGS.DATA.getName()).as("data"),
-                    DSL.field("cel." + COMPLIANCE_EVENT_LOGS.PROCESSING_STATUS.getName()).as("processing_status"),
+                    DSL.field("cel." + MATCHER_EVENT_LOGS.RECEIVED_AT.getName()).as("event_time"),
+                    DSL.field("cel." + MATCHER_EVENT_LOGS.RECEIVED_AT.getName()).as("received_at"),
+                    DSL.field("cel." + MATCHER_EVENT_LOGS.SOURCE.getName()).as("source"),
+                    DSL.field("cel." + MATCHER_EVENT_LOGS.DATA.getName()).as("data"),
+                    DSL.field("cel." + MATCHER_EVENT_LOGS.PROCESSING_STATUS.getName()).as("processing_status"),
                     DSL.val("").as("facility_id"),
                     DSL.val("").as("protocol_instance_id"),
                     DSL.val("").as("protocol_definition_id"),
                     DSL.val("").as("action_id"),
                     DSL.val("").as("matched_step_instance_id"))
                   .from(cel)
-                  .where(DSL.field("cel." + COMPLIANCE_EVENT_LOGS.ID.getName()).in(ids))
+                  .where(DSL.field("cel." + MATCHER_EVENT_LOGS.ID.getName()).in(ids))
                   .fetch()
-                  .map(this::toComplianceEventLogJoined);
+                  .map(this::toMatcherEventLogJoined);
     }
 
     @Override
@@ -201,7 +201,7 @@ public class ComplianceEventLogRepositoryImpl
                                                OffsetDateTime startDate, OffsetDateTime endDate) {
         String fid = str(facilityId);
         String src = str(source);
-        var cel = finalAs(COMPLIANCE_EVENT_LOGS, "cel");
+        var cel = finalAs(MATCHER_EVENT_LOGS, "cel");
         var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
         return dsl.select(
                     DSL.field("iel." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName()),
@@ -209,16 +209,16 @@ public class ComplianceEventLogRepositoryImpl
                   .from(cel)
                   .join(iel).on(DSL.condition(
                           "iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName() +
-                          " = cel." + COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
-                  .where(DSL.field("cel." + COMPLIANCE_EVENT_LOGS.PROCESSING_STATUS.getName()).ne("DUPLICATE"))
+                          " = cel." + MATCHER_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
+                  .where(DSL.field("cel." + MATCHER_EVENT_LOGS.PROCESSING_STATUS.getName()).ne("DUPLICATE"))
                   .and(DSL.field("iel." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName()).ne(""))
                   .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?", fid, fid))
                   .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.SOURCE.getName() + " = ?", src, src))
                   .and(DSL.condition(
-                          "cel." + COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
+                          "cel." + MATCHER_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
                           dtStart(startDate)))
                   .and(DSL.condition(
-                          "cel." + COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
+                          "cel." + MATCHER_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
                           dtEnd(endDate)))
                   .groupBy(DSL.field("iel." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName()))
                   .orderBy(DSL.field("cnt").desc())
@@ -228,7 +228,7 @@ public class ComplianceEventLogRepositoryImpl
 
     @Override
     public List<Object[]> countByFacility(OffsetDateTime startDate, OffsetDateTime endDate) {
-        var cel = finalAs(COMPLIANCE_EVENT_LOGS, "cel");
+        var cel = finalAs(MATCHER_EVENT_LOGS, "cel");
         var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
         return dsl.select(
                     DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()),
@@ -237,14 +237,14 @@ public class ComplianceEventLogRepositoryImpl
                   .from(cel)
                   .join(iel).on(DSL.condition(
                           "iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName() +
-                          " = cel." + COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
-                  .where(DSL.field("cel." + COMPLIANCE_EVENT_LOGS.PROCESSING_STATUS.getName()).ne("DUPLICATE"))
+                          " = cel." + MATCHER_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
+                  .where(DSL.field("cel." + MATCHER_EVENT_LOGS.PROCESSING_STATUS.getName()).ne("DUPLICATE"))
                   .and(DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()).ne(""))
                   .and(DSL.condition(
-                          "cel." + COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
+                          "cel." + MATCHER_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
                           dtStart(startDate)))
                   .and(DSL.condition(
-                          "cel." + COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
+                          "cel." + MATCHER_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
                           dtEnd(endDate)))
                   .groupBy(
                           DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()),
@@ -262,16 +262,16 @@ public class ComplianceEventLogRepositoryImpl
         String fid = str(facilityId);
         String src = str(source);
         String rt  = str(resourceType);
-        var cel = finalAs(COMPLIANCE_EVENT_LOGS, "cel");
+        var cel = finalAs(MATCHER_EVENT_LOGS, "cel");
         var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
 
-        var where = DSL.field("cel." + COMPLIANCE_EVENT_LOGS.PROCESSING_STATUS.getName()).ne("DUPLICATE")
+        var where = DSL.field("cel." + MATCHER_EVENT_LOGS.PROCESSING_STATUS.getName()).ne("DUPLICATE")
                 .and(DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()).ne(""))
                 .and(DSL.condition(
-                        "cel." + COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
+                        "cel." + MATCHER_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
                         dtStart(startDate)))
                 .and(DSL.condition(
-                        "cel." + COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
+                        "cel." + MATCHER_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
                         dtEnd(endDate)));
         if (!fid.isEmpty()) where = where.and(DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()).eq(fid));
         if (!src.isEmpty()) where = where.and(DSL.field("iel." + INBOUND_EVENT_LOGS.SOURCE.getName()).eq(src));
@@ -284,7 +284,7 @@ public class ComplianceEventLogRepositoryImpl
                   .from(cel)
                   .join(iel).on(DSL.condition(
                           "iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName() +
-                          " = cel." + COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
+                          " = cel." + MATCHER_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
                   .where(where)
                   .groupBy(
                           DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()),
@@ -303,17 +303,17 @@ public class ComplianceEventLogRepositoryImpl
         String fid = str(facilityId);
         String src = str(source);
         String rt  = str(resourceType);
-        String periodExpr = dateTruncExpr(interval, "cel." + COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName());
-        String celReceivedAt = "cel." + COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName();
+        String periodExpr = dateTruncExpr(interval, "cel." + MATCHER_EVENT_LOGS.RECEIVED_AT.getName());
+        String celReceivedAt = "cel." + MATCHER_EVENT_LOGS.RECEIVED_AT.getName();
         String ielReceivedAt = "iel." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName();
         String startStr = dtStart(startDate);
         String endStr   = dtEnd(endDate);
-        var cel = finalAs(COMPLIANCE_EVENT_LOGS, "cel");
+        var cel = finalAs(MATCHER_EVENT_LOGS, "cel");
         var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
 
         // Build optional filters conditionally — avoids "? = '' OR col = ?" which
         // prevents ClickHouse from using the primary key index when a filter IS set.
-        var baseWhere = DSL.field("cel." + COMPLIANCE_EVENT_LOGS.PROCESSING_STATUS.getName()).ne("DUPLICATE")
+        var baseWhere = DSL.field("cel." + MATCHER_EVENT_LOGS.PROCESSING_STATUS.getName()).ne("DUPLICATE")
                 .and(DSL.condition(celReceivedAt + " >= parseDateTime64BestEffort(?)", startStr))
                 .and(DSL.condition(celReceivedAt + " <= parseDateTime64BestEffort(?)", endStr))
                 // Mirror date range onto iel so ClickHouse can skip irrelevant parts
@@ -331,7 +331,7 @@ public class ComplianceEventLogRepositoryImpl
                   .from(cel)
                   .join(iel).on(DSL.condition(
                           "iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName() +
-                          " = cel." + COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
+                          " = cel." + MATCHER_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
                   .where(baseWhere)
                   .groupBy(
                           DSL.field(DSL.sql("period")),
@@ -345,23 +345,23 @@ public class ComplianceEventLogRepositoryImpl
     public List<Object[]> countByProcessingStatus(String facilityId,
                                                     OffsetDateTime startDate, OffsetDateTime endDate) {
         String fid = str(facilityId);
-        var cel = finalAs(COMPLIANCE_EVENT_LOGS, "cel");
+        var cel = finalAs(MATCHER_EVENT_LOGS, "cel");
         var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
         return dsl.select(
-                    DSL.field("cel." + COMPLIANCE_EVENT_LOGS.PROCESSING_STATUS.getName()),
+                    DSL.field("cel." + MATCHER_EVENT_LOGS.PROCESSING_STATUS.getName()),
                     DSL.field("count()", Long.class))
                   .from(cel)
                   .leftJoin(iel).on(DSL.condition(
                           "iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName() +
-                          " = cel." + COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
+                          " = cel." + MATCHER_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
                   .where(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?", fid, fid))
                   .and(DSL.condition(
-                          "cel." + COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
+                          "cel." + MATCHER_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
                           dtStart(startDate)))
                   .and(DSL.condition(
-                          "cel." + COMPLIANCE_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
+                          "cel." + MATCHER_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
                           dtEnd(endDate)))
-                  .groupBy(DSL.field("cel." + COMPLIANCE_EVENT_LOGS.PROCESSING_STATUS.getName()))
+                  .groupBy(DSL.field("cel." + MATCHER_EVENT_LOGS.PROCESSING_STATUS.getName()))
                   .fetch()
                   .map(r -> new Object[]{r.get(0, String.class), r.get(1, Long.class)});
     }
@@ -369,7 +369,7 @@ public class ComplianceEventLogRepositoryImpl
     @Override
     public List<Object[]> findFacilityEventCounts(UUID protocolDefId) {
         String pid = protocolDefId != null ? protocolDefId.toString() : "";
-        var cel = finalAs(COMPLIANCE_EVENT_LOGS, "cel");
+        var cel = finalAs(MATCHER_EVENT_LOGS, "cel");
         var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
         var pi  = finalAs(PROTOCOL_INSTANCES, "pi");
         return dsl.select(
@@ -379,7 +379,7 @@ public class ComplianceEventLogRepositoryImpl
                   .from(cel)
                   .join(iel).on(DSL.condition(
                           "iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName() +
-                          " = cel." + COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
+                          " = cel." + MATCHER_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
                   .leftJoin(pi).on(DSL.condition(
                           "pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName() +
                           " = iel." + INBOUND_EVENT_LOGS.SUBJECT.getName()))
@@ -396,7 +396,7 @@ public class ComplianceEventLogRepositoryImpl
     @Override
     public List<Object[]> findActivePatientsByFacility(UUID protocolDefId) {
         String pid = protocolDefId != null ? protocolDefId.toString() : "";
-        var cel = finalAs(COMPLIANCE_EVENT_LOGS, "cel");
+        var cel = finalAs(MATCHER_EVENT_LOGS, "cel");
         var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
         var pi  = finalAs(PROTOCOL_INSTANCES, "pi");
         return dsl.select(
@@ -405,7 +405,7 @@ public class ComplianceEventLogRepositoryImpl
                   .from(cel)
                   .join(iel).on(DSL.condition(
                           "iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName() +
-                          " = cel." + COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
+                          " = cel." + MATCHER_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
                   .join(pi).on(DSL.condition(
                           "pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName() +
                           " = iel." + INBOUND_EVENT_LOGS.SUBJECT.getName()))
@@ -422,7 +422,7 @@ public class ComplianceEventLogRepositoryImpl
 
     @Override
     public List<Object[]> findFacilityPatientMapping() {
-        var cel = finalAs(COMPLIANCE_EVENT_LOGS, "cel");
+        var cel = finalAs(MATCHER_EVENT_LOGS, "cel");
         var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
         var pi  = finalAs(PROTOCOL_INSTANCES, "pi");
         return dsl.selectDistinct(
@@ -431,7 +431,7 @@ public class ComplianceEventLogRepositoryImpl
                   .from(cel)
                   .join(iel).on(DSL.condition(
                           "iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName() +
-                          " = cel." + COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
+                          " = cel." + MATCHER_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
                   .join(pi).on(DSL.condition(
                           "pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName() +
                           " = iel." + INBOUND_EVENT_LOGS.SUBJECT.getName()))
@@ -466,7 +466,7 @@ public class ComplianceEventLogRepositoryImpl
 
     @Override
     public List<Object[]> findPractitionerSummary() {
-        var cel = finalAs(COMPLIANCE_EVENT_LOGS, "cel");
+        var cel = finalAs(MATCHER_EVENT_LOGS, "cel");
         var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
         return dsl.select(
                     DSL.field("iel." + INBOUND_EVENT_LOGS.PRACTITIONER_REF.getName()),
@@ -477,9 +477,9 @@ public class ComplianceEventLogRepositoryImpl
                   .from(cel)
                   .join(iel).on(DSL.condition(
                           "iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName() +
-                          " = cel." + COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
+                          " = cel." + MATCHER_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
                   .where(DSL.field("iel." + INBOUND_EVENT_LOGS.PRACTITIONER_REF.getName()).ne(""))
-                  .and(DSL.field("cel." + COMPLIANCE_EVENT_LOGS.PROCESSING_STATUS.getName()).ne("DUPLICATE"))
+                  .and(DSL.field("cel." + MATCHER_EVENT_LOGS.PROCESSING_STATUS.getName()).ne("DUPLICATE"))
                   .groupBy(
                           DSL.field("iel." + INBOUND_EVENT_LOGS.PRACTITIONER_REF.getName()),
                           DSL.field("iel." + INBOUND_EVENT_LOGS.PRACTITIONER_DISPLAY.getName()))
@@ -495,7 +495,7 @@ public class ComplianceEventLogRepositoryImpl
                                                             OffsetDateTime endDate,
                                                             String facilityId) {
         String fid = str(facilityId);
-        var cel = finalAs(COMPLIANCE_EVENT_LOGS, "cel");
+        var cel = finalAs(MATCHER_EVENT_LOGS, "cel");
         var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
         return dsl.select(
                     DSL.field("iel." + INBOUND_EVENT_LOGS.PRACTITIONER_REF.getName()),
@@ -506,9 +506,9 @@ public class ComplianceEventLogRepositoryImpl
                   .from(cel)
                   .join(iel).on(DSL.condition(
                           "iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName() +
-                          " = cel." + COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
+                          " = cel." + MATCHER_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
                   .where(DSL.field("iel." + INBOUND_EVENT_LOGS.PRACTITIONER_REF.getName()).ne(""))
-                  .and(DSL.field("cel." + COMPLIANCE_EVENT_LOGS.PROCESSING_STATUS.getName()).ne("DUPLICATE"))
+                  .and(DSL.field("cel." + MATCHER_EVENT_LOGS.PROCESSING_STATUS.getName()).ne("DUPLICATE"))
                   .and(DSL.condition(
                           "iel." + INBOUND_EVENT_LOGS.EVENT_TIME.getName() + " >= parseDateTime64BestEffort(?)",
                           dtStart(startDate)))

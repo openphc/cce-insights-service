@@ -161,43 +161,45 @@ public class MvDailyComplianceKpis extends TableImpl<Record> {
 
     /**
      * The column
-     * <code>cce_analytics.mv_daily_compliance_kpis.step_overdue</code>.
+     * <code>cce_analytics.mv_daily_compliance_kpis.step_not_started</code>.
      */
-    public final TableField<Record, Object> STEP_OVERDUE = createField(DSL.name("step_overdue"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
+    public final TableField<Record, Object> STEP_NOT_STARTED = createField(DSL.name("step_not_started"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
 
     /**
      * The column
-     * <code>cce_analytics.mv_daily_compliance_kpis.step_missed</code>.
+     * <code>cce_analytics.mv_daily_compliance_kpis.step_sla_met</code>.
      */
-    public final TableField<Record, Object> STEP_MISSED = createField(DSL.name("step_missed"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
-
-    /**
-     * The column <code>cce_analytics.mv_daily_compliance_kpis.step_due</code>.
-     */
-    public final TableField<Record, Object> STEP_DUE = createField(DSL.name("step_due"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
+    public final TableField<Record, Object> STEP_SLA_MET = createField(DSL.name("step_sla_met"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
 
     /**
      * The column
-     * <code>cce_analytics.mv_daily_compliance_kpis.step_pending</code>.
+     * <code>cce_analytics.mv_daily_compliance_kpis.step_sla_overdue</code>.
      */
-    public final TableField<Record, Object> STEP_PENDING = createField(DSL.name("step_pending"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
+    public final TableField<Record, Object> STEP_SLA_OVERDUE = createField(DSL.name("step_sla_overdue"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
 
     /**
      * The column
-     * <code>cce_analytics.mv_daily_compliance_kpis.step_on_time</code>.
+     * <code>cce_analytics.mv_daily_compliance_kpis.step_sla_missed</code>.
      */
-    public final TableField<Record, Object> STEP_ON_TIME = createField(DSL.name("step_on_time"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
+    public final TableField<Record, Object> STEP_SLA_MISSED = createField(DSL.name("step_sla_missed"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
 
     /**
      * The column
-     * <code>cce_analytics.mv_daily_compliance_kpis.step_early</code>.
+     * <code>cce_analytics.mv_daily_compliance_kpis.step_sla_unjudged</code>.
      */
-    public final TableField<Record, Object> STEP_EARLY = createField(DSL.name("step_early"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
+    public final TableField<Record, Object> STEP_SLA_UNJUDGED = createField(DSL.name("step_sla_unjudged"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
 
     /**
-     * The column <code>cce_analytics.mv_daily_compliance_kpis.step_late</code>.
+     * The column
+     * <code>cce_analytics.mv_daily_compliance_kpis.step_completed_on_time</code>.
      */
-    public final TableField<Record, Object> STEP_LATE = createField(DSL.name("step_late"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
+    public final TableField<Record, Object> STEP_COMPLETED_ON_TIME = createField(DSL.name("step_completed_on_time"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
+
+    /**
+     * The column
+     * <code>cce_analytics.mv_daily_compliance_kpis.step_completed_late</code>.
+     */
+    public final TableField<Record, Object> STEP_COMPLETED_LATE = createField(DSL.name("step_completed_late"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
 
     private MvDailyComplianceKpis(Name alias, Table<Record> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
