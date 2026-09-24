@@ -18,7 +18,7 @@ public interface InboundEventRepository extends ReadOnlyRepository<InboundEvent,
     /**
      * RI-36 tracked cohort — distinct patients whose events are "considered by a protocol" in the
      * range: ACCEPTED inbound events with {@code event_time} in [start,end] whose {@code cloudevents_id}
-     * matched a protocol (compliance_event_logs {@code processing_status='MATCHED'}), whether they
+     * matched a protocol (matcher_event_logs {@code processing_status='MATCHED'}), whether they
      * created a new enrollment or advanced an existing journey. Scoped by {@code event_time} (not
      * enrolled_at) and facility ({@code null}/'' = all). Optional dates (null = unbounded).
      */
@@ -70,7 +70,7 @@ public interface InboundEventRepository extends ReadOnlyRepository<InboundEvent,
 
     /**
      * Zero-match event breakdown (Events page drill-down table): ACCEPTED inbound events whose
-     * compliance_event_logs.processing_status = 'ZERO_MATCH', grouped by resource type, clinical
+     * matcher_event_logs.processing_status = 'ZERO_MATCH', grouped by resource type, clinical
      * code, category and facility. Code/category are extracted ad-hoc from raw_payload (not
      * materialized columns) since their JSON path varies by FHIR resourceType.
      * Rows: {@code [resourceType(String), code(String), category(String), facilityId(String), count(Long)]}.

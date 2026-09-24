@@ -38,6 +38,15 @@ public class ProtocolInstanceRepositoryImpl
         return toProtocolInstance(r);
     }
 
+    /** Derived column (see protocolInstancesWithCanonical) — 2.0.0 dropped protocol_instances.protocol_canonical. */
+    private static final String PROTOCOL_CANONICAL = "protocol_canonical";
+
+    /** The generic find* methods read protocol_instances with its canonical too. */
+    @Override
+    protected Table<?> baseTable() {
+        return protocolInstancesWithCanonical("pi");
+    }
+
     // ══════════════════════════════════════════════════════════════════════════════
     // Result mappers
     // ══════════════════════════════════════════════════════════════════════════════
@@ -52,7 +61,7 @@ public class ProtocolInstanceRepositoryImpl
                 .id(r.get(PROTOCOL_INSTANCES.ID.getName(), UUID.class))
                 .protocolDefinitionId(r.get(PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName(), UUID.class))
                 .patientId(r.get(PROTOCOL_INSTANCES.PATIENT_ID.getName(), String.class))
-                .protocolCanonical(r.get(PROTOCOL_INSTANCES.PROTOCOL_CANONICAL.getName(), String.class))
+                .protocolCanonical(r.field(PROTOCOL_CANONICAL) != null ? r.get(PROTOCOL_CANONICAL, String.class) : null)
                 .status(status)
                 .enrolledAt(recordDateTime(r, PROTOCOL_INSTANCES.ENROLLED_AT.getName()))
                 .createdAt(recordDateTime(r, PROTOCOL_INSTANCES.CREATED_AT.getName()))
@@ -93,7 +102,7 @@ public class ProtocolInstanceRepositoryImpl
 
     @Override
     public List<ProtocolInstance> findByPatientId(String patientId) {
-        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        var pi = protocolInstancesWithCanonical("pi");
         return dsl.select(DSL.asterisk())
                   .from(pi)
                   .where(notDeleted())
@@ -104,7 +113,7 @@ public class ProtocolInstanceRepositoryImpl
 
     @Override
     public List<ProtocolInstance> findByProtocolDefinitionId(UUID protocolDefinitionId) {
-        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        var pi = protocolInstancesWithCanonical("pi");
         return dsl.select(DSL.asterisk())
                   .from(pi)
                   .where(notDeleted())
@@ -117,7 +126,7 @@ public class ProtocolInstanceRepositoryImpl
 
     @Override
     public List<ProtocolInstance> findEnrolledBetween(OffsetDateTime startDate, OffsetDateTime endDate) {
-        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        var pi = protocolInstancesWithCanonical("pi");
         return dsl.select(DSL.asterisk())
                   .from(pi)
                   .where(notDeleted())
@@ -131,7 +140,7 @@ public class ProtocolInstanceRepositoryImpl
     public List<ProtocolInstance> findByProtocolDefinitionIdAndEnrolledBetween(UUID protocolDefinitionId,
                                                                                 OffsetDateTime startDate,
                                                                                 OffsetDateTime endDate) {
-        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        var pi = protocolInstancesWithCanonical("pi");
         return dsl.select(DSL.asterisk())
                   .from(pi)
                   .where(notDeleted())
@@ -146,7 +155,7 @@ public class ProtocolInstanceRepositoryImpl
 
     @Override
     public Page<ProtocolInstance> findByProtocolDefinitionId(UUID protocolDefinitionId, Pageable pageable) {
-        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        var pi = protocolInstancesWithCanonical("pi");
         var condition = notDeleted()
                 .and(DSL.condition(
                         "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
@@ -240,7 +249,7 @@ public class ProtocolInstanceRepositoryImpl
     public Page<ProtocolInstance> findByProtocolDefinitionIdAndStatus(UUID protocolDefId,
                                                                        ProtocolInstanceStatus status,
                                                                        Pageable pageable) {
-        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        var pi = protocolInstancesWithCanonical("pi");
         var condition = notDeleted()
                 .and(DSL.condition(
                         "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
@@ -266,7 +275,7 @@ public class ProtocolInstanceRepositoryImpl
                                                                                     String patientId,
                                                                                     Pageable pageable) {
         String pattern = "%" + patientId.toLowerCase() + "%";
-        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        var pi = protocolInstancesWithCanonical("pi");
         var condition = notDeleted()
                 .and(DSL.condition(
                         "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
@@ -294,15 +303,16 @@ public class ProtocolInstanceRepositoryImpl
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
         // alias must come BEFORE FINAL: "table alias FINAL" is valid; "table FINAL alias" is not
         var pf = DSL.table(DSL.sql("mv_patient_facility_latest pf" + finalClause()));
-        var d  = finalAs(DEVIATIONS, "d");
+        var d  = deviationsWithInstance("d");
         var si = finalAs(STEP_INSTANCES, "si");
         String zeroUuid = "toUUID('00000000-0000-0000-0000-000000000000')";
-        // Clinical OCCURRENCE date of the deviation (when it happened) from the linked step, keyed by
-        // type — NOT detected_at (when our system flagged it). Mirrors DeviationRepositoryImpl.occurredAt().
+        // Clinical OCCURRENCE date of the deviation (when it happened) from the SLA threshold it
+        // breached, keyed by type — NOT detected_at (when our system flagged it). Mirrors
+        // DeviationRepositoryImpl.occurredAt() (sla = slaThresholds()).
         String devType = "d." + DEVIATIONS.DEVIATION_TYPE.getName();
         String occurredAt = "coalesce(multiIf("
-                + devType + " = 'OVERDUE', si." + STEP_INSTANCES.OVERDUE_DATE.getName() + ", "
-                + devType + " = 'MISSED', si." + STEP_INSTANCES.MISSED_DATE.getName() + ", "
+                + devType + " = 'OVERDUE', sla.due_threshold, "
+                + devType + " = 'MISSED', sla.missed_threshold, "
                 + devType + " = 'ORDER_VIOLATION', si." + STEP_INSTANCES.COMPLETED_AT.getName() + ", "
                 + "CAST(NULL AS Nullable(DateTime64(6)))), si." + STEP_INSTANCES.DUE_DATE.getName()
                 + ", d." + DEVIATIONS.DETECTED_AT.getName() + ")";
@@ -328,7 +338,7 @@ public class ProtocolInstanceRepositoryImpl
                 "pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName() + " IN ("
                 + " SELECT iel.subject FROM inbound_event_logs iel" + finalClause()
                 + " WHERE iel.status = 'ACCEPTED' AND iel.subject != ''"
-                + " AND iel.cloudevents_id IN (SELECT cel.cloudevents_id FROM compliance_event_logs cel"
+                + " AND iel.cloudevents_id IN (SELECT cel.cloudevents_id FROM matcher_event_logs cel"
                 + finalClause() + " WHERE cel.processing_status = 'MATCHED')"
                 + (startDate != null ? " AND iel.event_time >= parseDateTime64BestEffort('" + startDate + "')" : "")
                 + (endDate   != null ? " AND iel.event_time <= parseDateTime64BestEffort('" + endDate   + "')" : "")
@@ -343,9 +353,11 @@ public class ProtocolInstanceRepositoryImpl
                   .join(pf).on(DSL.condition(
                           "pf.patient_id = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
                   .leftJoin(d).on(DSL.condition(
-                          "d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                          "d." + STEP_INSTANCES.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
                   .leftJoin(si).on(DSL.condition(
                           "d." + DEVIATIONS.STEP_INSTANCE_ID.getName() + " = si.id"))
+                  .leftJoin(slaThresholds()).on(DSL.condition(
+                          "sla.step_instance_id = d." + DEVIATIONS.STEP_INSTANCE_ID.getName()))
                   .where(notDeleted())
                   .and(DSL.field("pf.facility_id").ne(""))
                   .and(DSL.condition(matchedCohortClause))
@@ -416,14 +428,14 @@ public class ProtocolInstanceRepositoryImpl
                                                                                  OffsetDateTime endDate) {
         // RI-36 "Activity" mode — instances of this protocol whose patient is ACTIVE in the range:
         // has an ACCEPTED inbound event with clinical event_time in range that was considered by a
-        // protocol (compliance_event_logs.processing_status='MATCHED'). This replaces the old
+        // protocol (matcher_event_logs.processing_status='MATCHED'). This replaces the old
         // step_instances.updated_at basis (a system/CDC write time bumped by reprocessing/backfills,
         // not clinical activity). event_time makes Activity mode reconcile with the Dashboard
         // "Service Compliance" card, the Facility Ranking drill-down, and the Deviations page — all
         // clinical-time. Since instances are already scoped to this protocol, this is effectively
-        // "enrolled in protocol X AND active in range" (compliance_event_logs carries no protocol
+        // "enrolled in protocol X AND active in range" (matcher_event_logs carries no protocol
         // link, so per-protocol matched-event attribution is not available).
-        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        var pi = protocolInstancesWithCanonical("pi");
         return dsl.select(DSL.asterisk())
                   .from(pi)
                   .where(notDeleted())
@@ -434,7 +446,7 @@ public class ProtocolInstanceRepositoryImpl
                           "pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName() + " IN ("
                           + " SELECT iel.subject FROM inbound_event_logs iel" + finalClause()
                           + " WHERE iel.status = 'ACCEPTED' AND iel.subject != ''"
-                          + " AND iel.cloudevents_id IN (SELECT cel.cloudevents_id FROM compliance_event_logs cel"
+                          + " AND iel.cloudevents_id IN (SELECT cel.cloudevents_id FROM matcher_event_logs cel"
                           + finalClause() + " WHERE cel.processing_status = 'MATCHED')"
                           + " AND iel.event_time >= parseDateTime64BestEffort(?)"
                           + " AND iel.event_time <= parseDateTime64BestEffort(?))",

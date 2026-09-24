@@ -7,9 +7,6 @@ package org.openphc.cce.insights.jooq;
 import org.openphc.cce.insights.jooq.tables.ActionDefinitions;
 import org.openphc.cce.insights.jooq.tables.ActionDefinitionsMv;
 import org.openphc.cce.insights.jooq.tables.ActionDefinitionsQueue;
-import org.openphc.cce.insights.jooq.tables.ComplianceEventLogs;
-import org.openphc.cce.insights.jooq.tables.ComplianceEventLogsMv;
-import org.openphc.cce.insights.jooq.tables.ComplianceEventLogsQueue;
 import org.openphc.cce.insights.jooq.tables.DestinationAdaptorMapping;
 import org.openphc.cce.insights.jooq.tables.DestinationAdaptorMappingMv;
 import org.openphc.cce.insights.jooq.tables.DestinationAdaptorMappingQueue;
@@ -32,8 +29,9 @@ import org.openphc.cce.insights.jooq.tables.IntelligenceDeliveriesQueue;
 import org.openphc.cce.insights.jooq.tables.IntelligenceEventLogs;
 import org.openphc.cce.insights.jooq.tables.IntelligenceEventLogsMv;
 import org.openphc.cce.insights.jooq.tables.IntelligenceEventLogsQueue;
-import org.openphc.cce.insights.jooq.tables.MvComplianceProcessingQuality;
-import org.openphc.cce.insights.jooq.tables.MvComplianceProcessingQualityMv;
+import org.openphc.cce.insights.jooq.tables.MatcherEventLogs;
+import org.openphc.cce.insights.jooq.tables.MatcherEventLogsMv;
+import org.openphc.cce.insights.jooq.tables.MatcherEventLogsQueue;
 import org.openphc.cce.insights.jooq.tables.MvDailyAdoptionKpis;
 import org.openphc.cce.insights.jooq.tables.MvDailyAdoptionKpisMv;
 import org.openphc.cce.insights.jooq.tables.MvDailyComplianceKpis;
@@ -62,6 +60,8 @@ import org.openphc.cce.insights.jooq.tables.MvIntelligenceByProtocol;
 import org.openphc.cce.insights.jooq.tables.MvIntelligenceByProtocolMv;
 import org.openphc.cce.insights.jooq.tables.MvIntelligenceSummary;
 import org.openphc.cce.insights.jooq.tables.MvIntelligenceSummaryMv;
+import org.openphc.cce.insights.jooq.tables.MvMatcherProcessingQuality;
+import org.openphc.cce.insights.jooq.tables.MvMatcherProcessingQualityMv;
 import org.openphc.cce.insights.jooq.tables.MvPatientFacilityLatest;
 import org.openphc.cce.insights.jooq.tables.MvPatientFacilityLatestMv;
 import org.openphc.cce.insights.jooq.tables.MvPractitionerSummary;
@@ -90,6 +90,9 @@ import org.openphc.cce.insights.jooq.tables.StepInstanceHistoryQueue;
 import org.openphc.cce.insights.jooq.tables.StepInstances;
 import org.openphc.cce.insights.jooq.tables.StepInstancesMv;
 import org.openphc.cce.insights.jooq.tables.StepInstancesQueue;
+import org.openphc.cce.insights.jooq.tables.StepSlaStateTransitions;
+import org.openphc.cce.insights.jooq.tables.StepSlaStateTransitionsMv;
+import org.openphc.cce.insights.jooq.tables.StepSlaStateTransitionsQueue;
 
 
 /**
@@ -112,21 +115,6 @@ public class Tables {
      * The table <code>cce_analytics.action_definitions_queue</code>.
      */
     public static final ActionDefinitionsQueue ACTION_DEFINITIONS_QUEUE = ActionDefinitionsQueue.ACTION_DEFINITIONS_QUEUE;
-
-    /**
-     * The table <code>cce_analytics.compliance_event_logs</code>.
-     */
-    public static final ComplianceEventLogs COMPLIANCE_EVENT_LOGS = ComplianceEventLogs.COMPLIANCE_EVENT_LOGS;
-
-    /**
-     * The table <code>cce_analytics.compliance_event_logs_mv</code>.
-     */
-    public static final ComplianceEventLogsMv COMPLIANCE_EVENT_LOGS_MV = ComplianceEventLogsMv.COMPLIANCE_EVENT_LOGS_MV;
-
-    /**
-     * The table <code>cce_analytics.compliance_event_logs_queue</code>.
-     */
-    public static final ComplianceEventLogsQueue COMPLIANCE_EVENT_LOGS_QUEUE = ComplianceEventLogsQueue.COMPLIANCE_EVENT_LOGS_QUEUE;
 
     /**
      * The table <code>cce_analytics.destination_adaptor_mapping</code>.
@@ -239,14 +227,19 @@ public class Tables {
     public static final IntelligenceEventLogsQueue INTELLIGENCE_EVENT_LOGS_QUEUE = IntelligenceEventLogsQueue.INTELLIGENCE_EVENT_LOGS_QUEUE;
 
     /**
-     * The table <code>cce_analytics.mv_compliance_processing_quality</code>.
+     * The table <code>cce_analytics.matcher_event_logs</code>.
      */
-    public static final MvComplianceProcessingQuality MV_COMPLIANCE_PROCESSING_QUALITY = MvComplianceProcessingQuality.MV_COMPLIANCE_PROCESSING_QUALITY;
+    public static final MatcherEventLogs MATCHER_EVENT_LOGS = MatcherEventLogs.MATCHER_EVENT_LOGS;
 
     /**
-     * The table <code>cce_analytics.mv_compliance_processing_quality_mv</code>.
+     * The table <code>cce_analytics.matcher_event_logs_mv</code>.
      */
-    public static final MvComplianceProcessingQualityMv MV_COMPLIANCE_PROCESSING_QUALITY_MV = MvComplianceProcessingQualityMv.MV_COMPLIANCE_PROCESSING_QUALITY_MV;
+    public static final MatcherEventLogsMv MATCHER_EVENT_LOGS_MV = MatcherEventLogsMv.MATCHER_EVENT_LOGS_MV;
+
+    /**
+     * The table <code>cce_analytics.matcher_event_logs_queue</code>.
+     */
+    public static final MatcherEventLogsQueue MATCHER_EVENT_LOGS_QUEUE = MatcherEventLogsQueue.MATCHER_EVENT_LOGS_QUEUE;
 
     /**
      * The table <code>cce_analytics.mv_daily_adoption_kpis</code>.
@@ -389,6 +382,16 @@ public class Tables {
     public static final MvIntelligenceSummaryMv MV_INTELLIGENCE_SUMMARY_MV = MvIntelligenceSummaryMv.MV_INTELLIGENCE_SUMMARY_MV;
 
     /**
+     * The table <code>cce_analytics.mv_matcher_processing_quality</code>.
+     */
+    public static final MvMatcherProcessingQuality MV_MATCHER_PROCESSING_QUALITY = MvMatcherProcessingQuality.MV_MATCHER_PROCESSING_QUALITY;
+
+    /**
+     * The table <code>cce_analytics.mv_matcher_processing_quality_mv</code>.
+     */
+    public static final MvMatcherProcessingQualityMv MV_MATCHER_PROCESSING_QUALITY_MV = MvMatcherProcessingQualityMv.MV_MATCHER_PROCESSING_QUALITY_MV;
+
+    /**
      * The table <code>cce_analytics.mv_patient_facility_latest</code>.
      */
     public static final MvPatientFacilityLatest MV_PATIENT_FACILITY_LATEST = MvPatientFacilityLatest.MV_PATIENT_FACILITY_LATEST;
@@ -527,4 +530,19 @@ public class Tables {
      * The table <code>cce_analytics.step_instances_queue</code>.
      */
     public static final StepInstancesQueue STEP_INSTANCES_QUEUE = StepInstancesQueue.STEP_INSTANCES_QUEUE;
+
+    /**
+     * The table <code>cce_analytics.step_sla_state_transitions</code>.
+     */
+    public static final StepSlaStateTransitions STEP_SLA_STATE_TRANSITIONS = StepSlaStateTransitions.STEP_SLA_STATE_TRANSITIONS;
+
+    /**
+     * The table <code>cce_analytics.step_sla_state_transitions_mv</code>.
+     */
+    public static final StepSlaStateTransitionsMv STEP_SLA_STATE_TRANSITIONS_MV = StepSlaStateTransitionsMv.STEP_SLA_STATE_TRANSITIONS_MV;
+
+    /**
+     * The table <code>cce_analytics.step_sla_state_transitions_queue</code>.
+     */
+    public static final StepSlaStateTransitionsQueue STEP_SLA_STATE_TRANSITIONS_QUEUE = StepSlaStateTransitionsQueue.STEP_SLA_STATE_TRANSITIONS_QUEUE;
 }

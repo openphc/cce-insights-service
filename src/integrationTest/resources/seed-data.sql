@@ -6,46 +6,52 @@ INSERT INTO protocol_definition (id, url, version, status, definition) VALUES
  '{"resourceType":"PlanDefinition","action":[{"id":"anc-visit-1"},{"id":"anc-visit-2"},{"id":"anc-visit-3"}]}');
 
 -- Protocol Instances (3 patients)
-INSERT INTO protocol_instance (id, protocol_definition_id, patient_id, protocol_canonical, status, enrolled_at) VALUES
+INSERT INTO protocol_instance (id, protocol_definition_id, patient_id, status, enrolled_at) VALUES
 ('660e8400-e29b-41d4-a716-446655440001', '550e8400-e29b-41d4-a716-446655440000', '260225-0002-5501',
- 'http://openphc.org/fhir/PlanDefinition/anc-high-risk|2.1', 'ACTIVE', '2026-01-15T10:00:00Z'),
+ 'ACTIVE', '2026-01-15T10:00:00Z'),
 ('660e8400-e29b-41d4-a716-446655440002', '550e8400-e29b-41d4-a716-446655440000', '260225-0002-5502',
- 'http://openphc.org/fhir/PlanDefinition/anc-high-risk|2.1', 'ACTIVE', '2026-01-20T08:00:00Z'),
+ 'ACTIVE', '2026-01-20T08:00:00Z'),
 ('660e8400-e29b-41d4-a716-446655440003', '550e8400-e29b-41d4-a716-446655440000', '260225-0002-5503',
- 'http://openphc.org/fhir/PlanDefinition/anc-high-risk|2.1', 'COMPLETED', '2026-01-10T09:00:00Z');
+ 'COMPLETED', '2026-01-10T09:00:00Z');
 
--- Step Instances for Patient 1 (on_track — 2 completed, 1 pending)
-INSERT INTO step_instance (id, protocol_instance_id, action_id, repeat_index, state, due_date, completed_at, completed_by_source, completion_status) VALUES
-('770e8400-e29b-41d4-a716-446655440001', '660e8400-e29b-41d4-a716-446655440001', 'anc-visit-1', 0, 'COMPLETED',
- '2026-01-20T00:00:00Z', '2026-01-20T09:30:00Z', 'ebuzima/kigali-south', 'ON_TIME'),
-('770e8400-e29b-41d4-a716-446655440002', '660e8400-e29b-41d4-a716-446655440001', 'anc-visit-2', 0, 'COMPLETED',
- '2026-02-15T00:00:00Z', '2026-02-14T10:00:00Z', 'ebuzima/kigali-south', 'EARLY'),
-('770e8400-e29b-41d4-a716-446655440003', '660e8400-e29b-41d4-a716-446655440001', 'anc-visit-3', 0, 'PENDING',
- '2026-03-10T00:00:00Z', NULL, NULL, NULL);
+-- Step Instances for Patient 1 (on_track — 2 completed on time, 1 not yet judged)
+INSERT INTO step_instance (id, protocol_instance_id, action_id, repeat_index, step_status, sla_status, due_date, completed_at, completed_by_source) VALUES
+('770e8400-e29b-41d4-a716-446655440001', '660e8400-e29b-41d4-a716-446655440001', 'anc-visit-1', 0, 'COMPLETED', 'MET',
+ '2026-01-20T00:00:00Z', '2026-01-20T09:30:00Z', 'ebuzima/kigali-south'),
+('770e8400-e29b-41d4-a716-446655440002', '660e8400-e29b-41d4-a716-446655440001', 'anc-visit-2', 0, 'COMPLETED', 'MET',
+ '2026-02-15T00:00:00Z', '2026-02-14T10:00:00Z', 'ebuzima/kigali-south'),
+('770e8400-e29b-41d4-a716-446655440003', '660e8400-e29b-41d4-a716-446655440001', 'anc-visit-3', 0, 'NOT_STARTED', NULL,
+ '2026-03-10T00:00:00Z', NULL, NULL);
 
--- Step Instances for Patient 2 (at_risk — 1 completed, 1 overdue, 1 pending)
-INSERT INTO step_instance (id, protocol_instance_id, action_id, repeat_index, state, due_date, overdue_date, completed_at, completed_by_source, completion_status) VALUES
-('770e8400-e29b-41d4-a716-446655440004', '660e8400-e29b-41d4-a716-446655440002', 'anc-visit-1', 0, 'COMPLETED',
- '2026-01-25T00:00:00Z', NULL, '2026-01-27T11:00:00Z', 'rhie-mediator', 'LATE'),
-('770e8400-e29b-41d4-a716-446655440005', '660e8400-e29b-41d4-a716-446655440002', 'anc-visit-2', 0, 'OVERDUE',
- '2026-02-20T00:00:00Z', '2026-02-25T00:00:00Z', NULL, NULL, NULL),
-('770e8400-e29b-41d4-a716-446655440006', '660e8400-e29b-41d4-a716-446655440002', 'anc-visit-3', 0, 'PENDING',
- '2026-03-15T00:00:00Z', NULL, NULL, NULL, NULL);
+-- Step Instances for Patient 2 (at_risk — 1 completed late, 1 outstanding overdue, 1 not yet judged)
+INSERT INTO step_instance (id, protocol_instance_id, action_id, repeat_index, step_status, sla_status, due_date, completed_at, completed_by_source) VALUES
+('770e8400-e29b-41d4-a716-446655440004', '660e8400-e29b-41d4-a716-446655440002', 'anc-visit-1', 0, 'COMPLETED', 'OVERDUE',
+ '2026-01-25T00:00:00Z', '2026-01-27T11:00:00Z', 'rhie-mediator'),
+('770e8400-e29b-41d4-a716-446655440005', '660e8400-e29b-41d4-a716-446655440002', 'anc-visit-2', 0, 'NOT_STARTED', 'OVERDUE',
+ '2026-02-20T00:00:00Z', NULL, NULL),
+('770e8400-e29b-41d4-a716-446655440006', '660e8400-e29b-41d4-a716-446655440002', 'anc-visit-3', 0, 'NOT_STARTED', NULL,
+ '2026-03-15T00:00:00Z', NULL, NULL);
 
--- Step Instances for Patient 3 (non_compliant — 2 completed, 1 missed)
-INSERT INTO step_instance (id, protocol_instance_id, action_id, repeat_index, state, due_date, missed_date, completed_at, completed_by_source, completion_status) VALUES
-('770e8400-e29b-41d4-a716-446655440007', '660e8400-e29b-41d4-a716-446655440003', 'anc-visit-1', 0, 'COMPLETED',
- '2026-01-15T00:00:00Z', NULL, '2026-01-15T10:30:00Z', 'ebuzima/kigali-south', 'ON_TIME'),
-('770e8400-e29b-41d4-a716-446655440008', '660e8400-e29b-41d4-a716-446655440003', 'anc-visit-2', 0, 'COMPLETED',
- '2026-02-10T00:00:00Z', NULL, '2026-02-12T09:00:00Z', 'rhie-mediator', 'LATE'),
-('770e8400-e29b-41d4-a716-446655440009', '660e8400-e29b-41d4-a716-446655440003', 'anc-visit-3', 0, 'MISSED',
- '2026-03-05T00:00:00Z', '2026-03-12T00:00:00Z', NULL, NULL, NULL);
+-- Step Instances for Patient 3 (non_compliant — 1 completed on time, 1 completed late, 1 missed)
+INSERT INTO step_instance (id, protocol_instance_id, action_id, repeat_index, step_status, sla_status, due_date, completed_at, completed_by_source) VALUES
+('770e8400-e29b-41d4-a716-446655440007', '660e8400-e29b-41d4-a716-446655440003', 'anc-visit-1', 0, 'COMPLETED', 'MET',
+ '2026-01-15T00:00:00Z', '2026-01-15T10:30:00Z', 'ebuzima/kigali-south'),
+('770e8400-e29b-41d4-a716-446655440008', '660e8400-e29b-41d4-a716-446655440003', 'anc-visit-2', 0, 'COMPLETED', 'OVERDUE',
+ '2026-02-10T00:00:00Z', '2026-02-12T09:00:00Z', 'rhie-mediator'),
+('770e8400-e29b-41d4-a716-446655440009', '660e8400-e29b-41d4-a716-446655440003', 'anc-visit-3', 0, 'NOT_STARTED', 'MISSED',
+ '2026-03-05T00:00:00Z', NULL, NULL);
+
+-- SLA thresholds (1.x overdue_date / missed_date) for the steps that breached them
+INSERT INTO step_sla_state_transition (step_instance_id, transition_type, process_by, is_processed) VALUES
+('770e8400-e29b-41d4-a716-446655440005', 'DUE_DATE_REACHED',    '2026-02-20T00:00:00Z', TRUE),
+('770e8400-e29b-41d4-a716-446655440009', 'DUE_DATE_REACHED',    '2026-03-05T00:00:00Z', TRUE),
+('770e8400-e29b-41d4-a716-446655440009', 'MISSED_DATE_REACHED', '2026-03-12T00:00:00Z', TRUE);
 
 -- Deviations
-INSERT INTO deviation (id, protocol_instance_id, step_instance_id, deviation_type, detected_at) VALUES
-('880e8400-e29b-41d4-a716-446655440001', '660e8400-e29b-41d4-a716-446655440002', '770e8400-e29b-41d4-a716-446655440005',
+INSERT INTO deviation (id, step_instance_id, deviation_type, detected_at) VALUES
+('880e8400-e29b-41d4-a716-446655440001', '770e8400-e29b-41d4-a716-446655440005',
  'OVERDUE', '2026-02-25T00:00:05Z'),
-('880e8400-e29b-41d4-a716-446655440002', '660e8400-e29b-41d4-a716-446655440003', '770e8400-e29b-41d4-a716-446655440009',
+('880e8400-e29b-41d4-a716-446655440002', '770e8400-e29b-41d4-a716-446655440009',
  'MISSED', '2026-03-12T00:00:05Z');
 
 -- Event Log entries

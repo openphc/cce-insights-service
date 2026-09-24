@@ -31,9 +31,9 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
     // A facility is ACTIVE if it has ≥1 ACCEPTED inbound event (event_time-keyed) today —
     // same "any accepted event" definition as eBuzima Adoption's actual-visits count
     // (mv_daily_adoption_kpis_mv), so a facility with recorded activity is never shown Inactive
-    // just because the compliance-matching pipeline hasn't (or never will) match that event to a
+    // just because the matcher hasn't (or never will) match that event to a
     // protocol step. (This previously also required the event to be protocol-MATCHED
-    // (compliance_event_logs.processing_status='MATCHED'), on the theory that "active" should mean
+    // (matcher_event_logs.processing_status='MATCHED'), on the theory that "active" should mean
     // "contributing to a tracked care journey" — but that made Active/Inactive diverge from Adoption
     // whenever matching lagged or failed, which is confusing and, per RI-62, wrong: connectivity/
     // activity and protocol-tracking are different concepts and shouldn't share one flag.)
@@ -211,13 +211,13 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
                 : DSL.condition("snapshot_date = today()");
         var row = dsl.select(
                     DSL.sum(DSL.field("step_completed",              Long.class)),
-                    DSL.sum(DSL.field("step_overdue",                Long.class)),
-                    DSL.sum(DSL.field("step_missed",                 Long.class)),
-                    DSL.sum(DSL.field("step_due",                    Long.class)),
-                    DSL.sum(DSL.field("step_pending",                Long.class)),
-                    DSL.sum(DSL.field("step_early",                  Long.class)),
-                    DSL.sum(DSL.field("step_on_time",                Long.class)),
-                    DSL.sum(DSL.field("step_late",                   Long.class)),
+                    DSL.sum(DSL.field("step_not_started",            Long.class)),
+                    DSL.sum(DSL.field("step_sla_met",                Long.class)),
+                    DSL.sum(DSL.field("step_sla_overdue",            Long.class)),
+                    DSL.sum(DSL.field("step_sla_missed",             Long.class)),
+                    DSL.sum(DSL.field("step_sla_unjudged",           Long.class)),
+                    DSL.sum(DSL.field("step_completed_on_time",      Long.class)),
+                    DSL.sum(DSL.field("step_completed_late",         Long.class)),
                     DSL.sum(DSL.field("step_total",                  Long.class)),
                     DSL.sum(DSL.field("total_enrollments",           Long.class)),
                     DSL.sum(DSL.field("compliant_count",             Long.class)),
@@ -249,13 +249,13 @@ public class DailyKpiRepositoryImpl implements DailyKpiRepository {
                 : DSL.condition("snapshot_date = today()");
         var row = dsl.select(
                     DSL.sum(DSL.field("step_completed",              Long.class)),
-                    DSL.sum(DSL.field("step_overdue",                Long.class)),
-                    DSL.sum(DSL.field("step_missed",                 Long.class)),
-                    DSL.sum(DSL.field("step_due",                    Long.class)),
-                    DSL.sum(DSL.field("step_pending",                Long.class)),
-                    DSL.sum(DSL.field("step_early",                  Long.class)),
-                    DSL.sum(DSL.field("step_on_time",                Long.class)),
-                    DSL.sum(DSL.field("step_late",                   Long.class)),
+                    DSL.sum(DSL.field("step_not_started",            Long.class)),
+                    DSL.sum(DSL.field("step_sla_met",                Long.class)),
+                    DSL.sum(DSL.field("step_sla_overdue",            Long.class)),
+                    DSL.sum(DSL.field("step_sla_missed",             Long.class)),
+                    DSL.sum(DSL.field("step_sla_unjudged",           Long.class)),
+                    DSL.sum(DSL.field("step_completed_on_time",      Long.class)),
+                    DSL.sum(DSL.field("step_completed_late",         Long.class)),
                     DSL.sum(DSL.field("step_total",                  Long.class)),
                     DSL.sum(DSL.field("total_enrollments",           Long.class)),
                     DSL.sum(DSL.field("compliant_count",             Long.class)),

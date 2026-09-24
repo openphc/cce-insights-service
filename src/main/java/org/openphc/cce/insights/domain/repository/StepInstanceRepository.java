@@ -12,7 +12,15 @@ public interface StepInstanceRepository extends ReadOnlyRepository<StepInstance,
 
     List<StepInstance> findByProtocolInstanceIdOrderByDueDateAsc(UUID protocolInstanceId);
 
-    List<Object[]> countByProtocolInstanceIdGroupByState(UUID protocolInstanceId);
+    /** Returns rows of [step_status, sla_status ('' = not judged), count]. */
+    List<Object[]> countByProtocolInstanceIdGroupByStatus(UUID protocolInstanceId);
+
+    /**
+     * SLA thresholds from step_sla_state_transitions (mandatory steps only — others have no row).
+     * Returns rows of [stepInstanceId(UUID), dueThreshold(OffsetDateTime, DUE_DATE_REACHED.process_by),
+     *                  missedThreshold(OffsetDateTime, MISSED_DATE_REACHED.process_by)]; either may be null.
+     */
+    List<Object[]> findSlaThresholdsByStepInstanceIdIn(List<UUID> stepInstanceIds);
 
     List<Object[]> findStepAnalytics(UUID protocolDefId, String district,
                                      OffsetDateTime startDate, OffsetDateTime endDate);
@@ -47,14 +55,16 @@ public interface StepInstanceRepository extends ReadOnlyRepository<StepInstance,
     // Returns one row per protocol: [protocolDefinitionId, protocolCanonical, enrollments, totalSteps, completedSteps]
     List<Object[]> findProtocolStepMetricsByFacility(String facilityId);
 
-    // Returns single row: [completed, overdue, missed, due, pending, early, onTime, late, totalSteps, totalEnrollments]
+    // Returns single row, same order as the step_* columns of mv_daily_compliance_kpis:
+    // [completed, notStarted, slaMet, slaOverdue, slaMissed, slaUnjudged, completedOnTime, completedLate,
+    //  totalSteps, totalEnrollments]
     Object[] aggregateStepMetrics(UUID protocolDefinitionId);
 
     Object[] aggregateStepMetricsAll();
 
     Object[] aggregateStepMetricsByFacility(String facilityId);
 
-    /** Same step-state aggregate as {@link #aggregateStepMetricsByFacility}, but over every facility
+    /** Same step-status aggregate as {@link #aggregateStepMetricsByFacility}, but over every facility
      *  in the given district (all-protocols Transactions when a district is selected). */
     Object[] aggregateStepMetricsByDistrict(String district);
 

@@ -77,7 +77,7 @@ public class MvDailyReferralKpis extends TableImpl<Record> {
      * The column
      * <code>cce_analytics.mv_daily_referral_kpis.matched_count</code>.
      */
-    public final TableField<Record, Object> MATCHED_COUNT = createField(DSL.name("matched_count"), org.jooq.impl.SQLDataType.OTHER.nullable(false).defaultValue(DSL.field(DSL.raw("'0'"), org.jooq.impl.SQLDataType.OTHER)), this, "");
+    public final TableField<Record, Object> MATCHED_COUNT = createField(DSL.name("matched_count"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
 
     private MvDailyReferralKpis(Name alias, Table<Record> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);

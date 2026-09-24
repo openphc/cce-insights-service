@@ -9,6 +9,15 @@ All endpoints are accessed through the **CCE Gateway Service** (not directly by 
 > 72%) — never a 0–1 fraction. This applies uniformly across compliance summaries,
 > patient lists, facility ranking, practitioner ranking, and the dashboard.
 
+> **CCE 2.0.0 step model.** The 1.x step `state` (PENDING/DUE/OVERDUE/MISSED/COMPLETED/SKIPPED)
+> and `completionStatus` (EARLY/ON_TIME/LATE) are gone. A step now carries two statuses:
+> `stepStatus` (`NOT_STARTED` | `COMPLETED`, Matcher Service) and `slaStatus` (`OVERDUE` | `MISSED` |
+> `MET`, or null = not yet judged, Step SLA Service). `overdue` / `missed` counts are SLA verdicts and
+> include steps completed after the threshold; "due" and "pending" are no longer distinguishable
+> (both are "outstanding, not yet judged"); early and on-time both became `MET`. Affected responses:
+> `stepMetrics` (§1.1, §1.4), step analytics (§3.1), the patient compliance timeline and
+> protocol-tracking detail (§2.1, §2.3). See the data dictionary §2.2–2.3 for the full 1.x mapping.
+
 ---
 
 ## 0. Global filters
@@ -59,7 +68,7 @@ Aggregate compliance metrics for a specific protocol across all enrolled patient
 | `facilityId` | String | — | Filter by facility FOSA ID |
 | `startDate` | ISO 8601 | — | Start of date range — the cohort scope depends on `dateFilterMode` |
 | `endDate` | ISO 8601 | — | End of date range — also used as the snapshot date for step metrics |
-| `dateFilterMode` | String | `enrollment` | `enrollment` — cohort = patients **enrolled in** [startDate, endDate]; `eventTime` (RI-36, "Clinical Event Date") — cohort = patients of this protocol with a protocol-**MATCHED** inbound event (`compliance_event_logs.processing_status='MATCHED'`) at clinical **`event_time`** in range. Every card (patients, transactions, deviations) derives from the selected cohort. This is the clinical event clock, **not** the system `updated_at` "activity" detail log. Note: `compliance_event_logs` carries no protocol link, so per-protocol `eventTime` = "enrolled in this protocol AND has a matched event in range". |
+| `dateFilterMode` | String | `enrollment` | `enrollment` — cohort = patients **enrolled in** [startDate, endDate]; `eventTime` (RI-36, "Clinical Event Date") — cohort = patients of this protocol with a protocol-**MATCHED** inbound event (`matcher_event_logs.processing_status='MATCHED'`) at clinical **`event_time`** in range. Every card (patients, transactions, deviations) derives from the selected cohort. This is the clinical event clock, **not** the system `updated_at` "activity" detail log. Note: `matcher_event_logs` carries no protocol link, so per-protocol `eventTime` = "enrolled in this protocol AND has a matched event in range". |
 
 **Response: `200 OK`**
 
@@ -80,13 +89,13 @@ Aggregate compliance metrics for a specific protocol across all enrolled patient
     "stepMetrics": {
       "totalSteps": 1240,
       "completed": 680,
-      "onTime": 520,
-      "late": 120,
-      "early": 40,
-      "overdue": 180,
-      "missed": 90,
-      "due": 20,
-      "pending": 290
+      "notStarted": 560,
+      "slaMet": 560,
+      "overdue": 230,
+      "missed": 110,
+      "slaUnjudged": 340,
+      "completedOnTime": 560,
+      "completedLate": 120
     },
     "deviationCount": 270,
     "deviationBreakdown": {
@@ -96,6 +105,22 @@ Aggregate compliance metrics for a specific protocol across all enrolled patient
   }
 }
 ```
+
+**`stepMetrics` fields** (mirror the `step_*` columns of `mv_daily_compliance_kpis`):
+
+| Field | Definition |
+|-------|------------|
+| `totalSteps` | All step instances in scope |
+| `completed` | `step_status = COMPLETED` (1.x also counted SKIPPED) |
+| `notStarted` | `step_status = NOT_STARTED` — `completed + notStarted = totalSteps` |
+| `slaMet` | `sla_status = MET` |
+| `overdue` | `sla_status = OVERDUE` — completed late, or still outstanding |
+| `missed` | `sla_status = MISSED` — completed after write-off, or still outstanding |
+| `slaUnjudged` | `sla_status` not set — no threshold reached yet, or an optional step. `slaMet + overdue + missed + slaUnjudged = totalSteps` |
+| `completedOnTime` | `COMPLETED + MET` (replaces 1.x `onTime` + `early`) |
+| `completedLate` | `COMPLETED + OVERDUE|MISSED` (replaces 1.x `late`) |
+
+Removed in 2.0.0: `onTime`, `early`, `late`, `due`, `pending`.
 
 ---
 
@@ -166,7 +191,7 @@ deduplicated to **one row per patient** (most recent enrollment in the filtered 
 | `patientId` | String | — | Substring search on patient ID |
 | `startDate` | ISO 8601 | — | When set, narrows cohort based on `dateFilterMode` |
 | `endDate` | ISO 8601 | — | End of date range |
-| `dateFilterMode` | String | `enrollment` | `enrollment` — cohort = patients enrolled in [startDate, endDate]; `eventTime` (RI-36, "Clinical Event Date") — cohort = patients with a protocol-**MATCHED** inbound event (`compliance_event_logs.processing_status='MATCHED'`) at clinical **`event_time`** in range, regardless of enrollment date. Clinical event clock — **not** the system `updated_at` "activity" detail log. (Was previously step `updated_at`; now clinical event time, consistent with the Dashboard card / Deviations page.) |
+| `dateFilterMode` | String | `enrollment` | `enrollment` — cohort = patients enrolled in [startDate, endDate]; `eventTime` (RI-36, "Clinical Event Date") — cohort = patients with a protocol-**MATCHED** inbound event (`matcher_event_logs.processing_status='MATCHED'`) at clinical **`event_time`** in range, regardless of enrollment date. Clinical event clock — **not** the system `updated_at` "activity" detail log. (Was previously step `updated_at`; now clinical event time, consistent with the Dashboard card / Deviations page.) |
 | `limit` | Integer | `15` | Page size (max 200) |
 | `cursor` | String | — | Pagination cursor |
 
@@ -244,13 +269,18 @@ Full compliance timeline for a patient across all enrolled protocols. Combines e
             "timestamp": "2026-01-20T09:30:00Z",
             "type": "step_completed",
             "actionId": "anc-visit-1",
-            "completionStatus": "on_time",
+            "state": "COMPLETED",
+            "stepStatus": "COMPLETED",
+            "slaStatus": "MET",
             "source": "ebuzima/kigali-south"
           },
           {
             "timestamp": "2026-02-20T00:00:00Z",
             "type": "step_overdue",
             "actionId": "anc-visit-2",
+            "state": "OVERDUE",
+            "stepStatus": "NOT_STARTED",
+            "slaStatus": "OVERDUE",
             "daysOverdue": 5
           }
         ]
@@ -259,6 +289,13 @@ Full compliance timeline for a patient across all enrolled protocols. Combines e
   }
 }
 ```
+
+Timeline events and `journey[]` rows carry `stepStatus` and `slaStatus` (null = not yet judged) —
+they replace 1.x `completionStatus`. `state` (timeline) and `status` (journey) are a single display
+status: `COMPLETED`, else the outstanding step's `OVERDUE` / `MISSED`, else `NOT_STARTED` (1.x
+`PENDING` / `DUE` land on `NOT_STARTED`; `SKIPPED` no longer occurs). Step event `type` is
+`step_` + that status in lower case (`step_completed`, `step_overdue`, `step_missed`,
+`step_not_started`). The timestamp of an outstanding step is its due date.
 
 ### 2.2 GET `/v1/insights/patients/{patientId}/protocol-tracking`
 
@@ -320,24 +357,27 @@ Detailed tracking for a specific protocol instance with all step instances.
       {
         "stepInstanceId": "770e8400-e29b-41d4-a716-446655440001",
         "actionId": "anc-visit-1",
-        "state": "COMPLETED",
+        "stepStatus": "COMPLETED",
+        "slaStatus": "MET",
         "dueDate": "2026-01-20T00:00:00Z",
         "completedAt": "2026-01-20T09:30:00Z",
-        "completionStatus": "ON_TIME",
-        "completedBySource": "ebuzima/kigali-south"
+        "completedBySource": "ebuzima/kigali-south",
+        "overdueDate": "2026-01-20T00:00:00Z",
+        "missedDate": "2026-01-27T00:00:00Z"
       },
       {
         "stepInstanceId": "770e8400-e29b-41d4-a716-446655440002",
         "actionId": "anc-visit-2",
-        "state": "OVERDUE",
+        "stepStatus": "NOT_STARTED",
+        "slaStatus": "OVERDUE",
         "dueDate": "2026-02-15T00:00:00Z",
-        "overdueDate": "2026-02-20T00:00:00Z",
-        "daysOverdue": 5
+        "overdueDate": "2026-02-15T00:00:00Z",
+        "missedDate": "2026-02-22T00:00:00Z"
       },
       {
         "stepInstanceId": "770e8400-e29b-41d4-a716-446655440003",
         "actionId": "anc-visit-3",
-        "state": "PENDING",
+        "stepStatus": "NOT_STARTED",
         "dueDate": "2026-03-10T00:00:00Z"
       }
     ],
@@ -352,6 +392,11 @@ Detailed tracking for a specific protocol instance with all step instances.
   }
 }
 ```
+
+Step fields (2.0.0): `stepStatus` always; `slaStatus` only once judged (1.x `state` and
+`completionStatus` are gone). `overdueDate` / `missedDate` are the step's scheduled
+`DUE_DATE_REACHED` / `MISSED_DATE_REACHED` thresholds from `step_sla_state_transitions`, present for
+mandatory steps from creation — not only once the step went overdue — and absent for optional steps.
 
 ---
 
@@ -700,7 +745,7 @@ Total deviation counts, optionally scoped by protocol, facility, and detection d
 
 ## 4. Event Volume & Activity Metrics
 
-Event volume endpoints provide aggregate counts of clinical events received by CCE, discoverable by FHIR `resourceType`, facility (location), practitioner, and source system. These metrics are derived from the Compliance Service's `event_log` table. Duplicate events (`processing_status = 'DUPLICATE'`) are excluded from all counts.
+Event volume endpoints provide aggregate counts of clinical events received by CCE, discoverable by FHIR `resourceType`, facility (location), practitioner, and source system. These metrics are derived from the Matcher Service's `matcher_event_logs` (joined to `inbound_event_logs`). Duplicate events (`processing_status = 'DUPLICATE'`) are excluded from all counts.
 
 ### 4.1 GET `/v1/insights/events/summary`
 
@@ -1024,7 +1069,7 @@ Per-step completion rates, average time-to-complete, and timeliness distribution
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `facilityId` | String | — | Narrow to patients tied to this facility via `mv_patient_facility_latest` |
-| `startDate` | ISO 8601 | — | Narrows the cohort to enrollments enrolled in [start, end] (step rows of those enrollments are reported); step states still reflect current state, not state-in-period |
+| `startDate` | ISO 8601 | — | Narrows the cohort to enrollments enrolled in [start, end] (step rows of those enrollments are reported); step statuses still reflect current status, not status-in-period |
 | `endDate` | ISO 8601 | — | End of enrollment window |
 
 **Response: `200 OK`**
@@ -1041,14 +1086,13 @@ Per-step completion rates, average time-to-complete, and timeliness distribution
         "completedCount": 210,
         "completionRate": 0.85,
         "timelinessDistribution": {
-          "early": 40,
-          "onTime": 145,
-          "late": 25
+          "completedOnTime": 185,
+          "completedLate": 25
         },
-        "overdueCount": 20,
-        "missedCount": 8,
-        "skippedCount": 10,
-        "pendingCount": 0,
+        "overdueCount": 38,
+        "missedCount": 15,
+        "notStartedCount": 38,
+        "slaUnjudgedCount": 10,
         "avgDaysToComplete": 1.2,
         "medianDaysToComplete": 0.5
       },
@@ -1058,14 +1102,13 @@ Per-step completion rates, average time-to-complete, and timeliness distribution
         "completedCount": 160,
         "completionRate": 0.65,
         "timelinessDistribution": {
-          "early": 15,
-          "onTime": 100,
-          "late": 45
+          "completedOnTime": 115,
+          "completedLate": 45
         },
-        "overdueCount": 45,
-        "missedCount": 28,
-        "skippedCount": 5,
-        "pendingCount": 10,
+        "overdueCount": 75,
+        "missedCount": 40,
+        "notStartedCount": 88,
+        "slaUnjudgedCount": 18,
         "avgDaysToComplete": 3.8,
         "medianDaysToComplete": 2.0
       }
@@ -1073,6 +1116,12 @@ Per-step completion rates, average time-to-complete, and timeliness distribution
   }
 }
 ```
+
+Per-action counts are distinct patients. `timelinessDistribution` is now `{completedOnTime
+(COMPLETED+MET), completedLate (COMPLETED+OVERDUE|MISSED)}` — 1.x `early` / `onTime` / `late` are gone.
+`overdueCount` / `missedCount` are SLA verdicts (include steps completed late); `notStartedCount` =
+`step_status NOT_STARTED`; `slaUnjudgedCount` = no SLA verdict yet. `skippedCount` and `pendingCount`
+were removed.
 
 **Computed fields:**
 - `completionRate` = `completedCount / totalInstances`
@@ -1148,8 +1197,8 @@ Drop-off rates at each sequential step — percentage of enrolled patients who c
 ```
 
 **Computed fields:**
-- `reachedCount` = patients with a step instance for this action (any state)
-- `completedCount` = patients with `state = 'COMPLETED'` for this action
+- `reachedCount` = patients with a step instance for this action (any status)
+- `completedCount` = patients with `step_status = 'COMPLETED'` for this action
 - `completionRate` = `completedCount / reachedCount`
 - `dropOffRate` = `1 - (completedCount / reachedCount)` (percentage lost at this step)
 - `stepOrder` = derived from `PlanDefinition.action[]` ordering and `relatedAction` dependencies
@@ -1268,7 +1317,7 @@ Facility leaderboard ranked by compliance rate, deviation count, or event volume
 > `complianceRate` are computed live from the patient cohort that is **active in the period**
 > — patients whose events are *considered by a protocol* (ACCEPTED inbound events with
 > `event_time` in range whose `cloudevents_id` matched a protocol,
-> `compliance_event_logs.processing_status='MATCHED'`), **not** `enrolled_at`. This is the
+> `matcher_event_logs.processing_status='MATCHED'`), **not** `enrolled_at`. This is the
 > same cohort as the Dashboard "Service Compliance" card, so the breakdown reconciles with it
 > by definition. `nonCompliantPatients` uses the deviation's **clinical occurrence date** (not
 > `detected_at`). Patients are attributed to their **current** facility via
@@ -1333,7 +1382,7 @@ Active/inactive facility summary tile. **Active = facility with ≥1 `ACCEPTED` 
 by clinical `event_time` in the period — same definition as eBuzima Adoption's actual-visits
 count, so a facility with recorded activity is never "Inactive" just because that activity
 hasn't been matched to a protocol step. (RI-62: previously also required the event to be
-protocol-matched, `compliance_event_logs.processing_status='MATCHED'`; see data dictionary
+protocol-matched, `matcher_event_logs.processing_status='MATCHED'`; see data dictionary
 §3.13a for why that was reverted.)
 
 **Required Scope:** `dashboard:read`
@@ -1571,8 +1620,8 @@ Percentage of `OVERDUE` steps that eventually reach `COMPLETED` (recovered) vs. 
 ```
 
 **How resolution is determined:**
-- A step instance that had `deviation_type = 'OVERDUE'` but later reached `state = 'COMPLETED'` is **resolved**.
-- A step instance that had `deviation_type = 'OVERDUE'` and later received a `deviation_type = 'MISSED'` is **escalated**.
+- A step instance that had `deviation_type = 'OVERDUE'` and is now `step_status = 'COMPLETED'` is **resolved**.
+- A step instance that had `deviation_type = 'OVERDUE'` and is still `NOT_STARTED` with `sla_status = 'MISSED'` is **escalated**.
 - `avgDaysToResolve` = AVG of `(completed_at - deviation.detected_at)` in days for resolved overdue steps.
 
 ---
@@ -1685,7 +1734,7 @@ Patients with deviations across multiple protocols or multiple steps within the 
 
 ## 12. Adoption Metrics
 
-Per-facility e-Buzima adoption tracking against the agreed expected-visit baseline. Backed by `mv_daily_adoption_kpis` and the static `facility` reference list (managed by programme staff via the compliance service).
+Per-facility e-Buzima adoption tracking against the agreed expected-visit baseline. Backed by `mv_daily_adoption_kpis` and the static `facility` reference list (auto-registered by the matcher service; programme staff maintain district and expected volumes).
 
 ### 12.1 GET `/v1/insights/facilities/adoption`
 
@@ -1741,7 +1790,7 @@ Per-facility e-Buzima adoption KPIs, sorted by `adoptionRate` desc.
 
 ### 12.2 GET `/v1/insights/facilities/reference`
 
-The agreed facility list with expected patient volumes, sourced from `facility` (managed by programme staff via the compliance service). Used by admin screens to view/verify the adoption baseline.
+The agreed facility list with expected patient volumes, sourced from `facility` (auto-registered by the matcher service; programme staff maintain district and expected volumes). Used by admin screens to view/verify the adoption baseline.
 
 **Required Scope:** `dashboard:read`
 
@@ -1933,7 +1982,7 @@ Source data quality scorecard — per-source acceptance, rejection, and duplicat
 
 ### 13.4 GET `/v1/insights/ingestion/pipeline-loss`
 
-Detects events that were ACCEPTED by the Collector (published to Kafka) but never appeared in the Compliance Service's `event_log`. Indicates events lost in Kafka transit or dropped during compliance processing.
+Detects events that were ACCEPTED by the Collector (published to Kafka) but never appeared in the Matcher Service's `matcher_event_logs`. Indicates events lost in Kafka transit or dropped during matcher processing.
 
 **Required Scope:** `dashboard:read`
 
@@ -1963,7 +2012,10 @@ Detects events that were ACCEPTED by the Collector (published to Kafka) but neve
 }
 ```
 
-**How it works:** Joins `inbound_event` (where `status = 'ACCEPTED'`) with `event_log` on `(cloudevents_id, source)`. Events in the first table with no match in the second are considered "lost" in the pipeline. A non-zero `lossRate` warrants investigation of Kafka consumer lag, compliance service errors, or dead-letter queues.
+`totalInComplianceEventLog` keeps its 1.x name for compatibility; since 2.0.0 it counts events that
+reached `matcher_event_logs` (the renamed `compliance_event_logs`).
+
+**How it works:** Joins `inbound_event` (where `status = 'ACCEPTED'`) with `event_log` on `(cloudevents_id, source)`. Events in the first table with no match in the second are considered "lost" in the pipeline. A non-zero `lossRate` warrants investigation of Kafka consumer lag, matcher service errors, or dead-letter queues.
 
 ---
 
@@ -2160,7 +2212,7 @@ Top-line HIE transmission and deviation KPIs, plus the top/bottom 3 facilities b
 
 > **RI-53:** the Dashboard **"Patients Received by HIE"** indicator reads `patientsReceivedHIE` —
 > distinct **protocol-tracked** patients (`uniq(subject)` over ACCEPTED inbound events **matched to a
-> protocol**, `compliance_event_logs.processing_status = 'MATCHED'`) — **not** a raw source-filtered
+> protocol**, `matcher_event_logs.processing_status = 'MATCHED'`) — **not** a raw source-filtered
 > count. It uses the shared matched-cohort query, scoped by **`event_time`**, facility and **`district`**
 > (resolved to the district's facilities via the facility reference), consistent with the other cards.
 > Events with a blank `facility_id` can't be district-attributed and are excluded when a district is
@@ -2262,7 +2314,7 @@ Dashboard. All sections respect the global `facilityId` / `startDate` / `endDate
 > **Definitions (patient block — RI-36, scoped by event activity, not `enrolled_at`):**
 > - `trackedPatients` = distinct patients whose events are **considered by a protocol**
 >   in the period: `ACCEPTED` inbound events with `event_time` in range whose
->   `cloudevents_id` matched a protocol (`compliance_event_logs.processing_status = 'MATCHED'`),
+>   `cloudevents_id` matched a protocol (`matcher_event_logs.processing_status = 'MATCHED'`),
 >   whether the event created a new enrollment or advanced an existing care journey. A
 >   patient enrolled in a *prior* period who generates a matched event in this range is now
 >   counted (the old `enrolled_at` cohort missed them). Consent-only / unmatched events are
@@ -2365,13 +2417,13 @@ one `protocolDefinitionId`.
     "stepMetrics": {
       "totalSteps": 9600,
       "completed": 6800,
-      "onTime": 5100,
-      "late": 900,
-      "early": 800,
-      "overdue": 1200,
-      "missed": 480,
-      "due": 220,
-      "pending": 900
+      "notStarted": 2800,
+      "slaMet": 5900,
+      "overdue": 1500,
+      "missed": 700,
+      "slaUnjudged": 1500,
+      "completedOnTime": 5900,
+      "completedLate": 900
     },
     "deviationCount": 1680,
     "deviationBreakdown": {

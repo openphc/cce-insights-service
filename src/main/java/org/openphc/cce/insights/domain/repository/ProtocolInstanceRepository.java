@@ -27,7 +27,7 @@ public interface ProtocolInstanceRepository extends ReadOnlyRepository<ProtocolI
 
     /** RI-36 "Activity" mode — protocol instances whose patient was ACTIVE in the window: has an
      *  ACCEPTED inbound event with clinical {@code event_time} in range that a protocol matched
-     *  (compliance_event_logs {@code processing_status='MATCHED'}). Clinical-time, not the old
+     *  (matcher_event_logs {@code processing_status='MATCHED'}). Clinical-time, not the old
      *  step {@code updated_at} (system write time). Effectively "enrolled in this protocol AND
      *  active in range" — see {@code ProtocolInstanceRepositoryImpl} for why per-protocol
      *  matched-event attribution isn't available. */
@@ -63,7 +63,7 @@ public interface ProtocolInstanceRepository extends ReadOnlyRepository<ProtocolI
      * non_compliant_patients(long), deviations(long)]. RI-36: {@code tracked} = patients whose
      * events are "considered by a protocol" in the range (ACCEPTED inbound events with
      * {@code event_time} in range whose {@code cloudevents_id} matched a protocol —
-     * {@code compliance_event_logs.processing_status='MATCHED'}), NOT enrolled_at — so this drill-down
+     * {@code matcher_event_logs.processing_status='MATCHED'}), NOT enrolled_at — so this drill-down
      * reconciles with the Dashboard "Service Compliance" card. {@code non_compliant} = those of the
      * cohort with a deviation whose clinical OCCURRENCE date (not detected_at) is in range;
      * {@code deviations} = deviation rows in range for the same cohort. All three share one cohort so

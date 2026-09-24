@@ -2,6 +2,34 @@
 
 ## Unreleased
 
+### CCE 2.0.0 ClickHouse schema (breaking API changes)
+
+Reads the 2.0.0 `cce_analytics` schema (Protocol / Matcher / Step SLA services replace the 1.x
+Compliance Service). ClickHouse is rebuilt from PostgreSQL for 2.0.0 — no 1.x data compatibility.
+
+- **Schema:** `compliance_event_logs` → `matcher_event_logs`; `step_instances.state` /
+  `completion_status` → `step_status` (NOT_STARTED | COMPLETED) + `sla_status` ('' | OVERDUE |
+  MISSED | MET); `completed_by_event_id` → `matched_event_id`; `overdue_date` / `missed_date` →
+  `step_sla_state_transitions.process_by`; `protocol_instances.protocol_canonical` and
+  `deviations.protocol_instance_id` dropped (rebuilt by joining `protocol_definitions` /
+  `step_instances`); `mv_daily_compliance_kpis` step columns replaced. jOOQ classes regenerated.
+- **`stepMetrics`** (`/protocols[/{id}]/compliance-summary`): removed `onTime`, `early`, `late`,
+  `due`, `pending`; added `notStarted`, `slaMet`, `slaUnjudged`, `completedOnTime`, `completedLate`.
+  `completed` no longer includes SKIPPED; `overdue` / `missed` are SLA verdicts that now include
+  steps completed after the threshold.
+- **Step analytics** (`/protocols/{id}/step-analytics`): `timelinessDistribution` is
+  `{completedOnTime, completedLate}` (was `{early, onTime, late}`); removed `skippedCount`,
+  `pendingCount`; added `notStartedCount`, `slaUnjudgedCount`; `overdueCount` / `missedCount` are SLA
+  verdicts.
+- **Patient compliance timeline:** journey rows and timeline events gain `stepStatus` + `slaStatus`
+  and lose `completionStatus`; `status` / `state` values are now COMPLETED | OVERDUE | MISSED |
+  NOT_STARTED (no PENDING / DUE / SKIPPED), and event `type` follows (`step_not_started`).
+- **Protocol-tracking detail:** steps carry `stepStatus` + `slaStatus` instead of `state` +
+  `completionStatus`; `overdueDate` / `missedDate` are the scheduled SLA thresholds.
+- **Exports:** `overdue_steps` / `missed_steps` count SLA verdicts (include late completions).
+- Deviation occurrence date (Deviations page, compliance deviation cards, facility ranking) reads the
+  breached threshold from `step_sla_state_transitions`, matching the pipeline's `mv_daily_deviation_kpis`.
+
 ### Deviations by Facility and Type (RI-34)
 
 - **New endpoint `GET /v1/insights/deviations/by-facility`** — backs the Deviations page's

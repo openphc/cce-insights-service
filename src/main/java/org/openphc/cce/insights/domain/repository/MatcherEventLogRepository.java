@@ -1,16 +1,16 @@
 package org.openphc.cce.insights.domain.repository;
 
-import org.openphc.cce.insights.domain.entity.ComplianceEventLog;
+import org.openphc.cce.insights.domain.entity.MatcherEventLog;
 
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
-public interface ComplianceEventLogRepository extends ReadOnlyRepository<ComplianceEventLog, UUID> {
+public interface MatcherEventLogRepository extends ReadOnlyRepository<MatcherEventLog, UUID> {
 
-    List<ComplianceEventLog> findBySubjectOrderByEventTimeDesc(String subject);
+    List<MatcherEventLog> findBySubjectOrderByEventTimeDesc(String subject);
 
-    List<ComplianceEventLog> findByComplianceEventIds(List<UUID> complianceEventIds);
+    List<MatcherEventLog> findByMatcherEventIds(List<UUID> matcherEventIds);
 
     List<String> findDistinctFacilityIds();
 

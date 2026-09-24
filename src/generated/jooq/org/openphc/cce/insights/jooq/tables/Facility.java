@@ -70,6 +70,11 @@ public class Facility extends TableImpl<Record> {
     public final TableField<Record, Object> EXPECTED_PATIENTS_PER_DAY = createField(DSL.name("expected_patients_per_day"), org.jooq.impl.SQLDataType.OTHER.nullable(false).defaultValue(DSL.field(DSL.raw("'0'"), org.jooq.impl.SQLDataType.OTHER)), this, "");
 
     /**
+     * The column <code>cce_analytics.facility.district_name</code>.
+     */
+    public final TableField<Record, Object> DISTRICT_NAME = createField(DSL.name("district_name"), org.jooq.impl.SQLDataType.OTHER.nullable(false).defaultValue(DSL.field(DSL.raw("''''''"), org.jooq.impl.SQLDataType.OTHER)), this, "");
+
+    /**
      * The column <code>cce_analytics.facility.created_at</code>.
      */
     public final TableField<Record, Object> CREATED_AT = createField(DSL.name("created_at"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
@@ -88,11 +93,6 @@ public class Facility extends TableImpl<Record> {
      * The column <code>cce_analytics.facility._is_deleted</code>.
      */
     public final TableField<Record, Object> _IS_DELETED = createField(DSL.name("_is_deleted"), org.jooq.impl.SQLDataType.OTHER.nullable(false).defaultValue(DSL.field(DSL.raw("'0'"), org.jooq.impl.SQLDataType.OTHER)), this, "");
-
-    /**
-     * The column <code>cce_analytics.facility.district_name</code>.
-     */
-    public final TableField<Record, Object> DISTRICT_NAME = createField(DSL.name("district_name"), org.jooq.impl.SQLDataType.OTHER.nullable(false).defaultValue(DSL.field(DSL.raw("''''''"), org.jooq.impl.SQLDataType.OTHER)), this, "");
 
     private Facility(Name alias, Table<Record> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
