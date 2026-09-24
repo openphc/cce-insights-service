@@ -66,7 +66,8 @@ public class AdoptionController {
      * GET /v1/insights/facilities/reference
      *
      * The agreed facility list with expected patient volumes.
-     * Sourced from facility (managed by programme staff via compliance service).
+     * Sourced from facility (auto-registered by the matcher service; programme staff maintain
+     * district and expected volumes).
      * Used by admin screens for viewing and verifying the adoption baseline.
      */
     @GetMapping("/reference")

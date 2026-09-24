@@ -61,12 +61,6 @@ public class ProtocolInstances extends TableImpl<Record> {
 
     /**
      * The column
-     * <code>cce_analytics.protocol_instances.protocol_canonical</code>.
-     */
-    public final TableField<Record, Object> PROTOCOL_CANONICAL = createField(DSL.name("protocol_canonical"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
-
-    /**
-     * The column
      * <code>cce_analytics.protocol_instances.protocol_definition_id</code>.
      */
     public final TableField<Record, UUID> PROTOCOL_DEFINITION_ID = createField(DSL.name("protocol_definition_id"), SQLDataType.UUID.nullable(false), this, "");

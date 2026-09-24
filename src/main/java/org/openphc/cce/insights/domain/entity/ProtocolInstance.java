@@ -18,6 +18,7 @@ public class ProtocolInstance {
     private UUID id;
     private UUID protocolDefinitionId;
     private String patientId;
+    /** url|version — not a protocol_instances column since 2.0.0; resolved from dict_protocol_definitions. */
     private String protocolCanonical;
     private ProtocolInstanceStatus status;
     private OffsetDateTime enrolledAt;

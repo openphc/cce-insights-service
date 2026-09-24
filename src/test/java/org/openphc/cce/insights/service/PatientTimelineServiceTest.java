@@ -3,15 +3,15 @@ package org.openphc.cce.insights.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.openphc.cce.insights.domain.entity.ComplianceEventLog;
+import org.openphc.cce.insights.domain.entity.MatcherEventLog;
 import org.openphc.cce.insights.domain.entity.Deviation;
 import org.openphc.cce.insights.domain.entity.ProtocolDefinition;
 import org.openphc.cce.insights.domain.entity.ProtocolInstance;
 import org.openphc.cce.insights.domain.entity.StepInstance;
-import org.openphc.cce.insights.domain.enums.CompletionStatus;
 import org.openphc.cce.insights.domain.enums.ProtocolInstanceStatus;
-import org.openphc.cce.insights.domain.enums.StepState;
-import org.openphc.cce.insights.domain.repository.ComplianceEventLogRepository;
+import org.openphc.cce.insights.domain.enums.SlaStatus;
+import org.openphc.cce.insights.domain.enums.StepStatus;
+import org.openphc.cce.insights.domain.repository.MatcherEventLogRepository;
 import org.openphc.cce.insights.domain.repository.DailyKpiRepository;
 import org.openphc.cce.insights.domain.repository.DeviationRepository;
 import org.openphc.cce.insights.domain.repository.ProtocolDefinitionRepository;
@@ -34,9 +34,9 @@ import static org.mockito.Mockito.when;
  * exercised end-to-end via getTimeline() so the resolved facilityId/facilityName are observed
  * on the actual JourneyStep the API returns.
  *
- * ComplianceEventLog.facilityId is stubbed blank ("") in most tests here to match production:
- * findByComplianceEventIds (ComplianceEventLogRepositoryImpl) reads compliance_event_logs without
- * joining inbound_event_logs, and compliance_event_logs carries no facility_id column of its own —
+ * MatcherEventLog.facilityId is stubbed blank ("") in most tests here to match production:
+ * findByMatcherEventIds (MatcherEventLogRepositoryImpl) reads matcher_event_logs without
+ * joining inbound_event_logs, and matcher_event_logs carries no facility_id column of its own —
  * so the stored value is always blank for this call path, and resolveFacilityId's FHIR-body
  * fallback is the only source of a facility id here.
  */
@@ -53,7 +53,7 @@ class PatientTimelineServiceTest {
     private StepInstanceRepository stepInstanceRepository;
     private ProtocolDefinitionRepository protocolDefinitionRepository;
     private DeviationRepository deviationRepository;
-    private ComplianceEventLogRepository complianceEventLogRepository;
+    private MatcherEventLogRepository matcherEventLogRepository;
     private DailyKpiRepository dailyKpiRepository;
     private PatientTimelineService service;
 
@@ -63,11 +63,11 @@ class PatientTimelineServiceTest {
         stepInstanceRepository = mock(StepInstanceRepository.class);
         protocolDefinitionRepository = mock(ProtocolDefinitionRepository.class);
         deviationRepository = mock(DeviationRepository.class);
-        complianceEventLogRepository = mock(ComplianceEventLogRepository.class);
+        matcherEventLogRepository = mock(MatcherEventLogRepository.class);
         dailyKpiRepository = mock(DailyKpiRepository.class);
         when(dailyKpiRepository.getFacilityReference()).thenReturn(List.of());
         service = new PatientTimelineService(protocolInstanceRepository, stepInstanceRepository,
-                protocolDefinitionRepository, deviationRepository, complianceEventLogRepository,
+                protocolDefinitionRepository, deviationRepository, matcherEventLogRepository,
                 dailyKpiRepository, new ObjectMapper());
 
         ProtocolInstance instance = ProtocolInstance.builder()
@@ -84,11 +84,11 @@ class PatientTimelineServiceTest {
                 .id(STEP_INSTANCE_ID)
                 .protocolInstanceId(PROTOCOL_INSTANCE_ID)
                 .actionId(ACTION_ID)
-                .state(StepState.COMPLETED)
+                .stepStatus(StepStatus.COMPLETED)
+                .slaStatus(SlaStatus.MET)
                 .completedAt(OffsetDateTime.parse("2026-07-17T14:01:00Z"))
-                .completionStatus(CompletionStatus.ON_TIME)
                 .completedBySource("ebuzima")
-                .completedByEventId(EVENT_ID)
+                .matchedEventId(EVENT_ID)
                 .build();
         when(stepInstanceRepository.findByProtocolInstanceIdIn(List.of(PROTOCOL_INSTANCE_ID)))
                 .thenReturn(List.of(step));
@@ -111,12 +111,12 @@ class PatientTimelineServiceTest {
     }
 
     private void stubEventData(String storedFacilityId, String fhirJson) {
-        ComplianceEventLog eventLog = ComplianceEventLog.builder()
+        MatcherEventLog eventLog = MatcherEventLog.builder()
                 .id(EVENT_ID)
                 .facilityId(storedFacilityId)
                 .data(fhirJson)
                 .build();
-        when(complianceEventLogRepository.findByComplianceEventIds(List.of(EVENT_ID)))
+        when(matcherEventLogRepository.findByMatcherEventIds(List.of(EVENT_ID)))
                 .thenReturn(List.of(eventLog));
     }
 
@@ -216,7 +216,7 @@ class PatientTimelineServiceTest {
 
     @Test
     void storedFacilityId_takesPrecedenceOverFhirBodyDerivation() {
-        // If ComplianceEventLogRepositoryImpl is ever changed to join inbound_event_logs (so
+        // If MatcherEventLogRepositoryImpl is ever changed to join inbound_event_logs (so
         // el.getFacilityId() is populated), that already-correct pipeline value must win over
         // re-deriving one from the FHIR body.
         String fhirJson = """

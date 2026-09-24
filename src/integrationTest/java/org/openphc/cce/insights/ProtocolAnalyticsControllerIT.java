@@ -45,8 +45,8 @@ class ProtocolAnalyticsControllerIT extends AbstractIntegrationTest {
                                 .actionId("visit-1").totalInstances(3).completedCount(2)
                                 .completionRate(0.67)
                                 .timelinessDistribution(StepAnalyticsDto.TimelinessDistribution.builder()
-                                        .early(0).onTime(1).late(1).build())
-                                .overdueCount(0).missedCount(0).skippedCount(0).pendingCount(1)
+                                        .completedOnTime(1).completedLate(1).build())
+                                .overdueCount(1).missedCount(0).notStartedCount(1).slaUnjudgedCount(1)
                                 .build()))
                         .build());
 
@@ -86,7 +86,11 @@ class ProtocolAnalyticsControllerIT extends AbstractIntegrationTest {
         mockMvc.perform(get("/v1/insights/protocols/550e8400-e29b-41d4-a716-446655440000/step-analytics"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.protocolDefinitionId").value("550e8400-e29b-41d4-a716-446655440000"))
-                .andExpect(jsonPath("$.data.steps").isArray());
+                .andExpect(jsonPath("$.data.steps").isArray())
+                .andExpect(jsonPath("$.data.steps[0].timelinessDistribution.completedOnTime").value(1))
+                .andExpect(jsonPath("$.data.steps[0].timelinessDistribution.completedLate").value(1))
+                .andExpect(jsonPath("$.data.steps[0].notStartedCount").value(1))
+                .andExpect(jsonPath("$.data.steps[0].pendingCount").doesNotExist());
     }
 
     @Test

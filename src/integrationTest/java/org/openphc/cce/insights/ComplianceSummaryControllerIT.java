@@ -43,8 +43,9 @@ class ComplianceSummaryControllerIT extends AbstractIntegrationTest {
                         .totalEnrollments(3)
                         .complianceRate(0.67)
                         .stepMetrics(ComplianceSummaryDto.StepMetrics.builder()
-                                .totalSteps(9).completed(6).onTime(4).late(1).early(1)
-                                .overdue(1).missed(1).pending(1).build())
+                                .totalSteps(9).completed(6).notStarted(3)
+                                .slaMet(5).overdue(2).missed(1).slaUnjudged(1)
+                                .completedOnTime(5).completedLate(1).build())
                         .deviationCount(2)
                         .deviationBreakdown(Map.of("overdue", 1L, "missed", 1L, "orderViolation", 0L))
                         .build());
@@ -55,6 +56,10 @@ class ComplianceSummaryControllerIT extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.data.totalEnrollments").value(3))
                 .andExpect(jsonPath("$.data.complianceRate").isNumber())
                 .andExpect(jsonPath("$.data.stepMetrics.totalSteps").value(9))
+                .andExpect(jsonPath("$.data.stepMetrics.notStarted").value(3))
+                .andExpect(jsonPath("$.data.stepMetrics.completedOnTime").value(5))
+                .andExpect(jsonPath("$.data.stepMetrics.completedLate").value(1))
+                .andExpect(jsonPath("$.data.stepMetrics.pending").doesNotExist())
                 .andExpect(jsonPath("$.data.deviationCount").value(2));
     }
 

@@ -97,9 +97,15 @@ public class IntelligenceEventLogsMv extends TableImpl<Record> {
 
     /**
      * The column
-     * <code>cce_analytics.intelligence_event_logs_mv.step_state</code>.
+     * <code>cce_analytics.intelligence_event_logs_mv.step_status</code>.
      */
-    public final TableField<Record, Object> STEP_STATE = createField(DSL.name("step_state"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
+    public final TableField<Record, Object> STEP_STATUS = createField(DSL.name("step_status"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
+
+    /**
+     * The column
+     * <code>cce_analytics.intelligence_event_logs_mv.sla_status</code>.
+     */
+    public final TableField<Record, Object> SLA_STATUS = createField(DSL.name("sla_status"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
 
     /**
      * The column

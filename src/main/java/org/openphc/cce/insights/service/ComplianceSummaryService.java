@@ -5,8 +5,8 @@ import lombok.RequiredArgsConstructor;
 import org.openphc.cce.insights.domain.entity.ProtocolDefinition;
 import org.openphc.cce.insights.domain.entity.ProtocolInstance;
 import org.openphc.cce.insights.domain.entity.StepInstance;
-import org.openphc.cce.insights.domain.enums.StepState;
-import org.openphc.cce.insights.domain.enums.CompletionStatus;
+import org.openphc.cce.insights.domain.enums.SlaStatus;
+import org.openphc.cce.insights.domain.enums.StepStatus;
 import org.openphc.cce.insights.domain.repository.*;
 import org.openphc.cce.insights.web.dto.ComplianceSummaryDto;
 
@@ -29,7 +29,7 @@ public class ComplianceSummaryService {
     private final ProtocolInstanceRepository protocolInstanceRepository;
     private final StepInstanceRepository stepInstanceRepository;
     private final DeviationRepository deviationRepository;
-    private final ComplianceEventLogRepository complianceEventLogRepository;
+    private final MatcherEventLogRepository matcherEventLogRepository;
     private final DailyKpiRepository dailyKpiRepository;
     private final InboundEventRepository inboundEventRepository;
     private final FacilityDirectory facilityDirectory;
@@ -211,9 +211,9 @@ public class ComplianceSummaryService {
      *  same column order) into a StepMetrics DTO. */
     private ComplianceSummaryDto.StepMetrics stepMetricsFrom(Object[] a) {
         return ComplianceSummaryDto.StepMetrics.builder()
-                .totalSteps(toLong(a[8])).completed(toLong(a[0]))
-                .onTime(toLong(a[6])).late(toLong(a[7])).early(toLong(a[5]))
-                .overdue(toLong(a[1])).missed(toLong(a[2])).due(toLong(a[3])).pending(toLong(a[4]))
+                .totalSteps(toLong(a[8])).completed(toLong(a[0])).notStarted(toLong(a[1]))
+                .slaMet(toLong(a[2])).overdue(toLong(a[3])).missed(toLong(a[4])).slaUnjudged(toLong(a[5]))
+                .completedOnTime(toLong(a[6])).completedLate(toLong(a[7]))
                 .build();
     }
 
@@ -286,17 +286,19 @@ public class ComplianceSummaryService {
         }
         List<UUID> instanceIds = scoped.stream().map(ProtocolInstance::getId).collect(Collectors.toList());
 
-        // Step metrics — aggregated from the scoped instances' steps.
+        // Step metrics — aggregated from the scoped instances' steps (same buckets as
+        // mv_daily_compliance_kpis; see ComplianceSummaryDto.StepMetrics).
         List<StepInstance> steps = stepInstanceRepository.findByProtocolInstanceIdIn(instanceIds);
-        long stepCompleted = steps.stream().filter(s -> s.getState() == StepState.COMPLETED || s.getState() == StepState.SKIPPED).count();
-        long stepOverdue   = steps.stream().filter(s -> s.getState() == StepState.OVERDUE).count();
-        long stepMissed    = steps.stream().filter(s -> s.getState() == StepState.MISSED).count();
-        long stepDue       = steps.stream().filter(s -> s.getState() == StepState.DUE).count();
-        long stepPending   = steps.stream().filter(s -> s.getState() == StepState.PENDING).count();
-        long stepEarly     = steps.stream().filter(s -> s.getCompletionStatus() == CompletionStatus.EARLY).count();
-        long stepOnTime    = steps.stream().filter(s -> s.getCompletionStatus() == CompletionStatus.ON_TIME).count();
-        long stepLate      = steps.stream().filter(s -> s.getCompletionStatus() == CompletionStatus.LATE).count();
-        long stepTotal     = steps.size();
+        long stepCompleted   = steps.stream().filter(StepInstance::isCompleted).count();
+        long stepNotStarted  = steps.stream().filter(s -> s.getStepStatus() == StepStatus.NOT_STARTED).count();
+        long stepSlaMet      = steps.stream().filter(s -> s.getSlaStatus() == SlaStatus.MET).count();
+        long stepSlaOverdue  = steps.stream().filter(s -> s.getSlaStatus() == SlaStatus.OVERDUE).count();
+        long stepSlaMissed   = steps.stream().filter(s -> s.getSlaStatus() == SlaStatus.MISSED).count();
+        long stepSlaUnjudged = steps.stream().filter(s -> s.getSlaStatus() == null).count();
+        long stepOnTime      = steps.stream().filter(s -> s.isCompleted() && s.getSlaStatus() == SlaStatus.MET).count();
+        long stepLate        = steps.stream().filter(s -> s.isCompleted()
+                && (s.getSlaStatus() == SlaStatus.OVERDUE || s.getSlaStatus() == SlaStatus.MISSED)).count();
+        long stepTotal       = steps.size();
 
         // Deviations — same instances, counted on their CLINICAL OCCURRENCE date within
         // [startDate, endDate] (occurredAt(), not system detected_at), consistent with the windowed
@@ -327,9 +329,10 @@ public class ComplianceSummaryService {
                 .statusBreakdown(statusBreakdown)
                 .complianceRate(Math.round(complianceRate * 1000.0) / 10.0)
                 .stepMetrics(ComplianceSummaryDto.StepMetrics.builder()
-                        .totalSteps(stepTotal).completed(stepCompleted)
-                        .onTime(stepOnTime).late(stepLate).early(stepEarly)
-                        .overdue(stepOverdue).missed(stepMissed).due(stepDue).pending(stepPending)
+                        .totalSteps(stepTotal).completed(stepCompleted).notStarted(stepNotStarted)
+                        .slaMet(stepSlaMet).overdue(stepSlaOverdue).missed(stepSlaMissed)
+                        .slaUnjudged(stepSlaUnjudged)
+                        .completedOnTime(stepOnTime).completedLate(stepLate)
                         .build())
                 .deviationCount((long) devRows.size())
                 .deviationBreakdown(Map.of(
@@ -358,7 +361,7 @@ public class ComplianceSummaryService {
 
         // Apply facility filter (membership via mv_patient_facility_latest).
         if (facilityIdFilter != null && !facilityIdFilter.isEmpty()) {
-            Set<String> patientIdsAtFacility = complianceEventLogRepository
+            Set<String> patientIdsAtFacility = matcherEventLogRepository
                     .findPatientsByFacility(facilityIdFilter)
                     .stream()
                     .map(r -> (String) r[1])
@@ -451,9 +454,7 @@ public class ComplianceSummaryService {
         List<PatientComplianceDto> results = new ArrayList<>();
         for (ProtocolInstance pi : instances) {
             List<StepInstance> steps = stepsByInstance.getOrDefault(pi.getId(), List.of());
-            long completedCount = steps.stream()
-                    .filter(s -> s.getState() == StepState.COMPLETED || s.getState() == StepState.SKIPPED)
-                    .count();
+            long completedCount = steps.stream().filter(StepInstance::isCompleted).count();
             double rate = steps.isEmpty() ? 0.0 : (double) completedCount / steps.size();
             long activeDevs = devCountByInstance.getOrDefault(pi.getId(), 0L);
             String category = computeCategory(activeDevs);
@@ -487,7 +488,7 @@ public class ComplianceSummaryService {
         // Dashboard tracked-cohort numbers.
         long totalPatients = (startDate != null || endDate != null)
                 ? protocolInstanceRepository.countDistinctPatientsForFacility(facilityId, startDate, endDate)
-                : complianceEventLogRepository.findPatientsByFacility(facilityId)
+                : matcherEventLogRepository.findPatientsByFacility(facilityId)
                         .stream().map(r -> (String) r[1]).distinct().count();
 
         // 2 aggregate queries replace findAll() + N+1 per-instance loops

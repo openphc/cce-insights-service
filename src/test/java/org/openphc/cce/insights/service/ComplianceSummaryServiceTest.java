@@ -1,7 +1,7 @@
 package org.openphc.cce.insights.service;
 
 import org.junit.jupiter.api.Test;
-import org.openphc.cce.insights.domain.repository.ComplianceEventLogRepository;
+import org.openphc.cce.insights.domain.repository.MatcherEventLogRepository;
 import org.openphc.cce.insights.domain.repository.DailyKpiRepository;
 import org.openphc.cce.insights.domain.repository.DeviationRepository;
 import org.openphc.cce.insights.domain.repository.InboundEventRepository;
@@ -30,19 +30,20 @@ class ComplianceSummaryServiceTest {
     private final ProtocolInstanceRepository protocolInstance = mock(ProtocolInstanceRepository.class);
     private final StepInstanceRepository stepInstance = mock(StepInstanceRepository.class);
     private final DeviationRepository deviation = mock(DeviationRepository.class);
-    private final ComplianceEventLogRepository complianceEventLog = mock(ComplianceEventLogRepository.class);
+    private final MatcherEventLogRepository matcherEventLog = mock(MatcherEventLogRepository.class);
     private final DailyKpiRepository dailyKpi = mock(DailyKpiRepository.class);
     private final InboundEventRepository inbound = mock(InboundEventRepository.class);
 
     private final FacilityDirectory facilityDirectory = mock(FacilityDirectory.class);
 
     private final ComplianceSummaryService service = new ComplianceSummaryService(
-            protocolDef, protocolInstance, stepInstance, deviation, complianceEventLog, dailyKpi, inbound,
+            protocolDef, protocolInstance, stepInstance, deviation, matcherEventLog, dailyKpi, inbound,
             facilityDirectory);
 
-    /** step-metric aggregate row: [completed, overdue, missed, due, pending, early, onTime, late, totalSteps, ...]. */
+    /** step-metric aggregate row: [completed, notStarted, slaMet, slaOverdue, slaMissed, slaUnjudged,
+     *  completedOnTime, completedLate, totalSteps, totalEnrollments, ...]. */
     private static Object[] stepRow() {
-        return new Object[]{40L, 0L, 0L, 0L, 0L, 0L, 40L, 0L, 60L, 50L, 44L};
+        return new Object[]{40L, 20L, 35L, 7L, 3L, 15L, 35L, 5L, 60L, 50L, 44L};
     }
 
     @Test
@@ -61,6 +62,14 @@ class ComplianceSummaryServiceTest {
         assertThat(dto.getCompliantPatients()).isEqualTo(6);       // 8 - 2
         assertThat(dto.getComplianceRate()).isEqualTo(75.0);       // 6 / 8
         assertThat(dto.getStepMetrics().getTotalSteps()).isEqualTo(60);   // live all-facilities step aggregate
+        assertThat(dto.getStepMetrics().getCompleted()).isEqualTo(40);
+        assertThat(dto.getStepMetrics().getNotStarted()).isEqualTo(20);
+        assertThat(dto.getStepMetrics().getSlaMet()).isEqualTo(35);
+        assertThat(dto.getStepMetrics().getOverdue()).isEqualTo(7);
+        assertThat(dto.getStepMetrics().getMissed()).isEqualTo(3);
+        assertThat(dto.getStepMetrics().getSlaUnjudged()).isEqualTo(15);
+        assertThat(dto.getStepMetrics().getCompletedOnTime()).isEqualTo(35);
+        assertThat(dto.getStepMetrics().getCompletedLate()).isEqualTo(5);
     }
 
     @Test

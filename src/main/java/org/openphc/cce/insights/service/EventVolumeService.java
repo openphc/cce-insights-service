@@ -1,7 +1,7 @@
 package org.openphc.cce.insights.service;
 
 import lombok.RequiredArgsConstructor;
-import org.openphc.cce.insights.domain.repository.ComplianceEventLogRepository;
+import org.openphc.cce.insights.domain.repository.MatcherEventLogRepository;
 import org.openphc.cce.insights.domain.repository.DailyKpiRepository;
 import org.openphc.cce.insights.domain.repository.InboundEventRepository;
 import org.openphc.cce.insights.web.dto.*;
@@ -16,7 +16,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class EventVolumeService {
 
-    private final ComplianceEventLogRepository complianceEventLogRepository;
+    private final MatcherEventLogRepository matcherEventLogRepository;
     private final InboundEventRepository inboundEventRepository;
     private final DailyKpiRepository dailyKpiRepository;
 
