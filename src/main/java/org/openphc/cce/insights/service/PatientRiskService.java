@@ -1,12 +1,8 @@
 package org.openphc.cce.insights.service;
 
 import lombok.RequiredArgsConstructor;
-import org.openphc.cce.insights.domain.entity.ProtocolInstance;
-import org.openphc.cce.insights.domain.entity.StepInstance;
-import org.openphc.cce.insights.domain.enums.StepState;
 import org.openphc.cce.insights.domain.repository.DeviationRepository;
 import org.openphc.cce.insights.domain.repository.ComplianceEventLogRepository;
-import org.openphc.cce.insights.domain.repository.ProtocolInstanceRepository;
 import org.openphc.cce.insights.domain.repository.StepInstanceRepository;
 import org.openphc.cce.insights.web.dto.AtRiskHotspotDto;
 import org.openphc.cce.insights.web.dto.RepeatDeviationPatientDto;
@@ -14,7 +10,9 @@ import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.time.OffsetDateTime;
-import java.util.*;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -22,56 +20,26 @@ import java.util.stream.Collectors;
 public class PatientRiskService {
 
     private final DeviationRepository deviationRepository;
-    private final ProtocolInstanceRepository protocolInstanceRepository;
     private final StepInstanceRepository stepInstanceRepository;
     private final ComplianceEventLogRepository complianceEventLogRepository;
 
     @Cacheable(value = "analytics", key = "'risk-hotspots'")
     public List<AtRiskHotspotDto> getAtRiskHotspots(OffsetDateTime startDate, OffsetDateTime endDate) {
-        // Build facility -> set of patient IDs mapping
-        List<Object[]> facilityPatientRows = complianceEventLogRepository.findFacilityPatientMapping();
-        Map<String, Set<String>> facilityPatients = new LinkedHashMap<>();
-        for (Object[] row : facilityPatientRows) {
-            String facilityId = (String) row[0];
-            String patientId = (String) row[1];
-            facilityPatients.computeIfAbsent(facilityId, k -> new LinkedHashSet<>()).add(patientId);
-        }
-
         // Build facility name lookup
         Map<String, String> facilityNameMap = new LinkedHashMap<>();
         for (Object[] row : complianceEventLogRepository.findFacilityNames()) {
             facilityNameMap.put((String) row[0], (String) row[1]);
         }
 
-        // Build patient -> steps mapping using batch load (2 queries instead of N+1)
-        List<ProtocolInstance> allInstances = protocolInstanceRepository.findAll();
-        Map<UUID, String> instanceToPatient = allInstances.stream()
-                .collect(Collectors.toMap(ProtocolInstance::getId, ProtocolInstance::getPatientId));
-        Map<String, List<StepInstance>> patientSteps = new HashMap<>();
-        for (StepInstance si : stepInstanceRepository.findByProtocolInstanceIdIn(
-                new ArrayList<>(instanceToPatient.keySet()))) {
-            String patientId = instanceToPatient.get(si.getProtocolInstanceId());
-            if (patientId != null) {
-                patientSteps.computeIfAbsent(patientId, k -> new ArrayList<>()).add(si);
-            }
-        }
-
-        // For each facility, categorize only its own patients
-        return facilityPatients.entrySet().stream().map(entry -> {
-            String facilityId = entry.getKey();
-            Set<String> patients = entry.getValue();
-            long onTrack = 0, atRisk = 0, nonCompliant = 0;
-
-            for (String patientId : patients) {
-                List<StepInstance> steps = patientSteps.getOrDefault(patientId, Collections.emptyList());
-                boolean hasMissed = steps.stream().anyMatch(s -> s.getState() == StepState.MISSED);
-                boolean hasOverdue = steps.stream().anyMatch(s -> s.getState() == StepState.OVERDUE);
-                if (hasMissed) nonCompliant++;
-                else if (hasOverdue) atRisk++;
-                else onTrack++;
-            }
-
+        // Per-facility patient risk counts, aggregated entirely in ClickHouse (see
+        // StepInstanceRepository#findAtRiskHotspotCounts for why this replaced a Java-side join).
+        return stepInstanceRepository.findAtRiskHotspotCounts().stream().map(row -> {
+            String facilityId = (String) row[0];
+            long nonCompliant = ((Number) row[1]).longValue();
+            long atRisk = ((Number) row[2]).longValue();
+            long onTrack = ((Number) row[3]).longValue();
             long totalPatients = onTrack + atRisk + nonCompliant;
+
             return AtRiskHotspotDto.builder()
                     .facilityId(facilityId)
                     .facilityName(facilityNameMap.getOrDefault(facilityId, facilityId))
