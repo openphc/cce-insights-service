@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.openphc.cce.insights.domain.entity.*;
-import org.openphc.cce.insights.domain.enums.StepState;
+import org.openphc.cce.insights.domain.enums.SlaStatus;
 import org.openphc.cce.insights.domain.repository.*;
 import org.openphc.cce.insights.web.dto.PatientTimelineDto;
 import org.springframework.stereotype.Service;
@@ -24,7 +24,7 @@ public class PatientTimelineService {
     private final StepInstanceRepository stepInstanceRepository;
     private final ProtocolDefinitionRepository protocolDefinitionRepository;
     private final DeviationRepository deviationRepository;
-    private final ComplianceEventLogRepository complianceEventLogRepository;
+    private final MatcherEventLogRepository matcherEventLogRepository;
     private final ObjectMapper objectMapper;
 
     public PatientTimelineDto getTimeline(String patientId) {
@@ -46,9 +46,7 @@ public class PatientTimelineService {
         List<PatientTimelineDto.ProtocolTimeline> protocols = new ArrayList<>();
         for (ProtocolInstance pi : instances) {
             List<StepInstance> steps = stepsByInstance.getOrDefault(pi.getId(), List.of());
-            long completed = steps.stream()
-                    .filter(s -> s.getState() == StepState.COMPLETED || s.getState() == StepState.SKIPPED)
-                    .count();
+            long completed = steps.stream().filter(StepInstance::isCompleted).count();
             double rate = steps.isEmpty() ? 0.0 : (double) completed / steps.size();
 
             // Resolve ordered action list and titles from protocol definition
@@ -81,7 +79,8 @@ public class PatientTimelineService {
             for (StepInstance si : steps) {
                 String stepName = stepTitles.getOrDefault(si.getActionId(), formatActionId(si.getActionId()));
                 OffsetDateTime ts = resolveTimestamp(si);
-                String type = "step_" + si.getState().name().toLowerCase();
+                String displayStatus = si.displayStatus();
+                String type = "step_" + displayStatus.toLowerCase();
 
                 PatientTimelineDto.TimelineEvent.TimelineEventBuilder builder =
                         PatientTimelineDto.TimelineEvent.builder()
@@ -89,15 +88,15 @@ public class PatientTimelineService {
                                 .type(type)
                                 .actionId(si.getActionId())
                                 .stepName(stepName)
-                                .state(si.getState().name())
+                                .state(displayStatus)
+                                .stepStatus(si.getStepStatus() != null ? si.getStepStatus().name() : null)
+                                .slaStatus(si.getSlaStatus() != null ? si.getSlaStatus().name() : null)
                                 .effectiveDateTime(eventContextMap.containsKey(si.getId()) ?
                                         eventContextMap.get(si.getId()).effectiveDateTime() : null);
 
-                if (si.getState() == StepState.COMPLETED) {
-                    builder.completionStatus(si.getCompletionStatus() != null ?
-                            si.getCompletionStatus().name() : null);
+                if (si.isCompleted()) {
                     builder.source(si.getCompletedBySource());
-                } else if (si.getState() == StepState.OVERDUE && si.getDueDate() != null) {
+                } else if (si.getSlaStatus() == SlaStatus.OVERDUE && si.getDueDate() != null) {
                     int daysOverdue = (int) ChronoUnit.DAYS.between(si.getDueDate(), OffsetDateTime.now());
                     builder.daysOverdue(Math.max(daysOverdue, 0));
                 }
@@ -158,16 +157,16 @@ public class PatientTimelineService {
                         .depth(depth)
                         .build());
             } else {
-                // Pick the "best" status: COMPLETED > OVERDUE > MISSED > PENDING > SKIPPED
+                // Pick the "best" status: COMPLETED > OVERDUE > MISSED > NOT_STARTED
                 StepInstance best = pickBestStep(actionSteps);
                 int completedCount = (int) actionSteps.stream()
-                        .filter(s -> s.getState() == StepState.COMPLETED)
+                        .filter(StepInstance::isCompleted)
                         .count();
                 EventContext ctx = eventContextMap.get(best.getId());
                 // For completed, prefer the first completion's context
-                if (best.getState() == StepState.COMPLETED && ctx == null) {
+                if (best.isCompleted() && ctx == null) {
                     ctx = actionSteps.stream()
-                            .filter(s -> s.getState() == StepState.COMPLETED)
+                            .filter(StepInstance::isCompleted)
                             .map(s -> eventContextMap.get(s.getId()))
                             .filter(Objects::nonNull)
                             .findFirst()
@@ -178,11 +177,12 @@ public class PatientTimelineService {
                         .actionId(actionId)
                         .parentActionId(parentActionId)
                         .stepName(title)
-                        .status(best.getState().name())
+                        .status(best.displayStatus())
+                        .stepStatus(best.getStepStatus() != null ? best.getStepStatus().name() : null)
+                        .slaStatus(best.getSlaStatus() != null ? best.getSlaStatus().name() : null)
                         .completionCount(completedCount)
                         .effectiveDateTime(ctx != null ? ctx.effectiveDateTime : null)
                         .dueDate(best.getDueDate() != null ? best.getDueDate().toString() : null)
-                        .completionStatus(best.getCompletionStatus() != null ? best.getCompletionStatus().name() : null)
                         .source(best.getCompletedBySource())
                         .practitioner(ctx != null ? ctx.practitioner : null)
                         .facilityId(ctx != null ? ctx.facilityId : null)
@@ -219,7 +219,7 @@ public class PatientTimelineService {
         Deviation dev = deviationByActionId.get(actionId);
         if (dev == null) return null;
         return switch (dev.getDeviationType()) {
-            case OVERDUE -> best.getCompletionStatus() != null && "LATE".equals(best.getCompletionStatus().name())
+            case OVERDUE -> best.isCompleted()
                     ? "Completed after SLA window"
                     : "Step overdue — exceeded expected timeframe";
             case MISSED -> "Step missed — no completion recorded within window";
@@ -228,44 +228,42 @@ public class PatientTimelineService {
     }
 
     /**
-     * Pick the most representative step for a given action.
-     * Priority: COMPLETED > OVERDUE > MISSED > PENDING > DUE > SKIPPED
+     * Pick the most representative step for a given action, by display status.
+     * Priority: COMPLETED > OVERDUE > MISSED > NOT_STARTED
      */
     private StepInstance pickBestStep(List<StepInstance> steps) {
-        Map<StepState, Integer> priority = Map.of(
-                StepState.COMPLETED, 0,
-                StepState.OVERDUE, 1,
-                StepState.MISSED, 2,
-                StepState.PENDING, 3,
-                StepState.DUE, 4,
-                StepState.SKIPPED, 5
+        Map<String, Integer> priority = Map.of(
+                "COMPLETED", 0,
+                "OVERDUE", 1,
+                "MISSED", 2,
+                "NOT_STARTED", 3
         );
         return steps.stream()
-                .min(Comparator.comparingInt(s -> priority.getOrDefault(s.getState(), 99)))
+                .min(Comparator.comparingInt(s -> priority.getOrDefault(s.displayStatus(), 99)))
                 .orElse(steps.get(0));
     }
 
     /**
      * Resolve event context (effectiveDateTime, practitioner, facilityId) for completed steps.
-     * Uses step_instance.completed_by_event_id → compliance_event_logs → inbound_event_logs.
+     * Uses step_instance.matched_event_id → matcher_event_logs → inbound_event_logs.
      * Returns a map of stepInstance.id → EventContext.
      */
     private Map<UUID, EventContext> resolveEventContext(List<StepInstance> steps) {
         Map<UUID, EventContext> result = new HashMap<>();
         Map<UUID, UUID> stepToEvent = new LinkedHashMap<>();
         for (StepInstance si : steps) {
-            if (si.getCompletedByEventId() != null) {
-                stepToEvent.put(si.getId(), si.getCompletedByEventId());
+            if (si.getMatchedEventId() != null) {
+                stepToEvent.put(si.getId(), si.getMatchedEventId());
             }
         }
         if (stepToEvent.isEmpty()) return result;
 
-        List<ComplianceEventLog> eventLogs = complianceEventLogRepository.findByComplianceEventIds(
+        List<MatcherEventLog> eventLogs = matcherEventLogRepository.findByMatcherEventIds(
                 stepToEvent.values().stream().distinct().collect(Collectors.toList()));
-        Map<UUID, ComplianceEventLog> eventMap = eventLogs.stream().collect(Collectors.toMap(ComplianceEventLog::getId, e -> e));
+        Map<UUID, MatcherEventLog> eventMap = eventLogs.stream().collect(Collectors.toMap(MatcherEventLog::getId, e -> e));
 
         for (Map.Entry<UUID, UUID> entry : stepToEvent.entrySet()) {
-            ComplianceEventLog el = eventMap.get(entry.getValue());
+            MatcherEventLog el = eventMap.get(entry.getValue());
             if (el != null) {
                 String effectiveDt = el.getData() != null ? extractEffectiveDateTime(el.getData()) : null;
                 String practitioner = el.getData() != null ? extractPractitioner(el.getData()) : null;
@@ -494,10 +492,12 @@ public class PatientTimelineService {
         return false;
     }
 
+    /**
+     * Completion time, else the due date. (1.x fell back to overdue_date / missed_date first; in
+     * 2.0.0 the first threshold an outstanding step breaches — DUE_DATE_REACHED — is its due date.)
+     */
     private OffsetDateTime resolveTimestamp(StepInstance si) {
         if (si.getCompletedAt() != null) return si.getCompletedAt();
-        if (si.getOverdueDate() != null) return si.getOverdueDate();
-        if (si.getMissedDate() != null) return si.getMissedDate();
         if (si.getDueDate() != null) return si.getDueDate();
         return null;
     }

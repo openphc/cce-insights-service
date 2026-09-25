@@ -36,6 +36,15 @@ public class ProtocolInstanceRepositoryImpl
         return toProtocolInstance(r);
     }
 
+    /** Derived column (see protocolInstancesWithCanonical) — 2.0.0 dropped protocol_instances.protocol_canonical. */
+    private static final String PROTOCOL_CANONICAL = "protocol_canonical";
+
+    /** The generic find* methods read protocol_instances with its canonical too. */
+    @Override
+    protected Table<?> baseTable() {
+        return protocolInstancesWithCanonical("pi");
+    }
+
     // ══════════════════════════════════════════════════════════════════════════════
     // Result mappers
     // ══════════════════════════════════════════════════════════════════════════════
@@ -50,7 +59,7 @@ public class ProtocolInstanceRepositoryImpl
                 .id(r.get(PROTOCOL_INSTANCES.ID.getName(), UUID.class))
                 .protocolDefinitionId(r.get(PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName(), UUID.class))
                 .patientId(r.get(PROTOCOL_INSTANCES.PATIENT_ID.getName(), String.class))
-                .protocolCanonical(r.get(PROTOCOL_INSTANCES.PROTOCOL_CANONICAL.getName(), String.class))
+                .protocolCanonical(r.field(PROTOCOL_CANONICAL) != null ? r.get(PROTOCOL_CANONICAL, String.class) : null)
                 .status(status)
                 .enrolledAt(recordDateTime(r, PROTOCOL_INSTANCES.ENROLLED_AT.getName()))
                 .createdAt(recordDateTime(r, PROTOCOL_INSTANCES.CREATED_AT.getName()))
@@ -73,7 +82,7 @@ public class ProtocolInstanceRepositoryImpl
 
     @Override
     public List<ProtocolInstance> findByPatientId(String patientId) {
-        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        var pi = protocolInstancesWithCanonical("pi");
         return dsl.select(DSL.asterisk())
                   .from(pi)
                   .where(DSL.field("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()).eq(patientId))
@@ -83,7 +92,7 @@ public class ProtocolInstanceRepositoryImpl
 
     @Override
     public List<ProtocolInstance> findByProtocolDefinitionId(UUID protocolDefinitionId) {
-        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        var pi = protocolInstancesWithCanonical("pi");
         return dsl.select(DSL.asterisk())
                   .from(pi)
                   .where(DSL.condition(
@@ -95,7 +104,7 @@ public class ProtocolInstanceRepositoryImpl
 
     @Override
     public Page<ProtocolInstance> findByProtocolDefinitionId(UUID protocolDefinitionId, Pageable pageable) {
-        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        var pi = protocolInstancesWithCanonical("pi");
         var condition = DSL.condition(
                 "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
                 protocolDefinitionId.toString());
@@ -157,7 +166,7 @@ public class ProtocolInstanceRepositoryImpl
     public Page<ProtocolInstance> findByProtocolDefinitionIdAndStatus(UUID protocolDefId,
                                                                        ProtocolInstanceStatus status,
                                                                        Pageable pageable) {
-        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        var pi = protocolInstancesWithCanonical("pi");
         var condition = DSL.condition(
                 "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
                 protocolDefId.toString())
@@ -182,7 +191,7 @@ public class ProtocolInstanceRepositoryImpl
                                                                                     String patientId,
                                                                                     Pageable pageable) {
         String pattern = "%" + patientId.toLowerCase() + "%";
-        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        var pi = protocolInstancesWithCanonical("pi");
         var condition = DSL.condition(
                 "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
                 protocolDefId.toString())

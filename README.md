@@ -56,15 +56,21 @@ See [docs/api-reference.md](docs/api-reference.md) for full request/response sch
 
 | Table | Owner |
 |-------|-------|
-| `protocol_definition` | Compliance Service |
-| `protocol_instance` | Compliance Service |
-| `step_instance` | Compliance Service |
-| `deviation` | Compliance Service |
-| `event_log` | Compliance Service |
+| `protocol_definition` | Protocol Service |
+| `protocol_instance` | Matcher Service |
+| `step_instance` | Matcher Service (`step_status`) / Step SLA Service (`sla_status`) |
+| `step_sla_state_transition` | Matcher Service (inserts) / Step SLA Service (processes) |
+| `deviation` | Step SLA Service (`OVERDUE`, `MISSED`) / Matcher Service (`ORDER_VIOLATION`) |
+| `matcher_event_log` (1.x `event_log` / `compliance_event_log`) | Matcher Service |
 | `inbound_event` | Collector Service |
 | `intelligence_delivery` | Intelligence Service |
 | `receiver_adaptor` | Intelligence Service |
 | `destination_adaptor_mapping` | Intelligence Service |
+
+All of these are read from their ClickHouse copies in `cce_analytics` (Debezium CDC from PostgreSQL
+`ccedb`; schema in `cce-data-pipeline/schema`). The 1.x Compliance Service was split into the
+Protocol, Matcher and Step SLA services in CCE 2.0.0; see [docs/data-dictionary.md](docs/data-dictionary.md)
+for the 2.0.0 `step_status` × `sla_status` step model.
 
 ## Documentation
 

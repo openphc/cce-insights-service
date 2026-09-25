@@ -2,7 +2,7 @@ package org.openphc.cce.insights.web.controller;
 
 import lombok.RequiredArgsConstructor;
 import org.openphc.cce.insights.domain.entity.ProtocolDefinition;
-import org.openphc.cce.insights.domain.repository.ComplianceEventLogRepository;
+import org.openphc.cce.insights.domain.repository.MatcherEventLogRepository;
 import org.openphc.cce.insights.domain.repository.InboundEventRepository;
 import org.openphc.cce.insights.domain.repository.ProtocolDefinitionRepository;
 import org.openphc.cce.insights.domain.repository.ProtocolInstanceRepository;
@@ -29,7 +29,7 @@ public class LookupController {
 
     private final ProtocolDefinitionRepository protocolDefinitionRepository;
     private final ProtocolInstanceRepository protocolInstanceRepository;
-    private final ComplianceEventLogRepository complianceEventLogRepository;
+    private final MatcherEventLogRepository matcherEventLogRepository;
     private final InboundEventRepository inboundEventRepository;
     private final PractitionerRankingService practitionerRankingService;
     private final ObjectMapper objectMapper;
@@ -68,9 +68,9 @@ public class LookupController {
     @GetMapping("/facilities")
     @Cacheable(value = "lookups", key = "'facilities'")
     public ResponseEntity<ApiResponse<List<Map<String, String>>>> getFacilities() {
-        List<String> facilityIds = complianceEventLogRepository.findDistinctFacilityIds();
+        List<String> facilityIds = matcherEventLogRepository.findDistinctFacilityIds();
         Map<String, String> nameMap = new LinkedHashMap<>();
-        for (Object[] row : complianceEventLogRepository.findFacilityNames()) {
+        for (Object[] row : matcherEventLogRepository.findFacilityNames()) {
             nameMap.put((String) row[0], (String) row[1]);
         }
         List<Map<String, String>> result = facilityIds.stream().map(id -> {

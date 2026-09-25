@@ -8,14 +8,15 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.web.servlet.MockMvc;
 import org.openphc.cce.insights.domain.entity.Deviation;
-import org.openphc.cce.insights.domain.entity.ComplianceEventLog;
+import org.openphc.cce.insights.domain.entity.MatcherEventLog;
 import org.openphc.cce.insights.domain.entity.ProtocolInstance;
 import org.openphc.cce.insights.domain.entity.StepInstance;
 import org.openphc.cce.insights.domain.enums.DeviationType;
 import org.openphc.cce.insights.domain.enums.ProtocolInstanceStatus;
-import org.openphc.cce.insights.domain.enums.StepState;
+import org.openphc.cce.insights.domain.enums.SlaStatus;
+import org.openphc.cce.insights.domain.enums.StepStatus;
 import org.openphc.cce.insights.domain.repository.DeviationRepository;
-import org.openphc.cce.insights.domain.repository.ComplianceEventLogRepository;
+import org.openphc.cce.insights.domain.repository.MatcherEventLogRepository;
 import org.openphc.cce.insights.domain.repository.ProtocolDefinitionRepository;
 import org.openphc.cce.insights.domain.repository.ProtocolInstanceRepository;
 import org.openphc.cce.insights.domain.repository.StepInstanceRepository;
@@ -50,7 +51,7 @@ class PatientControllerIT extends AbstractIntegrationTest {
     @MockitoBean
     private DeviationRepository deviationRepository;
     @MockitoBean
-    private ComplianceEventLogRepository complianceEventLogRepository;
+    private MatcherEventLogRepository matcherEventLogRepository;
     @MockitoBean
     private ProtocolDefinitionRepository protocolDefinitionRepository;
 
@@ -84,7 +85,7 @@ class PatientControllerIT extends AbstractIntegrationTest {
         ProtocolInstance pi1 = mockProtocolInstance(PI_ID_1, PATIENT_1, "http://example.org/anc|1.0", ProtocolInstanceStatus.ACTIVE, now.minusDays(30));
         when(protocolInstanceRepository.findByPatientId(PATIENT_1)).thenReturn(List.of(pi1));
 
-        StepInstance step1 = mockStepInstance(UUID.randomUUID(), PI_ID_1, "visit-1", StepState.COMPLETED, now.minusDays(10));
+        StepInstance step1 = mockStepInstance(UUID.randomUUID(), PI_ID_1, "visit-1", StepStatus.COMPLETED, SlaStatus.MET, now.minusDays(10));
         when(stepInstanceRepository.findByProtocolInstanceId(PI_ID_1)).thenReturn(List.of(step1));
         when(stepInstanceRepository.findByProtocolInstanceIdOrderByDueDateAsc(PI_ID_1)).thenReturn(List.of(step1));
         when(deviationRepository.findByProtocolInstanceId(PI_ID_1)).thenReturn(List.of());
@@ -93,9 +94,9 @@ class PatientControllerIT extends AbstractIntegrationTest {
         ProtocolInstance pi2 = mockProtocolInstance(PI_ID_2, PATIENT_2, "http://example.org/anc|1.0", ProtocolInstanceStatus.ACTIVE, now.minusDays(20));
         when(protocolInstanceRepository.findByPatientId(PATIENT_2)).thenReturn(List.of(pi2));
 
-        StepInstance step2a = mockStepInstance(UUID.randomUUID(), PI_ID_2, "visit-1", StepState.COMPLETED, now.minusDays(15));
-        StepInstance step2b = mockStepInstance(UUID.randomUUID(), PI_ID_2, "visit-2", StepState.OVERDUE, null);
-        StepInstance step2c = mockStepInstance(UUID.randomUUID(), PI_ID_2, "visit-3", StepState.PENDING, null);
+        StepInstance step2a = mockStepInstance(UUID.randomUUID(), PI_ID_2, "visit-1", StepStatus.COMPLETED, SlaStatus.MET, now.minusDays(15));
+        StepInstance step2b = mockStepInstance(UUID.randomUUID(), PI_ID_2, "visit-2", StepStatus.NOT_STARTED, SlaStatus.OVERDUE, null);
+        StepInstance step2c = mockStepInstance(UUID.randomUUID(), PI_ID_2, "visit-3", StepStatus.NOT_STARTED, null, null);
         when(stepInstanceRepository.findByProtocolInstanceId(PI_ID_2)).thenReturn(List.of(step2a, step2b, step2c));
         when(stepInstanceRepository.findByProtocolInstanceIdOrderByDueDateAsc(PI_ID_2)).thenReturn(List.of(step2a, step2b, step2c));
 
@@ -118,9 +119,9 @@ class PatientControllerIT extends AbstractIntegrationTest {
         when(deviationRepository.findByProtocolInstanceIdIn(List.of(PI_ID_3))).thenReturn(List.of(dev3));
 
         // Patient events
-        ComplianceEventLog event1 = mockComplianceEventLog(UUID.randomUUID(), "Patient/" + PATIENT_1, "org.openphc.cce.encounter",
+        MatcherEventLog event1 = mockMatcherEventLog(UUID.randomUUID(), "Patient/" + PATIENT_1, "org.openphc.cce.encounter",
                 now.minusDays(10), "ebuzima-direct", "{\"resourceType\":\"Encounter\"}", "MATCHED", "fac-1");
-        when(complianceEventLogRepository.findBySubjectOrderByEventTimeDesc("Patient/" + PATIENT_1))
+        when(matcherEventLogRepository.findBySubjectOrderByEventTimeDesc("Patient/" + PATIENT_1))
                 .thenReturn(List.of(event1));
     }
 
@@ -148,6 +149,9 @@ class PatientControllerIT extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.data.protocolInstanceId").value("660e8400-e29b-41d4-a716-446655440002"))
                 .andExpect(jsonPath("$.data.steps").isArray())
                 .andExpect(jsonPath("$.data.steps.length()").value(3))
+                .andExpect(jsonPath("$.data.steps[1].stepStatus").value("NOT_STARTED"))
+                .andExpect(jsonPath("$.data.steps[1].slaStatus").value("OVERDUE"))
+                .andExpect(jsonPath("$.data.steps[2].slaStatus").doesNotExist())
                 .andExpect(jsonPath("$.data.deviations").isArray())
                 .andExpect(jsonPath("$.data.deviations.length()").value(1));
     }
@@ -212,12 +216,14 @@ class PatientControllerIT extends AbstractIntegrationTest {
     }
 
     private StepInstance mockStepInstance(UUID id, UUID piId, String actionId,
-                                          StepState state, OffsetDateTime completedAt) {
+                                          StepStatus stepStatus, SlaStatus slaStatus,
+                                          OffsetDateTime completedAt) {
         StepInstance si = mock(StepInstance.class);
         when(si.getId()).thenReturn(id);
         when(si.getProtocolInstanceId()).thenReturn(piId);
         when(si.getActionId()).thenReturn(actionId);
-        when(si.getState()).thenReturn(state);
+        when(si.getStepStatus()).thenReturn(stepStatus);
+        when(si.getSlaStatus()).thenReturn(slaStatus);
         when(si.getCompletedAt()).thenReturn(completedAt);
         when(si.getDueDate()).thenReturn(OffsetDateTime.now(ZoneOffset.UTC).minusDays(14));
         return si;
@@ -234,10 +240,10 @@ class PatientControllerIT extends AbstractIntegrationTest {
         return dev;
     }
 
-    private ComplianceEventLog mockComplianceEventLog(UUID id, String subject, String type,
+    private MatcherEventLog mockMatcherEventLog(UUID id, String subject, String type,
                                    OffsetDateTime eventTime, String source, String data,
                                    String processingStatus, String facilityId) {
-        ComplianceEventLog el = mock(ComplianceEventLog.class);
+        MatcherEventLog el = mock(MatcherEventLog.class);
         when(el.getId()).thenReturn(id);
         when(el.getCloudeventsId()).thenReturn("ce-" + id);
         when(el.getSubject()).thenReturn(subject);

@@ -13,9 +13,6 @@ import org.jooq.impl.SchemaImpl;
 import org.openphc.cce.insights.jooq.tables.ActionDefinitions;
 import org.openphc.cce.insights.jooq.tables.ActionDefinitionsMv;
 import org.openphc.cce.insights.jooq.tables.ActionDefinitionsQueue;
-import org.openphc.cce.insights.jooq.tables.ComplianceEventLogs;
-import org.openphc.cce.insights.jooq.tables.ComplianceEventLogsMv;
-import org.openphc.cce.insights.jooq.tables.ComplianceEventLogsQueue;
 import org.openphc.cce.insights.jooq.tables.DestinationAdaptorMapping;
 import org.openphc.cce.insights.jooq.tables.DestinationAdaptorMappingMv;
 import org.openphc.cce.insights.jooq.tables.DestinationAdaptorMappingQueue;
@@ -26,6 +23,9 @@ import org.openphc.cce.insights.jooq.tables.DictActionDefinitions;
 import org.openphc.cce.insights.jooq.tables.DictDeliveryAdaptor;
 import org.openphc.cce.insights.jooq.tables.DictPatientFacility;
 import org.openphc.cce.insights.jooq.tables.DictProtocolDefinitions;
+import org.openphc.cce.insights.jooq.tables.Facility;
+import org.openphc.cce.insights.jooq.tables.FacilityMv;
+import org.openphc.cce.insights.jooq.tables.FacilityQueue;
 import org.openphc.cce.insights.jooq.tables.InboundEventLogs;
 import org.openphc.cce.insights.jooq.tables.InboundEventLogsMv;
 import org.openphc.cce.insights.jooq.tables.InboundEventLogsQueue;
@@ -35,8 +35,19 @@ import org.openphc.cce.insights.jooq.tables.IntelligenceDeliveriesQueue;
 import org.openphc.cce.insights.jooq.tables.IntelligenceEventLogs;
 import org.openphc.cce.insights.jooq.tables.IntelligenceEventLogsMv;
 import org.openphc.cce.insights.jooq.tables.IntelligenceEventLogsQueue;
-import org.openphc.cce.insights.jooq.tables.MvComplianceProcessingQuality;
-import org.openphc.cce.insights.jooq.tables.MvComplianceProcessingQualityMv;
+import org.openphc.cce.insights.jooq.tables.MatcherEventLogs;
+import org.openphc.cce.insights.jooq.tables.MatcherEventLogsMv;
+import org.openphc.cce.insights.jooq.tables.MatcherEventLogsQueue;
+import org.openphc.cce.insights.jooq.tables.MvDailyAdoptionKpis;
+import org.openphc.cce.insights.jooq.tables.MvDailyAdoptionKpisMv;
+import org.openphc.cce.insights.jooq.tables.MvDailyComplianceKpis;
+import org.openphc.cce.insights.jooq.tables.MvDailyComplianceKpisMv;
+import org.openphc.cce.insights.jooq.tables.MvDailyDeviationKpis;
+import org.openphc.cce.insights.jooq.tables.MvDailyDeviationKpisMv;
+import org.openphc.cce.insights.jooq.tables.MvDailyEventKpis;
+import org.openphc.cce.insights.jooq.tables.MvDailyEventKpisMv;
+import org.openphc.cce.insights.jooq.tables.MvDailyReferralKpis;
+import org.openphc.cce.insights.jooq.tables.MvDailyReferralKpisMv;
 import org.openphc.cce.insights.jooq.tables.MvDeviationByPatient;
 import org.openphc.cce.insights.jooq.tables.MvDeviationByPatientMv;
 import org.openphc.cce.insights.jooq.tables.MvDeviationByProtocol;
@@ -55,6 +66,8 @@ import org.openphc.cce.insights.jooq.tables.MvIntelligenceByProtocol;
 import org.openphc.cce.insights.jooq.tables.MvIntelligenceByProtocolMv;
 import org.openphc.cce.insights.jooq.tables.MvIntelligenceSummary;
 import org.openphc.cce.insights.jooq.tables.MvIntelligenceSummaryMv;
+import org.openphc.cce.insights.jooq.tables.MvMatcherProcessingQuality;
+import org.openphc.cce.insights.jooq.tables.MvMatcherProcessingQualityMv;
 import org.openphc.cce.insights.jooq.tables.MvPatientFacilityLatest;
 import org.openphc.cce.insights.jooq.tables.MvPatientFacilityLatestMv;
 import org.openphc.cce.insights.jooq.tables.MvPractitionerSummary;
@@ -62,6 +75,9 @@ import org.openphc.cce.insights.jooq.tables.MvPractitionerSummaryMv;
 import org.openphc.cce.insights.jooq.tables.ProtocolDefinitions;
 import org.openphc.cce.insights.jooq.tables.ProtocolDefinitionsMv;
 import org.openphc.cce.insights.jooq.tables.ProtocolDefinitionsQueue;
+import org.openphc.cce.insights.jooq.tables.ProtocolInstanceHistory;
+import org.openphc.cce.insights.jooq.tables.ProtocolInstanceHistoryMv;
+import org.openphc.cce.insights.jooq.tables.ProtocolInstanceHistoryQueue;
 import org.openphc.cce.insights.jooq.tables.ProtocolInstances;
 import org.openphc.cce.insights.jooq.tables.ProtocolInstancesMv;
 import org.openphc.cce.insights.jooq.tables.ProtocolInstancesQueue;
@@ -74,9 +90,15 @@ import org.openphc.cce.insights.jooq.tables.RollupProtocolInstanceCurrent;
 import org.openphc.cce.insights.jooq.tables.RollupProtocolInstanceCurrentMv;
 import org.openphc.cce.insights.jooq.tables.RollupStepCurrent;
 import org.openphc.cce.insights.jooq.tables.RollupStepCurrentMv;
+import org.openphc.cce.insights.jooq.tables.StepInstanceHistory;
+import org.openphc.cce.insights.jooq.tables.StepInstanceHistoryMv;
+import org.openphc.cce.insights.jooq.tables.StepInstanceHistoryQueue;
 import org.openphc.cce.insights.jooq.tables.StepInstances;
 import org.openphc.cce.insights.jooq.tables.StepInstancesMv;
 import org.openphc.cce.insights.jooq.tables.StepInstancesQueue;
+import org.openphc.cce.insights.jooq.tables.StepSlaStateTransitions;
+import org.openphc.cce.insights.jooq.tables.StepSlaStateTransitionsMv;
+import org.openphc.cce.insights.jooq.tables.StepSlaStateTransitionsQueue;
 
 
 /**
@@ -106,21 +128,6 @@ public class CceAnalytics extends SchemaImpl {
      * The table <code>cce_analytics.action_definitions_queue</code>.
      */
     public final ActionDefinitionsQueue ACTION_DEFINITIONS_QUEUE = ActionDefinitionsQueue.ACTION_DEFINITIONS_QUEUE;
-
-    /**
-     * The table <code>cce_analytics.compliance_event_logs</code>.
-     */
-    public final ComplianceEventLogs COMPLIANCE_EVENT_LOGS = ComplianceEventLogs.COMPLIANCE_EVENT_LOGS;
-
-    /**
-     * The table <code>cce_analytics.compliance_event_logs_mv</code>.
-     */
-    public final ComplianceEventLogsMv COMPLIANCE_EVENT_LOGS_MV = ComplianceEventLogsMv.COMPLIANCE_EVENT_LOGS_MV;
-
-    /**
-     * The table <code>cce_analytics.compliance_event_logs_queue</code>.
-     */
-    public final ComplianceEventLogsQueue COMPLIANCE_EVENT_LOGS_QUEUE = ComplianceEventLogsQueue.COMPLIANCE_EVENT_LOGS_QUEUE;
 
     /**
      * The table <code>cce_analytics.destination_adaptor_mapping</code>.
@@ -173,6 +180,21 @@ public class CceAnalytics extends SchemaImpl {
     public final DictProtocolDefinitions DICT_PROTOCOL_DEFINITIONS = DictProtocolDefinitions.DICT_PROTOCOL_DEFINITIONS;
 
     /**
+     * The table <code>cce_analytics.facility</code>.
+     */
+    public final Facility FACILITY = Facility.FACILITY;
+
+    /**
+     * The table <code>cce_analytics.facility_mv</code>.
+     */
+    public final FacilityMv FACILITY_MV = FacilityMv.FACILITY_MV;
+
+    /**
+     * The table <code>cce_analytics.facility_queue</code>.
+     */
+    public final FacilityQueue FACILITY_QUEUE = FacilityQueue.FACILITY_QUEUE;
+
+    /**
      * The table <code>cce_analytics.inbound_event_logs</code>.
      */
     public final InboundEventLogs INBOUND_EVENT_LOGS = InboundEventLogs.INBOUND_EVENT_LOGS;
@@ -218,14 +240,69 @@ public class CceAnalytics extends SchemaImpl {
     public final IntelligenceEventLogsQueue INTELLIGENCE_EVENT_LOGS_QUEUE = IntelligenceEventLogsQueue.INTELLIGENCE_EVENT_LOGS_QUEUE;
 
     /**
-     * The table <code>cce_analytics.mv_compliance_processing_quality</code>.
+     * The table <code>cce_analytics.matcher_event_logs</code>.
      */
-    public final MvComplianceProcessingQuality MV_COMPLIANCE_PROCESSING_QUALITY = MvComplianceProcessingQuality.MV_COMPLIANCE_PROCESSING_QUALITY;
+    public final MatcherEventLogs MATCHER_EVENT_LOGS = MatcherEventLogs.MATCHER_EVENT_LOGS;
 
     /**
-     * The table <code>cce_analytics.mv_compliance_processing_quality_mv</code>.
+     * The table <code>cce_analytics.matcher_event_logs_mv</code>.
      */
-    public final MvComplianceProcessingQualityMv MV_COMPLIANCE_PROCESSING_QUALITY_MV = MvComplianceProcessingQualityMv.MV_COMPLIANCE_PROCESSING_QUALITY_MV;
+    public final MatcherEventLogsMv MATCHER_EVENT_LOGS_MV = MatcherEventLogsMv.MATCHER_EVENT_LOGS_MV;
+
+    /**
+     * The table <code>cce_analytics.matcher_event_logs_queue</code>.
+     */
+    public final MatcherEventLogsQueue MATCHER_EVENT_LOGS_QUEUE = MatcherEventLogsQueue.MATCHER_EVENT_LOGS_QUEUE;
+
+    /**
+     * The table <code>cce_analytics.mv_daily_adoption_kpis</code>.
+     */
+    public final MvDailyAdoptionKpis MV_DAILY_ADOPTION_KPIS = MvDailyAdoptionKpis.MV_DAILY_ADOPTION_KPIS;
+
+    /**
+     * The table <code>cce_analytics.mv_daily_adoption_kpis_mv</code>.
+     */
+    public final MvDailyAdoptionKpisMv MV_DAILY_ADOPTION_KPIS_MV = MvDailyAdoptionKpisMv.MV_DAILY_ADOPTION_KPIS_MV;
+
+    /**
+     * The table <code>cce_analytics.mv_daily_compliance_kpis</code>.
+     */
+    public final MvDailyComplianceKpis MV_DAILY_COMPLIANCE_KPIS = MvDailyComplianceKpis.MV_DAILY_COMPLIANCE_KPIS;
+
+    /**
+     * The table <code>cce_analytics.mv_daily_compliance_kpis_mv</code>.
+     */
+    public final MvDailyComplianceKpisMv MV_DAILY_COMPLIANCE_KPIS_MV = MvDailyComplianceKpisMv.MV_DAILY_COMPLIANCE_KPIS_MV;
+
+    /**
+     * The table <code>cce_analytics.mv_daily_deviation_kpis</code>.
+     */
+    public final MvDailyDeviationKpis MV_DAILY_DEVIATION_KPIS = MvDailyDeviationKpis.MV_DAILY_DEVIATION_KPIS;
+
+    /**
+     * The table <code>cce_analytics.mv_daily_deviation_kpis_mv</code>.
+     */
+    public final MvDailyDeviationKpisMv MV_DAILY_DEVIATION_KPIS_MV = MvDailyDeviationKpisMv.MV_DAILY_DEVIATION_KPIS_MV;
+
+    /**
+     * The table <code>cce_analytics.mv_daily_event_kpis</code>.
+     */
+    public final MvDailyEventKpis MV_DAILY_EVENT_KPIS = MvDailyEventKpis.MV_DAILY_EVENT_KPIS;
+
+    /**
+     * The table <code>cce_analytics.mv_daily_event_kpis_mv</code>.
+     */
+    public final MvDailyEventKpisMv MV_DAILY_EVENT_KPIS_MV = MvDailyEventKpisMv.MV_DAILY_EVENT_KPIS_MV;
+
+    /**
+     * The table <code>cce_analytics.mv_daily_referral_kpis</code>.
+     */
+    public final MvDailyReferralKpis MV_DAILY_REFERRAL_KPIS = MvDailyReferralKpis.MV_DAILY_REFERRAL_KPIS;
+
+    /**
+     * The table <code>cce_analytics.mv_daily_referral_kpis_mv</code>.
+     */
+    public final MvDailyReferralKpisMv MV_DAILY_REFERRAL_KPIS_MV = MvDailyReferralKpisMv.MV_DAILY_REFERRAL_KPIS_MV;
 
     /**
      * The table <code>cce_analytics.mv_deviation_by_patient</code>.
@@ -318,6 +395,16 @@ public class CceAnalytics extends SchemaImpl {
     public final MvIntelligenceSummaryMv MV_INTELLIGENCE_SUMMARY_MV = MvIntelligenceSummaryMv.MV_INTELLIGENCE_SUMMARY_MV;
 
     /**
+     * The table <code>cce_analytics.mv_matcher_processing_quality</code>.
+     */
+    public final MvMatcherProcessingQuality MV_MATCHER_PROCESSING_QUALITY = MvMatcherProcessingQuality.MV_MATCHER_PROCESSING_QUALITY;
+
+    /**
+     * The table <code>cce_analytics.mv_matcher_processing_quality_mv</code>.
+     */
+    public final MvMatcherProcessingQualityMv MV_MATCHER_PROCESSING_QUALITY_MV = MvMatcherProcessingQualityMv.MV_MATCHER_PROCESSING_QUALITY_MV;
+
+    /**
      * The table <code>cce_analytics.mv_patient_facility_latest</code>.
      */
     public final MvPatientFacilityLatest MV_PATIENT_FACILITY_LATEST = MvPatientFacilityLatest.MV_PATIENT_FACILITY_LATEST;
@@ -351,6 +438,21 @@ public class CceAnalytics extends SchemaImpl {
      * The table <code>cce_analytics.protocol_definitions_queue</code>.
      */
     public final ProtocolDefinitionsQueue PROTOCOL_DEFINITIONS_QUEUE = ProtocolDefinitionsQueue.PROTOCOL_DEFINITIONS_QUEUE;
+
+    /**
+     * The table <code>cce_analytics.protocol_instance_history</code>.
+     */
+    public final ProtocolInstanceHistory PROTOCOL_INSTANCE_HISTORY = ProtocolInstanceHistory.PROTOCOL_INSTANCE_HISTORY;
+
+    /**
+     * The table <code>cce_analytics.protocol_instance_history_mv</code>.
+     */
+    public final ProtocolInstanceHistoryMv PROTOCOL_INSTANCE_HISTORY_MV = ProtocolInstanceHistoryMv.PROTOCOL_INSTANCE_HISTORY_MV;
+
+    /**
+     * The table <code>cce_analytics.protocol_instance_history_queue</code>.
+     */
+    public final ProtocolInstanceHistoryQueue PROTOCOL_INSTANCE_HISTORY_QUEUE = ProtocolInstanceHistoryQueue.PROTOCOL_INSTANCE_HISTORY_QUEUE;
 
     /**
      * The table <code>cce_analytics.protocol_instances</code>.
@@ -413,6 +515,21 @@ public class CceAnalytics extends SchemaImpl {
     public final RollupStepCurrentMv ROLLUP_STEP_CURRENT_MV = RollupStepCurrentMv.ROLLUP_STEP_CURRENT_MV;
 
     /**
+     * The table <code>cce_analytics.step_instance_history</code>.
+     */
+    public final StepInstanceHistory STEP_INSTANCE_HISTORY = StepInstanceHistory.STEP_INSTANCE_HISTORY;
+
+    /**
+     * The table <code>cce_analytics.step_instance_history_mv</code>.
+     */
+    public final StepInstanceHistoryMv STEP_INSTANCE_HISTORY_MV = StepInstanceHistoryMv.STEP_INSTANCE_HISTORY_MV;
+
+    /**
+     * The table <code>cce_analytics.step_instance_history_queue</code>.
+     */
+    public final StepInstanceHistoryQueue STEP_INSTANCE_HISTORY_QUEUE = StepInstanceHistoryQueue.STEP_INSTANCE_HISTORY_QUEUE;
+
+    /**
      * The table <code>cce_analytics.step_instances</code>.
      */
     public final StepInstances STEP_INSTANCES = StepInstances.STEP_INSTANCES;
@@ -426,6 +543,21 @@ public class CceAnalytics extends SchemaImpl {
      * The table <code>cce_analytics.step_instances_queue</code>.
      */
     public final StepInstancesQueue STEP_INSTANCES_QUEUE = StepInstancesQueue.STEP_INSTANCES_QUEUE;
+
+    /**
+     * The table <code>cce_analytics.step_sla_state_transitions</code>.
+     */
+    public final StepSlaStateTransitions STEP_SLA_STATE_TRANSITIONS = StepSlaStateTransitions.STEP_SLA_STATE_TRANSITIONS;
+
+    /**
+     * The table <code>cce_analytics.step_sla_state_transitions_mv</code>.
+     */
+    public final StepSlaStateTransitionsMv STEP_SLA_STATE_TRANSITIONS_MV = StepSlaStateTransitionsMv.STEP_SLA_STATE_TRANSITIONS_MV;
+
+    /**
+     * The table <code>cce_analytics.step_sla_state_transitions_queue</code>.
+     */
+    public final StepSlaStateTransitionsQueue STEP_SLA_STATE_TRANSITIONS_QUEUE = StepSlaStateTransitionsQueue.STEP_SLA_STATE_TRANSITIONS_QUEUE;
 
     /**
      * No further instances allowed
@@ -446,9 +578,6 @@ public class CceAnalytics extends SchemaImpl {
             ActionDefinitions.ACTION_DEFINITIONS,
             ActionDefinitionsMv.ACTION_DEFINITIONS_MV,
             ActionDefinitionsQueue.ACTION_DEFINITIONS_QUEUE,
-            ComplianceEventLogs.COMPLIANCE_EVENT_LOGS,
-            ComplianceEventLogsMv.COMPLIANCE_EVENT_LOGS_MV,
-            ComplianceEventLogsQueue.COMPLIANCE_EVENT_LOGS_QUEUE,
             DestinationAdaptorMapping.DESTINATION_ADAPTOR_MAPPING,
             DestinationAdaptorMappingMv.DESTINATION_ADAPTOR_MAPPING_MV,
             DestinationAdaptorMappingQueue.DESTINATION_ADAPTOR_MAPPING_QUEUE,
@@ -459,6 +588,9 @@ public class CceAnalytics extends SchemaImpl {
             DictDeliveryAdaptor.DICT_DELIVERY_ADAPTOR,
             DictPatientFacility.DICT_PATIENT_FACILITY,
             DictProtocolDefinitions.DICT_PROTOCOL_DEFINITIONS,
+            Facility.FACILITY,
+            FacilityMv.FACILITY_MV,
+            FacilityQueue.FACILITY_QUEUE,
             InboundEventLogs.INBOUND_EVENT_LOGS,
             InboundEventLogsMv.INBOUND_EVENT_LOGS_MV,
             InboundEventLogsQueue.INBOUND_EVENT_LOGS_QUEUE,
@@ -468,8 +600,19 @@ public class CceAnalytics extends SchemaImpl {
             IntelligenceEventLogs.INTELLIGENCE_EVENT_LOGS,
             IntelligenceEventLogsMv.INTELLIGENCE_EVENT_LOGS_MV,
             IntelligenceEventLogsQueue.INTELLIGENCE_EVENT_LOGS_QUEUE,
-            MvComplianceProcessingQuality.MV_COMPLIANCE_PROCESSING_QUALITY,
-            MvComplianceProcessingQualityMv.MV_COMPLIANCE_PROCESSING_QUALITY_MV,
+            MatcherEventLogs.MATCHER_EVENT_LOGS,
+            MatcherEventLogsMv.MATCHER_EVENT_LOGS_MV,
+            MatcherEventLogsQueue.MATCHER_EVENT_LOGS_QUEUE,
+            MvDailyAdoptionKpis.MV_DAILY_ADOPTION_KPIS,
+            MvDailyAdoptionKpisMv.MV_DAILY_ADOPTION_KPIS_MV,
+            MvDailyComplianceKpis.MV_DAILY_COMPLIANCE_KPIS,
+            MvDailyComplianceKpisMv.MV_DAILY_COMPLIANCE_KPIS_MV,
+            MvDailyDeviationKpis.MV_DAILY_DEVIATION_KPIS,
+            MvDailyDeviationKpisMv.MV_DAILY_DEVIATION_KPIS_MV,
+            MvDailyEventKpis.MV_DAILY_EVENT_KPIS,
+            MvDailyEventKpisMv.MV_DAILY_EVENT_KPIS_MV,
+            MvDailyReferralKpis.MV_DAILY_REFERRAL_KPIS,
+            MvDailyReferralKpisMv.MV_DAILY_REFERRAL_KPIS_MV,
             MvDeviationByPatient.MV_DEVIATION_BY_PATIENT,
             MvDeviationByPatientMv.MV_DEVIATION_BY_PATIENT_MV,
             MvDeviationByProtocol.MV_DEVIATION_BY_PROTOCOL,
@@ -488,6 +631,8 @@ public class CceAnalytics extends SchemaImpl {
             MvIntelligenceByProtocolMv.MV_INTELLIGENCE_BY_PROTOCOL_MV,
             MvIntelligenceSummary.MV_INTELLIGENCE_SUMMARY,
             MvIntelligenceSummaryMv.MV_INTELLIGENCE_SUMMARY_MV,
+            MvMatcherProcessingQuality.MV_MATCHER_PROCESSING_QUALITY,
+            MvMatcherProcessingQualityMv.MV_MATCHER_PROCESSING_QUALITY_MV,
             MvPatientFacilityLatest.MV_PATIENT_FACILITY_LATEST,
             MvPatientFacilityLatestMv.MV_PATIENT_FACILITY_LATEST_MV,
             MvPractitionerSummary.MV_PRACTITIONER_SUMMARY,
@@ -495,6 +640,9 @@ public class CceAnalytics extends SchemaImpl {
             ProtocolDefinitions.PROTOCOL_DEFINITIONS,
             ProtocolDefinitionsMv.PROTOCOL_DEFINITIONS_MV,
             ProtocolDefinitionsQueue.PROTOCOL_DEFINITIONS_QUEUE,
+            ProtocolInstanceHistory.PROTOCOL_INSTANCE_HISTORY,
+            ProtocolInstanceHistoryMv.PROTOCOL_INSTANCE_HISTORY_MV,
+            ProtocolInstanceHistoryQueue.PROTOCOL_INSTANCE_HISTORY_QUEUE,
             ProtocolInstances.PROTOCOL_INSTANCES,
             ProtocolInstancesMv.PROTOCOL_INSTANCES_MV,
             ProtocolInstancesQueue.PROTOCOL_INSTANCES_QUEUE,
@@ -507,9 +655,15 @@ public class CceAnalytics extends SchemaImpl {
             RollupProtocolInstanceCurrentMv.ROLLUP_PROTOCOL_INSTANCE_CURRENT_MV,
             RollupStepCurrent.ROLLUP_STEP_CURRENT,
             RollupStepCurrentMv.ROLLUP_STEP_CURRENT_MV,
+            StepInstanceHistory.STEP_INSTANCE_HISTORY,
+            StepInstanceHistoryMv.STEP_INSTANCE_HISTORY_MV,
+            StepInstanceHistoryQueue.STEP_INSTANCE_HISTORY_QUEUE,
             StepInstances.STEP_INSTANCES,
             StepInstancesMv.STEP_INSTANCES_MV,
-            StepInstancesQueue.STEP_INSTANCES_QUEUE
+            StepInstancesQueue.STEP_INSTANCES_QUEUE,
+            StepSlaStateTransitions.STEP_SLA_STATE_TRANSITIONS,
+            StepSlaStateTransitionsMv.STEP_SLA_STATE_TRANSITIONS_MV,
+            StepSlaStateTransitionsQueue.STEP_SLA_STATE_TRANSITIONS_QUEUE
         );
     }
 }

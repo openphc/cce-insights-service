@@ -49,7 +49,7 @@ public class MvEventVolumeHourlyMv extends TableImpl<Record> {
     /**
      * The column <code>cce_analytics.mv_event_volume_hourly_mv.hour</code>.
      */
-    public final TableField<Record, Object> HOUR = createField(DSL.name("hour"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
+    public final TableField<Record, Object> HOUR = createField(DSL.name("hour"), org.jooq.impl.SQLDataType.OTHER, this, "");
 
     /**
      * The column

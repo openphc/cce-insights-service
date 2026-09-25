@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.openphc.cce.insights.domain.repository.ComplianceEventLogRepository;
+import org.openphc.cce.insights.domain.repository.MatcherEventLogRepository;
 import org.openphc.cce.insights.domain.repository.InboundEventRepository;
 import org.openphc.cce.insights.web.dto.*;
 import org.springframework.cache.annotation.Cacheable;
@@ -19,17 +19,17 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class EventVolumeService {
 
-    private final ComplianceEventLogRepository complianceEventLogRepository;
+    private final MatcherEventLogRepository matcherEventLogRepository;
     private final InboundEventRepository inboundEventRepository;
     private final ObjectMapper objectMapper;
 
     @Cacheable(value = "metrics", key = "'vol-summary-' + #startDate + '-' + #endDate")
     public EventVolumeSummaryDto getSummary(OffsetDateTime startDate, OffsetDateTime endDate) {
-        List<Object[]> byFacility = complianceEventLogRepository.countByFacility(startDate, endDate);
-        List<Object[]> byResourceType = complianceEventLogRepository.countByResourceType(null, null, startDate, endDate);
+        List<Object[]> byFacility = matcherEventLogRepository.countByFacility(startDate, endDate);
+        List<Object[]> byResourceType = matcherEventLogRepository.countByResourceType(null, null, startDate, endDate);
         // Source counts from inbound_event — captures ALL received events, not just compliance-matched
         List<Object[]> bySource = inboundEventRepository.countBySource(null, startDate, endDate);
-        List<Object[]> byProcessingStatus = complianceEventLogRepository.countByProcessingStatus(null, startDate, endDate);
+        List<Object[]> byProcessingStatus = matcherEventLogRepository.countByProcessingStatus(null, startDate, endDate);
 
         long totalEvents = byResourceType.stream().mapToLong(r -> ((Number) r[1]).longValue()).sum();
 
@@ -99,7 +99,7 @@ public class EventVolumeService {
 
     @Cacheable(value = "metrics", key = "'vol-restype-' + #startDate + '-' + #endDate")
     public List<ResourceTypeCountDto> getByResourceType(OffsetDateTime startDate, OffsetDateTime endDate) {
-        return complianceEventLogRepository.countByResourceType(null, null, startDate, endDate).stream()
+        return matcherEventLogRepository.countByResourceType(null, null, startDate, endDate).stream()
                 .map(row -> ResourceTypeCountDto.builder()
                         .resourceType((String) row[0])
                         .count(((Number) row[1]).longValue())
@@ -109,7 +109,7 @@ public class EventVolumeService {
 
     @Cacheable(value = "metrics", key = "'vol-facility-' + #startDate + '-' + #endDate")
     public List<FacilityEventCountDto> getByFacility(OffsetDateTime startDate, OffsetDateTime endDate) {
-        List<Object[]> rows = complianceEventLogRepository.countByFacility(startDate, endDate);
+        List<Object[]> rows = matcherEventLogRepository.countByFacility(startDate, endDate);
         // rows: [facility_id, resource_type, count] — aggregate by facility
         Map<String, List<Object[]>> grouped = new LinkedHashMap<>();
         for (Object[] row : rows) {
@@ -137,7 +137,7 @@ public class EventVolumeService {
         // materialized column (see PractitionerExtractor) - parse each candidate event's resource
         // body directly instead, same as PractitionerRankingService.
         List<Object[]> rows = new ArrayList<>(); // [practitioner_ref, practitioner_display, resource_type, count=1]
-        for (Object[] candidate : complianceEventLogRepository.findPractitionerCandidateEvents(startDate, endDate, null)) {
+        for (Object[] candidate : matcherEventLogRepository.findPractitionerCandidateEvents(startDate, endDate, null)) {
             String dataJson = (String) candidate[2];
             if (dataJson == null || dataJson.isEmpty()) continue;
             try {
@@ -214,7 +214,7 @@ public class EventVolumeService {
         // When filtering by source, use inbound_event to capture ALL received events (not just compliance-matched)
         List<Object[]> rows = (source != null && !source.isBlank())
                 ? inboundEventRepository.findEventTrends(dbInterval, facilityId, source, startDate, endDate)
-                : complianceEventLogRepository.findEventTrends(dbInterval, facilityId, source, null, startDate, endDate);
+                : matcherEventLogRepository.findEventTrends(dbInterval, facilityId, source, null, startDate, endDate);
 
         // rows: [period, resource_type, count] — aggregate by period
         Map<String, Map<String, Long>> periodMap = new LinkedHashMap<>();

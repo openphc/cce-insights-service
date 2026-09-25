@@ -129,7 +129,12 @@ public class InboundEventLogs extends TableImpl<Record> {
     /**
      * The column <code>cce_analytics.inbound_event_logs.facility_id</code>.
      */
-    public final TableField<Record, Object> FACILITY_ID = createField(DSL.name("facility_id"), org.jooq.impl.SQLDataType.OTHER.nullable(false).defaultValue(DSL.field(DSL.raw("'JSONExtractString(raw_payload, ''facilityid'')'"), org.jooq.impl.SQLDataType.OTHER)), this, "");
+    public final TableField<Record, Object> FACILITY_ID = createField(DSL.name("facility_id"), org.jooq.impl.SQLDataType.OTHER.nullable(false).defaultValue(DSL.field(DSL.raw("'if(JSONExtractString(raw_payload, ''facilityid'') != '''', JSONExtractString(raw_payload, ''facilityid''), JSONExtractString(arrayFirst(x -> (JSONExtractString(x, ''url'') LIKE ''%source-facility%''), JSONExtractArrayRaw(raw_payload, ''data'', ''extension'')), ''valueString''))'"), org.jooq.impl.SQLDataType.OTHER)), this, "");
+
+    /**
+     * The column <code>cce_analytics.inbound_event_logs.facility_name</code>.
+     */
+    public final TableField<Record, Object> FACILITY_NAME = createField(DSL.name("facility_name"), org.jooq.impl.SQLDataType.OTHER.nullable(false).defaultValue(DSL.field(DSL.raw("'JSONExtractString(raw_payload, ''facilityname'')'"), org.jooq.impl.SQLDataType.OTHER)), this, "");
 
     /**
      * The column <code>cce_analytics.inbound_event_logs.resource_type</code>.
@@ -152,11 +157,6 @@ public class InboundEventLogs extends TableImpl<Record> {
      * The column <code>cce_analytics.inbound_event_logs.patient_id</code>.
      */
     public final TableField<Record, Object> PATIENT_ID = createField(DSL.name("patient_id"), org.jooq.impl.SQLDataType.OTHER.nullable(false).defaultValue(DSL.field(DSL.raw("'subject'"), org.jooq.impl.SQLDataType.OTHER)), this, "");
-
-    /**
-     * The column <code>cce_analytics.inbound_event_logs.facility_name</code>.
-     */
-    public final TableField<Record, Object> FACILITY_NAME = createField(DSL.name("facility_name"), org.jooq.impl.SQLDataType.OTHER.nullable(false).defaultValue(DSL.field(DSL.raw("'JSONExtractString(raw_payload, ''facilityname'')'"), org.jooq.impl.SQLDataType.OTHER)), this, "");
 
     private InboundEventLogs(Name alias, Table<Record> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);

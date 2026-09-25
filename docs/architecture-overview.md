@@ -79,7 +79,7 @@ graph TB
 
 **This service does NOT handle:** event ingestion, protocol matching, step completion, deviation detection, time-based transitions, authentication/authorization, or any write operations.
 
-> **Event Volume Analytics:** In addition to compliance-focused analytics, the Insights Service provides event volume metrics — counts of clinical events grouped by FHIR `resourceType`, facility, practitioner, and source system. These metrics are derived from the `event_log` table (immutable log of all inbound CloudEvents maintained by the Compliance Service). Practitioner information is extracted from the `event_log.data` JSONB column using resource-type-specific paths.
+> **Event Volume Analytics:** In addition to compliance-focused analytics, the Insights Service provides event volume metrics — counts of clinical events grouped by FHIR `resourceType`, facility, practitioner, and source system. These metrics are derived from the `event_log` table (immutable log of all inbound CloudEvents maintained by the Matcher Service; `matcher_event_logs` in ClickHouse, `compliance_event_logs` before 2.0.0). Practitioner information is extracted from the `event_log.data` JSONB column using resource-type-specific paths.
 
 > **Ingestion Analytics:** The Insights Service also queries the `inbound_event` table (owned by the Collector Service) to provide ingestion pipeline metrics — acceptance/rejection funnels, rejection reason analysis, source data quality scores, and pipeline loss tracking. Source comparison and source-level event counts are also powered by `inbound_event` to capture ALL received events, not just compliance-matched ones.
 
@@ -152,7 +152,7 @@ src/
     │   ├── ProtocolInstanceRepositoryImpl.java
     │   ├── StepInstanceRepositoryImpl.java
     │   ├── DeviationRepositoryImpl.java
-    │   ├── ComplianceEventLogRepositoryImpl.java
+    │   ├── MatcherEventLogRepositoryImpl.java
     │   ├── InboundEventLogRepositoryImpl.java
     │   ├── IntelligenceDeliveryRepositoryImpl.java
     │   ├── ReceiverAdaptorRepositoryImpl.java
@@ -194,9 +194,10 @@ dsl.select(DSL.field(STEP_INSTANCES.STATE.getName()))
 |---|---|---|
 | `protocol_definitions` | ReplacingMergeTree | Protocol metadata (name, version, URL) |
 | `protocol_instances` | ReplacingMergeTree | Patient enrollments, compliance rates, filtering |
-| `step_instances` | ReplacingMergeTree | Step states, timing, completion, facility joins via `mv_patient_facility_latest` |
-| `deviations` | ReplacingMergeTree | Deviation records, trends, counts by type |
-| `compliance_event_logs` | MergeTree | Patient event history, timeline, event volume analytics |
+| `step_instances` | ReplacingMergeTree | Step `step_status` (Matcher) × `sla_status` (Step SLA), timing, completion, facility joins via `mv_patient_facility_latest` |
+| `step_sla_state_transitions` | ReplacingMergeTree | Per-step SLA thresholds (`process_by`) — clinical occurrence date of OVERDUE / MISSED deviations, `overdueDate` / `missedDate` in protocol tracking (new in 2.0.0) |
+| `deviations` | ReplacingMergeTree | Deviation records, trends, counts by type (enrollment reached through `step_instances` since 2.0.0) |
+| `matcher_event_logs` | ReplacingMergeTree | Patient event history, timeline, event volume analytics (1.x `compliance_event_logs`) |
 | `inbound_event_logs` | MergeTree | Ingestion funnel, rejection analytics, source quality, pipeline loss |
 | `intelligence_deliveries` | ReplacingMergeTree | Intelligence delivery tracking, action type stats, delivery status |
 | `receiver_adaptor` | ReplacingMergeTree | Adaptor registry lookups |
@@ -206,6 +207,28 @@ dsl.select(DSL.field(STEP_INSTANCES.STATE.getName()))
 | `mv_facility_summary` | AggregatingMV | Pre-aggregated facility summaries |
 
 > **FINAL clause:** ClickHouse `ReplacingMergeTree` tables may have duplicate rows until background merges complete. The `FINAL` modifier forces deduplication at query time. It is disabled by default (`CLICKHOUSE_USE_FINAL=false`) for performance and can be enabled per environment.
+
+> **2.0.0 schema (derived columns):** `protocol_instances.protocol_canonical` and
+> `deviations.protocol_instance_id` were dropped upstream. `AbstractClickHouseRepository` rebuilds
+> them as derived tables — `protocolInstancesWithCanonical(alias)` (`ANY LEFT JOIN protocol_definitions`,
+> `url|version`) and `deviationsWithInstance(alias)` (`ANY LEFT JOIN step_instances`) — so queries keep
+> reading `pi.protocol_canonical` / `d.protocol_instance_id`. `slaThresholds()` exposes each step's
+> `DUE_DATE_REACHED` / `MISSED_DATE_REACHED` `process_by` (alias `sla`), returned as `overdueDate` / `missedDate` on
+> protocol-tracking steps.
+> The `dict_protocol_definitions` dictionary is deliberately not used: its ClickHouse source authenticates
+> on its own, and a join on the tiny definitions table has no such dependency.
+
+> **Chunked `IN (...)` clauses (`max_query_size`):** jOOQ's `.in(List<...>)` binds one
+> parameter per element. Building `protocol_instance_id IN (...)` from an unbounded id
+> list (e.g. every enrolled patient across a wide date range) can produce thousands of
+> bind params, blowing past ClickHouse's `max_query_size` (default 262144 bytes) and
+> surfacing as a generic `transport error: 400` / 503 to the caller. `AbstractClickHouseRepository.chunkIds(List)`
+> splits any id list into batches of ≤1000 before building an `IN` clause; callers issue
+> one query per chunk and concatenate results (safe here because each id lands in
+> exactly one chunk, so `groupBy`-per-id aggregations never need re-merging across
+> chunks). Used by `StepInstanceRepositoryImpl.findSlaThresholdsByStepInstanceIdIn`. Any new query built from an
+> externally-sized id list should go through this helper rather than calling `.in(...)`
+> directly.
 
 ### 4.3 Key Query Patterns
 
@@ -218,7 +241,7 @@ SELECT
   COUNT(DISTINCT CASE WHEN pi.status = 'ACTIVE' THEN pi.id END) AS active,
   AVG(
     CASE WHEN pi.status IN ('ACTIVE', 'COMPLETED') THEN
-      (SELECT COUNT(*) FROM step_instance si WHERE si.protocol_instance_id = pi.id AND si.state = 'COMPLETED')::float /
+      (SELECT COUNT(*) FROM step_instance si WHERE si.protocol_instance_id = pi.id AND si.step_status = 'COMPLETED')::float /
       NULLIF((SELECT COUNT(*) FROM step_instance si WHERE si.protocol_instance_id = pi.id), 0)
     END
   ) AS avg_compliance_rate
@@ -233,7 +256,7 @@ GROUP BY pd.url, pd.version;
 SELECT
   el.facility_id,
   COUNT(DISTINCT pi.id) AS total_enrollments,
-  COUNT(DISTINCT CASE WHEN si.state IN ('OVERDUE', 'MISSED') THEN pi.id END) AS with_deviations
+  COUNT(DISTINCT CASE WHEN si.sla_status IN ('OVERDUE', 'MISSED') THEN pi.id END) AS with_deviations
 FROM protocol_instance pi
 JOIN step_instance si ON si.protocol_instance_id = pi.id
 JOIN event_log el ON el.protocol_instance_id = pi.id
@@ -409,17 +432,17 @@ These are the SQL patterns for the protocol analytics, deviation analytics, faci
 SELECT
   si.action_id,
   COUNT(*) AS total_instances,
-  COUNT(CASE WHEN si.state = 'COMPLETED' THEN 1 END) AS completed_count,
-  COUNT(CASE WHEN si.completion_status = 'EARLY' THEN 1 END) AS early_count,
-  COUNT(CASE WHEN si.completion_status = 'ON_TIME' THEN 1 END) AS on_time_count,
-  COUNT(CASE WHEN si.completion_status = 'LATE' THEN 1 END) AS late_count,
-  COUNT(CASE WHEN si.state = 'OVERDUE' THEN 1 END) AS overdue_count,
-  COUNT(CASE WHEN si.state = 'MISSED' THEN 1 END) AS missed_count,
-  COUNT(CASE WHEN si.state = 'SKIPPED' THEN 1 END) AS skipped_count,
+  COUNT(CASE WHEN si.step_status = 'COMPLETED' THEN 1 END) AS completed_count,
+  COUNT(CASE WHEN si.step_status = 'COMPLETED' AND si.sla_status = 'MET' THEN 1 END) AS completed_on_time_count,
+  COUNT(CASE WHEN si.step_status = 'COMPLETED' AND si.sla_status IN ('OVERDUE', 'MISSED') THEN 1 END) AS completed_late_count,
+  COUNT(CASE WHEN si.sla_status = 'OVERDUE' THEN 1 END) AS overdue_count,
+  COUNT(CASE WHEN si.sla_status = 'MISSED' THEN 1 END) AS missed_count,
+  COUNT(CASE WHEN si.step_status = 'NOT_STARTED' THEN 1 END) AS not_started_count,
+  COUNT(CASE WHEN si.sla_status IS NULL THEN 1 END) AS sla_unjudged_count,
   AVG(EXTRACT(EPOCH FROM (si.completed_at - si.due_date)) / 86400.0)
-    FILTER (WHERE si.state = 'COMPLETED' AND si.due_date IS NOT NULL) AS avg_days_to_complete,
+    FILTER (WHERE si.step_status = 'COMPLETED' AND si.due_date IS NOT NULL) AS avg_days_to_complete,
   PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (si.completed_at - si.due_date)) / 86400.0)
-    FILTER (WHERE si.state = 'COMPLETED' AND si.due_date IS NOT NULL) AS median_days_to_complete
+    FILTER (WHERE si.step_status = 'COMPLETED' AND si.due_date IS NOT NULL) AS median_days_to_complete
 FROM step_instance si
 JOIN protocol_instance pi ON si.protocol_instance_id = pi.id
 WHERE pi.protocol_definition_id = :protocolDefinitionId
@@ -431,7 +454,7 @@ GROUP BY si.action_id;
 SELECT
   si.action_id,
   COUNT(DISTINCT pi.patient_id) AS reached_count,
-  COUNT(DISTINCT CASE WHEN si.state = 'COMPLETED' THEN pi.patient_id END) AS completed_count
+  COUNT(DISTINCT CASE WHEN si.step_status = 'COMPLETED' THEN pi.patient_id END) AS completed_count
 FROM step_instance si
 JOIN protocol_instance pi ON si.protocol_instance_id = pi.id
 WHERE pi.protocol_definition_id = :protocolDefinitionId
@@ -467,11 +490,12 @@ SELECT
   COUNT(DISTINCT pi.id) AS total_enrollments,
   AVG(
     (SELECT COUNT(*) FROM step_instance si2
-     WHERE si2.protocol_instance_id = pi.id AND si2.state IN ('COMPLETED', 'SKIPPED'))::float /
+     WHERE si2.protocol_instance_id = pi.id AND si2.step_status = 'COMPLETED')::float /
     NULLIF((SELECT COUNT(*) FROM step_instance si3 WHERE si3.protocol_instance_id = pi.id), 0)
   ) AS compliance_rate,
   (SELECT COUNT(*) FROM deviation d
-   JOIN protocol_instance pi2 ON d.protocol_instance_id = pi2.id
+   JOIN step_instance si4 ON d.step_instance_id = si4.id
+   JOIN protocol_instance pi2 ON si4.protocol_instance_id = pi2.id
    JOIN event_log el2 ON el2.protocol_instance_id = pi2.id
    WHERE el2.facility_id = el.facility_id
      AND d.detected_at > NOW() - INTERVAL '30 days') AS active_deviations,
@@ -488,26 +512,27 @@ ORDER BY compliance_rate DESC;
 SELECT
   si.action_id,
   pi.protocol_definition_id,
-  pi.protocol_canonical,
+  pd.url || '|' || pd.version AS protocol_canonical,
   COUNT(*) AS total_deviations,
   COUNT(CASE WHEN d.deviation_type = 'OVERDUE' THEN 1 END) AS overdue_count,
   COUNT(CASE WHEN d.deviation_type = 'MISSED' THEN 1 END) AS missed_count,
   COUNT(DISTINCT pi.patient_id) AS affected_patients
 FROM deviation d
 JOIN step_instance si ON d.step_instance_id = si.id
-JOIN protocol_instance pi ON d.protocol_instance_id = pi.id
-GROUP BY si.action_id, pi.protocol_definition_id, pi.protocol_canonical
+JOIN protocol_instance pi ON si.protocol_instance_id = pi.id
+JOIN protocol_definition pd ON pd.id = pi.protocol_definition_id
+GROUP BY si.action_id, pi.protocol_definition_id, pd.url, pd.version
 ORDER BY total_deviations DESC;
 ```
 
 **Deviation Resolution Rate:**
 ```sql
 SELECT
-  COUNT(*) FILTER (WHERE si.state = 'COMPLETED') AS resolved_count,
-  COUNT(*) FILTER (WHERE si.state = 'MISSED') AS escalated_count,
+  COUNT(*) FILTER (WHERE si.step_status = 'COMPLETED') AS resolved_count,
+  COUNT(*) FILTER (WHERE si.step_status = 'NOT_STARTED' AND si.sla_status = 'MISSED') AS escalated_count,
   COUNT(*) AS total_overdue,
   AVG(EXTRACT(EPOCH FROM (si.completed_at - d.detected_at)) / 86400.0)
-    FILTER (WHERE si.state = 'COMPLETED') AS avg_days_to_resolve
+    FILTER (WHERE si.step_status = 'COMPLETED') AS avg_days_to_resolve
 FROM deviation d
 JOIN step_instance si ON d.step_instance_id = si.id
 WHERE d.deviation_type = 'OVERDUE';
@@ -539,8 +564,8 @@ FROM (
   SELECT
     pf.facility_id AS facility_id,
     pi.patient_id AS patient_id,
-    maxIf(1, si.state = 'MISSED') AS has_missed,
-    maxIf(1, si.state = 'OVERDUE') AS has_overdue
+    maxIf(1, si.step_status != 'COMPLETED' AND si.sla_status = 'MISSED') AS has_missed,
+    maxIf(1, si.step_status != 'COMPLETED' AND si.sla_status = 'OVERDUE') AS has_overdue
   FROM step_instances si
   JOIN protocol_instances pi ON si.protocol_instance_id = pi.id
   JOIN mv_patient_facility_latest pf ON pf.patient_id = pi.patient_id

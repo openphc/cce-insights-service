@@ -31,7 +31,7 @@ flowchart TD
     C --> E[Query protocol_instance + step_instance]
     D --> E
 
-    E --> F[Count step_instance by state<br/>per protocol_instance]
+    E --> F[Count step_instance by step_status<br/>per protocol_instance]
     F --> G{Calculate adherence_rate<br/>completed / total}
     G --> H{"adherence_rate >= 80% ?"}
     H -- Yes --> I[on_track]
@@ -39,7 +39,7 @@ flowchart TD
     J -- Yes --> K[at_risk]
     J -- No --> L[non_compliant]
 
-    I --> M[Group by protocol_canonical]
+    I --> M[Group by protocol_canonical<br/>url pipe version from protocol_definitions]
     K --> M
     L --> M
     M --> N[Build ComplianceSummaryResponse]
@@ -236,8 +236,8 @@ flowchart TD
     C --> D[GROUP BY action_id]
     D --> E[For each action_id]
 
-    E --> F[COUNT by state<br/>COMPLETED, OVERDUE,<br/>MISSED, SKIPPED, PENDING]
-    E --> G[COUNT by completion_status<br/>EARLY, ON_TIME, LATE]
+    E --> F[COUNT by step_status<br/>COMPLETED, NOT_STARTED]
+    E --> G[COUNT by sla_status<br/>OVERDUE, MISSED, unjudged;<br/>COMPLETED+MET = on time,<br/>COMPLETED+OVERDUE/MISSED = late]
     E --> H[AVG + PERCENTILE_CONT 0.5<br/>of completed_at - due_date]
 
     F --> I[Build StepAnalyticsDto]
@@ -256,7 +256,7 @@ flowchart TD
     C --> D[GROUP BY action_id]
     D --> E[For each action_id]
 
-    E --> F[reached = COUNT DISTINCT<br/>patient_id with any state]
+    E --> F[reached = COUNT DISTINCT<br/>patient_id with any step_status]
     E --> G[completed = COUNT DISTINCT<br/>patient_id with COMPLETED]
 
     F --> H["completion_rate =<br/>completed / reached"]
@@ -356,11 +356,11 @@ flowchart TD
 flowchart TD
     A[GET /v1/insights/deviations/resolution-rate] --> B[Parse params]
     B --> C[Query deviation<br/>WHERE deviation_type = OVERDUE<br/>JOIN step_instance]
-    C --> D{Step final state?}
+    C --> D{Step status now?}
 
-    D -- "state = COMPLETED" --> E[Resolved<br/>Patient recovered]
-    D -- "state = MISSED" --> F[Escalated<br/>Unrecoverable]
-    D -- "state = OVERDUE<br/>(still active)" --> G[Still pending]
+    D -- "step_status = COMPLETED" --> E[Resolved<br/>Patient recovered]
+    D -- "NOT_STARTED + sla MISSED" --> F[Escalated<br/>Unrecoverable]
+    D -- "NOT_STARTED + sla OVERDUE<br/>(still active)" --> G[Still pending]
 
     E --> H["resolution_rate =<br/>resolved / total_overdue"]
     F --> H

@@ -3,6 +3,7 @@ package org.openphc.cce.insights.service;
 import lombok.RequiredArgsConstructor;
 import org.openphc.cce.insights.domain.entity.ProtocolInstance;
 import org.openphc.cce.insights.domain.entity.StepInstance;
+import org.openphc.cce.insights.domain.enums.SlaStatus;
 import org.openphc.cce.insights.domain.repository.ProtocolInstanceRepository;
 import org.openphc.cce.insights.domain.repository.StepInstanceRepository;
 import org.springframework.stereotype.Service;
@@ -46,10 +47,12 @@ public class ExportService {
             List<StepInstance> steps = stepsByInstance.getOrDefault(pi.getId(), List.of());
             long total = steps.size();
             long completed = steps.stream().filter(s -> s.getCompletedAt() != null).count();
+            // SLA verdicts, same as ComplianceSummaryDto.StepMetrics: a step completed late keeps its
+            // OVERDUE / MISSED verdict, so it counts here as well as in completed.
             long overdue = steps.stream()
-                    .filter(s -> s.getState().name().equals("OVERDUE")).count();
+                    .filter(s -> s.getSlaStatus() == SlaStatus.OVERDUE).count();
             long missed = steps.stream()
-                    .filter(s -> s.getState().name().equals("MISSED")).count();
+                    .filter(s -> s.getSlaStatus() == SlaStatus.MISSED).count();
             double rate = total > 0 ? Math.round((double) completed / total * 100.0) / 100.0 : 0;
 
             writer.printf("%s,%s,%s,%s,%d,%d,%d,%d,%.2f%n",
@@ -82,10 +85,12 @@ public class ExportService {
             List<StepInstance> steps = stepsByInstance.getOrDefault(pi.getId(), List.of());
             long total = steps.size();
             long completed = steps.stream().filter(s -> s.getCompletedAt() != null).count();
+            // SLA verdicts, same as ComplianceSummaryDto.StepMetrics: a step completed late keeps its
+            // OVERDUE / MISSED verdict, so it counts here as well as in completed.
             long overdue = steps.stream()
-                    .filter(s -> s.getState().name().equals("OVERDUE")).count();
+                    .filter(s -> s.getSlaStatus() == SlaStatus.OVERDUE).count();
             long missed = steps.stream()
-                    .filter(s -> s.getState().name().equals("MISSED")).count();
+                    .filter(s -> s.getSlaStatus() == SlaStatus.MISSED).count();
             double rate = total > 0 ? Math.round((double) completed / total * 100.0) / 100.0 : 0;
 
             Map<String, Object> row = new LinkedHashMap<>();

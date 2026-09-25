@@ -6,8 +6,8 @@ import org.jooq.Record;
 import org.jooq.Table;
 import org.jooq.impl.DSL;
 import org.openphc.cce.insights.domain.entity.StepInstance;
-import org.openphc.cce.insights.domain.enums.CompletionStatus;
-import org.openphc.cce.insights.domain.enums.StepState;
+import org.openphc.cce.insights.domain.enums.SlaStatus;
+import org.openphc.cce.insights.domain.enums.StepStatus;
 import org.springframework.stereotype.Repository;
 
 import java.time.OffsetDateTime;
@@ -64,18 +64,18 @@ public class StepInstanceRepositoryImpl
     // ══════════════════════════════════════════════════════════════════════════════
 
     /**
-     * Derives the "completed_steps" aggregate field — steps in COMPLETED or SKIPPED state
-     * that have no deviation record. Uses a LEFT JOIN on deviations (alias "d") rather than
-     * a subquery inside the aggregate, because ClickHouse does not support subqueries inside
-     * aggregate function conditions (Code 62 syntax error).
+     * Derives the "completed_steps" aggregate field — steps with step_status COMPLETED
+     * that have no deviation record (1.x also counted SKIPPED, which 2.0.0 dropped). Uses a LEFT
+     * JOIN on deviations (alias "d") rather than a subquery inside the aggregate, because
+     * ClickHouse does not support subqueries inside aggregate function conditions (Code 62 syntax error).
      * The caller must add: LEFT JOIN finalAs(DEVIATIONS, "d") ON d.step_instance_id = si.id
      */
     private Field<Long> completedStepsAggregate(String stepAlias) {
         // ClickHouse LEFT JOIN on non-Nullable UUID columns returns the zero UUID (not NULL)
         // for unmatched rows, so isNull(d.id) is always false. Compare against zero UUID instead.
         return DSL.field(
-                "uniqIf(" + stepAlias + ".id, " + stepAlias + "." + STEP_INSTANCES.STATE.getName() +
-                " IN ('COMPLETED','SKIPPED') AND d.id = toUUID('00000000-0000-0000-0000-000000000000'))",
+                "uniqIf(" + stepAlias + ".id, " + stepAlias + "." + STEP_INSTANCES.STEP_STATUS.getName() +
+                " = 'COMPLETED' AND d.id = toUUID('00000000-0000-0000-0000-000000000000'))",
                 Long.class
         ).as("completed_steps");
     }
@@ -137,14 +137,15 @@ public class StepInstanceRepositoryImpl
      * call here breaks at compile time, surfacing the mismatch immediately.
      */
     private StepInstance toStepInstance(Record r) {
-        StepState state = null;
-        try { state = StepState.valueOf(r.get(STEP_INSTANCES.STATE.getName(), String.class)); }
+        StepStatus stepStatus = null;
+        try { stepStatus = StepStatus.valueOf(r.get(STEP_INSTANCES.STEP_STATUS.getName(), String.class)); }
         catch (Exception ignored) {}
 
-        CompletionStatus cs = null;
+        // sla_status is '' until the Step SLA Service reaches a verdict — kept as null here.
+        SlaStatus slaStatus = null;
         try {
-            String csStr = r.get(STEP_INSTANCES.COMPLETION_STATUS.getName(), String.class);
-            if (csStr != null && !csStr.isEmpty()) cs = CompletionStatus.valueOf(csStr);
+            String slaStr = r.get(STEP_INSTANCES.SLA_STATUS.getName(), String.class);
+            if (slaStr != null && !slaStr.isEmpty()) slaStatus = SlaStatus.valueOf(slaStr);
         } catch (Exception ignored) {}
 
         Integer repeatIdx = r.get(STEP_INSTANCES.REPEAT_INDEX.getName(), Integer.class);
@@ -153,34 +154,81 @@ public class StepInstanceRepositoryImpl
                 .protocolInstanceId(r.get(STEP_INSTANCES.PROTOCOL_INSTANCE_ID.getName(), UUID.class))
                 .actionId(r.get(STEP_INSTANCES.ACTION_ID.getName(), String.class))
                 .repeatIndex(repeatIdx != null ? repeatIdx : 0)
-                .state(state)
+                .stepStatus(stepStatus)
+                .slaStatus(slaStatus)
                 .dueDate(recordDateTime(r, STEP_INSTANCES.DUE_DATE.getName()))
-                .overdueDate(recordDateTime(r, STEP_INSTANCES.OVERDUE_DATE.getName()))
-                .missedDate(recordDateTime(r, STEP_INSTANCES.MISSED_DATE.getName()))
                 .completedAt(recordDateTime(r, STEP_INSTANCES.COMPLETED_AT.getName()))
-                .completionStatus(cs)
                 .completedBySource(r.get(STEP_INSTANCES.COMPLETED_BY_SOURCE.getName(), String.class))
-                .completedByEventId(parseUUID(r.get(STEP_INSTANCES.COMPLETED_BY_EVENT_ID.getName(), String.class)))
+                .matchedEventId(parseUUID(r.get(STEP_INSTANCES.MATCHED_EVENT_ID.getName(), String.class)))
                 .requiredBehavior(r.get(STEP_INSTANCES.REQUIRED_BEHAVIOR.getName(), String.class))
                 .build();
     }
 
-    /** Maps a step-analytics Record (12 columns) to Object[]. */
+    /** Maps a step-analytics Record (11 columns) to Object[]. */
     private static Object[] toStepAnalyticsRow(Record r) {
         return new Object[]{
                 r.get(STEP_INSTANCES.ACTION_ID.getName(), String.class),
                 r.get("total_instances",         Long.class),
                 r.get("completed_count",         Long.class),
-                r.get("early_count",             Long.class),
-                r.get("on_time_count",           Long.class),
-                r.get("late_count",              Long.class),
+                r.get("completed_on_time_count", Long.class),
+                r.get("completed_late_count",    Long.class),
                 r.get("overdue_count",           Long.class),
                 r.get("missed_count",            Long.class),
-                r.get("skipped_count",           Long.class),
-                r.get("pending_count",           Long.class),
+                r.get("not_started_count",       Long.class),
+                r.get("sla_unjudged_count",      Long.class),
                 r.get("avg_days_to_complete",    Double.class),
                 r.get("median_days_to_complete", Double.class)
         };
+    }
+
+    /**
+     * Per-action patient counts shared by the two step-analytics queries (aliases si, pi).
+     * 2.0.0 two-status model: step_status says whether the step was recorded, sla_status whether it
+     * was on time. overdue/missed are SLA verdicts, so they include steps completed after the
+     * threshold; completed_on_time = COMPLETED+MET, completed_late = COMPLETED+OVERDUE|MISSED.
+     */
+    private static List<Field<?>> stepAnalyticsFields() {
+        String patient = "pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName();
+        String status  = "si." + STEP_INSTANCES.STEP_STATUS.getName();
+        String sla     = "si." + STEP_INSTANCES.SLA_STATUS.getName();
+        String daysToComplete = "dateDiff('second', si.due_date, si.completed_at) / 86400.0";
+        String wasCompleted   = status + " = 'COMPLETED' AND isNotNull(si.due_date)";
+        return List.of(
+                DSL.field("si." + STEP_INSTANCES.ACTION_ID.getName())
+                   .as(STEP_INSTANCES.ACTION_ID.getName()),
+                uniq(patient).as("total_instances"),
+                uniqIf(patient, status + " = 'COMPLETED'").as("completed_count"),
+                uniqIf(patient, status + " = 'COMPLETED' AND " + sla + " = 'MET'").as("completed_on_time_count"),
+                uniqIf(patient, status + " = 'COMPLETED' AND " + sla + " IN ('OVERDUE','MISSED')").as("completed_late_count"),
+                uniqIf(patient, sla + " = 'OVERDUE'").as("overdue_count"),
+                uniqIf(patient, sla + " = 'MISSED'").as("missed_count"),
+                uniqIf(patient, status + " = 'NOT_STARTED'").as("not_started_count"),
+                uniqIf(patient, sla + " = ''").as("sla_unjudged_count"),
+                avgIf(daysToComplete, wasCompleted).as("avg_days_to_complete"),
+                medianIf(daysToComplete, wasCompleted).as("median_days_to_complete"));
+    }
+
+    /**
+     * Step-metric aggregate shared by the aggregateStepMetrics* methods (aliases si, pi; si is
+     * LEFT-joined, so a pi with no steps yields one row with step_status '' — every count below
+     * excludes it). Column order = {@link StepInstanceRepository#aggregateStepMetrics} and the
+     * step_* columns of mv_daily_compliance_kpis.
+     */
+    private static List<Field<?>> stepMetricsFields() {
+        String status = "si." + STEP_INSTANCES.STEP_STATUS.getName();
+        String sla    = "si." + STEP_INSTANCES.SLA_STATUS.getName();
+        return List.of(
+                DSL.field("countIf(" + status + " = 'COMPLETED')",                         Long.class).as("completed"),
+                DSL.field("countIf(" + status + " = 'NOT_STARTED')",                       Long.class).as("not_started"),
+                DSL.field("countIf(" + sla + " = 'MET')",                                  Long.class).as("sla_met"),
+                DSL.field("countIf(" + sla + " = 'OVERDUE')",                              Long.class).as("sla_overdue"),
+                DSL.field("countIf(" + sla + " = 'MISSED')",                               Long.class).as("sla_missed"),
+                DSL.field("countIf(" + status + " != '' AND " + sla + " = '')",           Long.class).as("sla_unjudged"),
+                DSL.field("countIf(" + status + " = 'COMPLETED' AND " + sla + " = 'MET')", Long.class).as("completed_on_time"),
+                DSL.field("countIf(" + status + " = 'COMPLETED' AND " + sla + " IN ('OVERDUE','MISSED'))",
+                                                                                           Long.class).as("completed_late"),
+                DSL.field("countIf(" + status + " != '')",                                 Long.class).as("total_steps"),
+                DSL.field("uniq(pi.id)",                                                   Long.class).as("total_enrollments"));
     }
 
     /** Maps a compliance Record (groupBy column, total_steps, completed_steps) to Object[]. */
@@ -241,16 +289,16 @@ public class StepInstanceRepositoryImpl
     @Override
     public List<Object[]> findProtocolStepMetricsByFacility(String facilityId) {
         var si = finalAs(STEP_INSTANCES, "si");
-        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        var pi = protocolInstancesWithCanonical("pi");
         var pf = MV_PATIENT_FACILITY_LATEST.as("pf");
-        String state = "si." + STEP_INSTANCES.STATE.getName();
+        String status = "si." + STEP_INSTANCES.STEP_STATUS.getName();
 
         return dsl.select(
                     DSL.field("pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName()),
-                    DSL.field("any(pi." + PROTOCOL_INSTANCES.PROTOCOL_CANONICAL.getName() + ")").as("protocol_canonical"),
+                    DSL.field("any(pi.protocol_canonical)").as("protocol_canonical"),
                     DSL.field("uniq(pi.id)", Long.class).as("enrollments"),
-                    DSL.field("countIf(" + state + " != '')", Long.class).as("total_steps"),
-                    DSL.field("countIf(" + state + " IN ('COMPLETED','SKIPPED'))", Long.class).as("completed_steps")
+                    DSL.field("countIf(" + status + " != '')", Long.class).as("total_steps"),
+                    DSL.field("countIf(" + status + " = 'COMPLETED')", Long.class).as("completed_steps")
                 )
                 .from(pi)
                 .join(pf).on(DSL.condition(
@@ -283,48 +331,50 @@ public class StepInstanceRepositoryImpl
     }
 
     @Override
-    public List<Object[]> countByProtocolInstanceIdGroupByState(UUID protocolInstanceId) {
+    public List<Object[]> countByProtocolInstanceIdGroupByStatus(UUID protocolInstanceId) {
         var stepInstances = finalAs(STEP_INSTANCES, "si");
-        return dsl.select(DSL.field("si." + STEP_INSTANCES.STATE.getName()), DSL.count())
+        return dsl.select(
+                    DSL.field("si." + STEP_INSTANCES.STEP_STATUS.getName()),
+                    DSL.field("si." + STEP_INSTANCES.SLA_STATUS.getName()),
+                    DSL.count())
                   .from(stepInstances)
                   .where(DSL.condition(
                           "si." + STEP_INSTANCES.PROTOCOL_INSTANCE_ID.getName() + " = toUUID(?)",
                           protocolInstanceId.toString()))
-                  .groupBy(DSL.field("si." + STEP_INSTANCES.STATE.getName()))
+                  .groupBy(
+                          DSL.field("si." + STEP_INSTANCES.STEP_STATUS.getName()),
+                          DSL.field("si." + STEP_INSTANCES.SLA_STATUS.getName()))
                   .fetch()
-                  .map(r -> new Object[]{r.value1(), r.value2()});
+                  .map(r -> new Object[]{r.value1(), r.value2(), r.value3()});
+    }
+
+    @Override
+    public List<Object[]> findSlaThresholdsByStepInstanceIdIn(List<UUID> stepInstanceIds) {
+        if (stepInstanceIds == null || stepInstanceIds.isEmpty()) return List.of();
+        List<String> idStrings = stepInstanceIds.stream().map(UUID::toString).collect(java.util.stream.Collectors.toList());
+        List<Object[]> result = new java.util.ArrayList<>();
+        for (List<String> chunk : chunkIds(idStrings)) {
+            result.addAll(dsl.select(
+                        DSL.field("sla.step_instance_id"),
+                        DSL.field("sla.due_threshold").as("due_threshold"),
+                        DSL.field("sla.missed_threshold").as("missed_threshold"))
+                    .from(slaThresholds())
+                    .where(DSL.field("sla.step_instance_id").in(chunk))
+                    .fetch()
+                    .map(r -> new Object[]{
+                            parseUUID(r.get(0, String.class)),
+                            recordDateTime(r, "due_threshold"),
+                            recordDateTime(r, "missed_threshold")}));
+        }
+        return result;
     }
 
     @Override
     public List<Object[]> findStepAnalytics(UUID protocolDefId) {
         var stepInstances = finalAs(STEP_INSTANCES, "si");
         var protocolInstances = finalAs(PROTOCOL_INSTANCES, "pi");
-        String daysToComplete = "dateDiff('second', si.due_date, si.completed_at) / 86400.0";
-        String wasCompleted   = "si." + STEP_INSTANCES.STATE.getName() + " = 'COMPLETED' AND isNotNull(si.due_date)";
 
-        return dsl.select(
-                    DSL.field("si." + STEP_INSTANCES.ACTION_ID.getName())
-                       .as(STEP_INSTANCES.ACTION_ID.getName()),
-                    uniq("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()).as("total_instances"),
-                    uniqIf("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName(),
-                            "si." + STEP_INSTANCES.STATE.getName() + " = 'COMPLETED'").as("completed_count"),
-                    uniqIf("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName(),
-                            "si." + STEP_INSTANCES.COMPLETION_STATUS.getName() + " = 'EARLY'").as("early_count"),
-                    uniqIf("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName(),
-                            "si." + STEP_INSTANCES.COMPLETION_STATUS.getName() + " = 'ON_TIME'").as("on_time_count"),
-                    uniqIf("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName(),
-                            "si." + STEP_INSTANCES.COMPLETION_STATUS.getName() + " = 'LATE'").as("late_count"),
-                    uniqIf("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName(),
-                            "si." + STEP_INSTANCES.STATE.getName() + " = 'OVERDUE'").as("overdue_count"),
-                    uniqIf("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName(),
-                            "si." + STEP_INSTANCES.STATE.getName() + " = 'MISSED'").as("missed_count"),
-                    uniqIf("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName(),
-                            "si." + STEP_INSTANCES.STATE.getName() + " = 'SKIPPED'").as("skipped_count"),
-                    uniqIf("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName(),
-                            "si." + STEP_INSTANCES.STATE.getName() + " IN ('PENDING','DUE')").as("pending_count"),
-                    avgIf(daysToComplete, wasCompleted).as("avg_days_to_complete"),
-                    medianIf(daysToComplete, wasCompleted).as("median_days_to_complete")
-                )
+        return dsl.select(stepAnalyticsFields())
                 .from(stepInstances)
                 .join(protocolInstances).on(DSL.condition(
                         "si." + STEP_INSTANCES.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
@@ -341,32 +391,8 @@ public class StepInstanceRepositoryImpl
         var stepInstances = finalAs(STEP_INSTANCES, "si");
         var protocolInstances = finalAs(PROTOCOL_INSTANCES, "pi");
         var patientFacility = MV_PATIENT_FACILITY_LATEST.as("pf");
-        String daysToComplete = "dateDiff('second', si.due_date, si.completed_at) / 86400.0";
-        String wasCompleted   = "si." + STEP_INSTANCES.STATE.getName() + " = 'COMPLETED' AND isNotNull(si.due_date)";
 
-        return dsl.select(
-                    DSL.field("si." + STEP_INSTANCES.ACTION_ID.getName())
-                       .as(STEP_INSTANCES.ACTION_ID.getName()),
-                    uniq("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()).as("total_instances"),
-                    uniqIf("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName(),
-                            "si." + STEP_INSTANCES.STATE.getName() + " = 'COMPLETED'").as("completed_count"),
-                    uniqIf("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName(),
-                            "si." + STEP_INSTANCES.COMPLETION_STATUS.getName() + " = 'EARLY'").as("early_count"),
-                    uniqIf("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName(),
-                            "si." + STEP_INSTANCES.COMPLETION_STATUS.getName() + " = 'ON_TIME'").as("on_time_count"),
-                    uniqIf("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName(),
-                            "si." + STEP_INSTANCES.COMPLETION_STATUS.getName() + " = 'LATE'").as("late_count"),
-                    uniqIf("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName(),
-                            "si." + STEP_INSTANCES.STATE.getName() + " = 'OVERDUE'").as("overdue_count"),
-                    uniqIf("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName(),
-                            "si." + STEP_INSTANCES.STATE.getName() + " = 'MISSED'").as("missed_count"),
-                    uniqIf("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName(),
-                            "si." + STEP_INSTANCES.STATE.getName() + " = 'SKIPPED'").as("skipped_count"),
-                    uniqIf("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName(),
-                            "si." + STEP_INSTANCES.STATE.getName() + " IN ('PENDING','DUE')").as("pending_count"),
-                    avgIf(daysToComplete, wasCompleted).as("avg_days_to_complete"),
-                    medianIf(daysToComplete, wasCompleted).as("median_days_to_complete")
-                )
+        return dsl.select(stepAnalyticsFields())
                 .from(stepInstances)
                 .join(protocolInstances).on(DSL.condition(
                         "si." + STEP_INSTANCES.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
@@ -391,7 +417,7 @@ public class StepInstanceRepositoryImpl
                        .as(STEP_INSTANCES.ACTION_ID.getName()),
                     uniq("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()).as("reached_count"),
                     uniqIf("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName(),
-                            "si." + STEP_INSTANCES.STATE.getName() + " = 'COMPLETED'").as("completed_count")
+                            "si." + STEP_INSTANCES.STEP_STATUS.getName() + " = 'COMPLETED'").as("completed_count")
                 )
                 .from(stepInstances)
                 .join(protocolInstances).on(DSL.condition(
@@ -455,7 +481,7 @@ public class StepInstanceRepositoryImpl
                 .where(DSL.field("pf.facility_id").ne(""))
                 .and(DSL.condition(
                         "(endsWith(" + actionId + ", '-referral') OR endsWith(" + actionId + ", '-referral-ack'))"))
-                .and(DSL.field("si." + STEP_INSTANCES.STATE.getName()).eq("COMPLETED"))
+                .and(DSL.field("si." + STEP_INSTANCES.STEP_STATUS.getName()).eq("COMPLETED"))
                 .and(DSL.condition(
                         "toUUIDOrNull(?) IS NULL OR pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() +
                         " = toUUIDOrNull(?)", pid, pid))
@@ -541,14 +567,19 @@ public class StepInstanceRepositoryImpl
         var stepInstances = finalAs(STEP_INSTANCES, "si");
         var protocolInstances = finalAs(PROTOCOL_INSTANCES, "pi");
         var patientFacility = MV_PATIENT_FACILITY_LATEST.as("pf");
-        String state = "si." + STEP_INSTANCES.STATE.getName();
+        String stepStatus = "si." + STEP_INSTANCES.STEP_STATUS.getName();
+        String slaStatus = "si." + STEP_INSTANCES.SLA_STATUS.getName();
         String patientId = "pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName();
 
+        // Outstanding steps only: a step completed late keeps its OVERDUE/MISSED verdict but no
+        // longer puts the patient at risk (1.x: state MISSED / OVERDUE, never COMPLETED).
         var perPatient = dsl.select(
                     DSL.field("pf.facility_id").as("facility_id"),
                     DSL.field(patientId).as("patient_id"),
-                    DSL.field("maxIf(1, " + state + " = 'MISSED')", Integer.class).as("has_missed"),
-                    DSL.field("maxIf(1, " + state + " = 'OVERDUE')", Integer.class).as("has_overdue")
+                    DSL.field("maxIf(1, " + stepStatus + " != 'COMPLETED' AND " + slaStatus + " = 'MISSED')",
+                            Integer.class).as("has_missed"),
+                    DSL.field("maxIf(1, " + stepStatus + " != 'COMPLETED' AND " + slaStatus + " = 'OVERDUE')",
+                            Integer.class).as("has_overdue")
                 )
                 .from(stepInstances)
                 .join(protocolInstances).on(DSL.condition(
@@ -579,21 +610,8 @@ public class StepInstanceRepositoryImpl
     public Object[] aggregateStepMetrics(UUID protocolDefinitionId) {
         var si = finalAs(STEP_INSTANCES, "si");
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
-        String state = "si." + STEP_INSTANCES.STATE.getName();
-        String cs    = "si." + STEP_INSTANCES.COMPLETION_STATUS.getName();
 
-        org.jooq.Record r = dsl.select(
-                    DSL.field("countIf(" + state + " IN ('COMPLETED','SKIPPED'))", Long.class).as("completed"),
-                    DSL.field("countIf(" + state + " = 'OVERDUE')",                Long.class).as("overdue"),
-                    DSL.field("countIf(" + state + " = 'MISSED')",                 Long.class).as("missed"),
-                    DSL.field("countIf(" + state + " = 'DUE')",                    Long.class).as("due"),
-                    DSL.field("countIf(" + state + " = 'PENDING')",                Long.class).as("pending"),
-                    DSL.field("countIf(" + cs    + " = 'EARLY')",                  Long.class).as("early"),
-                    DSL.field("countIf(" + cs    + " = 'ON_TIME')",                Long.class).as("on_time"),
-                    DSL.field("countIf(" + cs    + " = 'LATE')",                   Long.class).as("late"),
-                    DSL.field("countIf(" + state + " != '')",                      Long.class).as("total_steps"),
-                    DSL.field("uniq(pi.id)",                                        Long.class).as("total_enrollments")
-                )
+        org.jooq.Record r = dsl.select(stepMetricsFields())
                 .from(pi)
                 .leftJoin(si).on(DSL.condition(
                         "si." + STEP_INSTANCES.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
@@ -609,21 +627,8 @@ public class StepInstanceRepositoryImpl
         var si = finalAs(STEP_INSTANCES, "si");
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
         var pf = MV_PATIENT_FACILITY_LATEST.as("pf");
-        String state = "si." + STEP_INSTANCES.STATE.getName();
-        String cs    = "si." + STEP_INSTANCES.COMPLETION_STATUS.getName();
 
-        org.jooq.Record r = dsl.select(
-                    DSL.field("countIf(" + state + " IN ('COMPLETED','SKIPPED'))", Long.class).as("completed"),
-                    DSL.field("countIf(" + state + " = 'OVERDUE')",                Long.class).as("overdue"),
-                    DSL.field("countIf(" + state + " = 'MISSED')",                 Long.class).as("missed"),
-                    DSL.field("countIf(" + state + " = 'DUE')",                    Long.class).as("due"),
-                    DSL.field("countIf(" + state + " = 'PENDING')",                Long.class).as("pending"),
-                    DSL.field("countIf(" + cs    + " = 'EARLY')",                  Long.class).as("early"),
-                    DSL.field("countIf(" + cs    + " = 'ON_TIME')",                Long.class).as("on_time"),
-                    DSL.field("countIf(" + cs    + " = 'LATE')",                   Long.class).as("late"),
-                    DSL.field("countIf(" + state + " != '')",                      Long.class).as("total_steps"),
-                    DSL.field("uniq(pi.id)",                                        Long.class).as("total_enrollments")
-                )
+        org.jooq.Record r = dsl.select(stepMetricsFields())
                 .from(pi)
                 .join(pf).on(DSL.condition(
                         "pf.patient_id = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
@@ -639,21 +644,8 @@ public class StepInstanceRepositoryImpl
         var si = finalAs(STEP_INSTANCES, "si");
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
         var pf = MV_PATIENT_FACILITY_LATEST.as("pf");
-        String state = "si." + STEP_INSTANCES.STATE.getName();
-        String cs    = "si." + STEP_INSTANCES.COMPLETION_STATUS.getName();
 
-        org.jooq.Record r = dsl.select(
-                    DSL.field("countIf(" + state + " IN ('COMPLETED','SKIPPED'))", Long.class).as("completed"),
-                    DSL.field("countIf(" + state + " = 'OVERDUE')",                Long.class).as("overdue"),
-                    DSL.field("countIf(" + state + " = 'MISSED')",                 Long.class).as("missed"),
-                    DSL.field("countIf(" + state + " = 'DUE')",                    Long.class).as("due"),
-                    DSL.field("countIf(" + state + " = 'PENDING')",                Long.class).as("pending"),
-                    DSL.field("countIf(" + cs    + " = 'EARLY')",                  Long.class).as("early"),
-                    DSL.field("countIf(" + cs    + " = 'ON_TIME')",                Long.class).as("on_time"),
-                    DSL.field("countIf(" + cs    + " = 'LATE')",                   Long.class).as("late"),
-                    DSL.field("countIf(" + state + " != '')",                      Long.class).as("total_steps"),
-                    DSL.field("uniq(pi.id)",                                        Long.class).as("total_enrollments")
-                )
+        org.jooq.Record r = dsl.select(stepMetricsFields())
                 .from(pi)
                 .join(pf).on(DSL.condition(
                         "pf.patient_id = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
@@ -671,21 +663,8 @@ public class StepInstanceRepositoryImpl
     public Object[] aggregateStepMetricsAll() {
         var si = finalAs(STEP_INSTANCES, "si");
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
-        String state = "si." + STEP_INSTANCES.STATE.getName();
-        String cs    = "si." + STEP_INSTANCES.COMPLETION_STATUS.getName();
 
-        org.jooq.Record r = dsl.select(
-                    DSL.field("countIf(" + state + " IN ('COMPLETED','SKIPPED'))", Long.class).as("completed"),
-                    DSL.field("countIf(" + state + " = 'OVERDUE')",                Long.class).as("overdue"),
-                    DSL.field("countIf(" + state + " = 'MISSED')",                 Long.class).as("missed"),
-                    DSL.field("countIf(" + state + " = 'DUE')",                    Long.class).as("due"),
-                    DSL.field("countIf(" + state + " = 'PENDING')",                Long.class).as("pending"),
-                    DSL.field("countIf(" + cs    + " = 'EARLY')",                  Long.class).as("early"),
-                    DSL.field("countIf(" + cs    + " = 'ON_TIME')",                Long.class).as("on_time"),
-                    DSL.field("countIf(" + cs    + " = 'LATE')",                   Long.class).as("late"),
-                    DSL.field("countIf(" + state + " != '')",                      Long.class).as("total_steps"),
-                    DSL.field("uniq(pi.id)",                                        Long.class).as("total_enrollments")
-                )
+        org.jooq.Record r = dsl.select(stepMetricsFields())
                 .from(pi)
                 .leftJoin(si).on(DSL.condition(
                         "si." + STEP_INSTANCES.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
@@ -696,13 +675,13 @@ public class StepInstanceRepositoryImpl
     @Override
     public Object[] aggregateConsentMetrics() {
         var si = finalAs(STEP_INSTANCES, "si");
-        String state = "si." + STEP_INSTANCES.STATE.getName();
+        String stepStatus = "si." + STEP_INSTANCES.STEP_STATUS.getName();
         String actionId = "si." + STEP_INSTANCES.ACTION_ID.getName();
 
         org.jooq.Record r = dsl.select(
-                    DSL.field("countIf(" + actionId + " = 'consent-request' AND " + state + " = 'COMPLETED')",
+                    DSL.field("countIf(" + actionId + " = 'consent-request' AND " + stepStatus + " = 'COMPLETED')",
                             Long.class).as("total_received"),
-                    DSL.field("countIf(" + actionId + " = 'consent-verification' AND " + state + " = 'COMPLETED')",
+                    DSL.field("countIf(" + actionId + " = 'consent-verification' AND " + stepStatus + " = 'COMPLETED')",
                             Long.class).as("total_verified")
                 )
                 .from(si)

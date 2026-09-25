@@ -2,7 +2,7 @@
 
 Comprehensive reference for all database tables queried, DTOs, query parameters, aggregation formulas, and metrics used by the Insights Service.
 
-> The Insights Service does **not own** any database tables. All tables are owned by the Compliance Service, Intelligence Service, or Collector Service. This data dictionary documents the read-only view used by the Insights Service.
+> The Insights Service does **not own** any database tables. All tables are owned by the Protocol Service, Matcher Service and Step SLA Service (the 1.x Compliance Service was split into these three in 2.0.0), the Intelligence Service, or the Collector Service. The service reads their ClickHouse copies in `cce_analytics` (Debezium CDC from PostgreSQL `ccedb`; DDL in `cce-data-pipeline/schema`), where table names are plural (`step_instances`, `deviations`, `matcher_event_logs`, …). This data dictionary documents the read-only view used by the Insights Service.
 
 ---
 
@@ -30,17 +30,20 @@ Patient enrollments in protocols. Primary table for compliance aggregation.
 | `id` | `UUID` | Yes | PK |
 | `protocol_definition_id` | `UUID` | Yes | FK → `protocol_definition.id` |
 | `patient_id` | `VARCHAR` | Yes | Patient UPID — group-by key |
-| `protocol_canonical` | `VARCHAR` | Yes | `url|version` for display |
 | `status` | `VARCHAR` | Yes | `ACTIVE`, `COMPLETED`, `WITHDRAWN`, `EXPIRED` |
 | `enrolled_at` | `TIMESTAMPTZ` | Yes | Enrollment timestamp |
 | `created_at` | `TIMESTAMPTZ` | Yes | Record creation |
 | `updated_at` | `TIMESTAMPTZ` | Yes | Last status change |
+
+> **2.0.0:** `protocol_canonical` was dropped. The API's `protocolCanonical` (`url|version`) is rebuilt by joining `protocol_definitions` on `protocol_definition_id` (`AbstractClickHouseRepository.protocolInstancesWithCanonical`).
 
 > **Note:** `protocol_instance` does not have a `facility_id` column. Facility-based filtering is achieved by joining through `event_log.facility_id` (using `event_log.protocol_instance_id`).
 
 ### 1.3 `step_instance`
 
 Individual protocol steps per patient. Primary table for compliance calculations.
+2.0.0 split the 1.x `state` column into two independent statuses written by two services:
+`step_status` (Matcher — did the expected event arrive?) and `sla_status` (Step SLA — was the deadline met?).
 
 | Column | Type | Used By Insights | Purpose |
 |--------|------|------------------|---------|
@@ -48,13 +51,34 @@ Individual protocol steps per patient. Primary table for compliance calculations
 | `protocol_instance_id` | `UUID` | Yes | FK → `protocol_instance.id` |
 | `action_id` | `VARCHAR` | Yes | PlanDefinition action ID |
 | `repeat_index` | `INTEGER` | Yes | Recurrence index |
-| `state` | `VARCHAR` | Yes | `PENDING`, `DUE`, `OVERDUE`, `MISSED`, `COMPLETED`, `SKIPPED` |
+| `step_status` | `VARCHAR` | Yes | `NOT_STARTED`, `COMPLETED` |
+| `sla_status` | `VARCHAR` | Yes | `OVERDUE`, `MISSED`, `MET`; NULL in PostgreSQL = not yet judged, which lands in ClickHouse as `''` (also the permanent value for optional steps) |
 | `due_date` | `TIMESTAMPTZ` | Yes | When step becomes due |
-| `overdue_date` | `TIMESTAMPTZ` | Yes | When step becomes overdue |
-| `missed_date` | `TIMESTAMPTZ` | Yes | When step becomes missed |
-| `completed_at` | `TIMESTAMPTZ` | Yes | Completion timestamp |
+| `completed_at` | `TIMESTAMPTZ` | Yes | Completion timestamp (clinical time of the completing event) |
 | `completed_by_source` | `VARCHAR` | Yes | Source system that completed |
-| `completion_status` | `VARCHAR` | Yes | `EARLY`, `ON_TIME`, `LATE` |
+| `matched_event_id` | `UUID` | Yes | FK → `matcher_event_log.id` (1.x `completed_by_event_id`) |
+| `required_behavior` | `VARCHAR` | Yes | FHIR `requiredBehavior`: `must`, `could`, `must-unless-documented` |
+
+> **Removed in 2.0.0:** `state`, `completion_status`, `overdue_date`, `missed_date`. The overdue / missed
+> thresholds now live in `step_sla_state_transition` (§1.3a). `MET` is only reached by a completion that
+> beat the due date, so `OVERDUE` / `MISSED` can sit on a completed (late) step as well as an outstanding one.
+
+### 1.3a `step_sla_state_transition` (new in 2.0.0)
+
+Each mandatory step's SLA schedule — one row per verdict the Step SLA Service is to reach (Matcher
+inserts, Step SLA marks processed).
+
+| Column | Type | Used By Insights | Purpose |
+|--------|------|------------------|---------|
+| `id` | `UUID` | No | PK |
+| `step_instance_id` | `UUID` | Yes | FK → `step_instance.id` |
+| `transition_type` | `VARCHAR` | Yes | `DUE_DATE_REACHED` (→ OVERDUE on a breach), `MISSED_DATE_REACHED` (→ MISSED), `MET_CONDITION_REACHED` (→ MET) |
+| `process_by` | `TIMESTAMPTZ` | Yes | The threshold itself (clinical time): the due date, due date + tolerance-days, or the beating `completed_at` |
+| `is_processed`, `processed_at`, `processed_by`, `attempts`, `next_attempt_at` | — | No | Step SLA work-queue bookkeeping |
+
+Insights reads `process_by` of `DUE_DATE_REACHED` / `MISSED_DATE_REACHED` as the clinical occurrence
+date of OVERDUE / MISSED deviations (§3.1a) and as `overdueDate` / `missedDate` in the protocol-tracking
+detail (1.x `step_instance.overdue_date` / `missed_date`).
 
 ### 1.4 `deviation`
 
@@ -63,9 +87,8 @@ Recorded deviations from protocol pathways.
 | Column | Type | Used By Insights | Purpose |
 |--------|------|------------------|---------|
 | `id` | `UUID` | Yes | PK |
-| `protocol_instance_id` | `UUID` | Yes | FK → `protocol_instance.id` |
-| `step_instance_id` | `UUID` | Yes | FK → `step_instance.id` |
-| `deviation_type` | `VARCHAR` | Yes | `OVERDUE` or `MISSED` |
+| `step_instance_id` | `UUID` | Yes | FK → `step_instance.id` — also the only way to the enrollment (`step_instance.protocol_instance_id`) since 2.0.0 dropped `deviation.protocol_instance_id` |
+| `deviation_type` | `VARCHAR` | Yes | `OVERDUE`, `MISSED` (Step SLA Service) or `ORDER_VIOLATION` (Matcher) — at most one row per (step, type) |
 | `detected_at` | `TIMESTAMPTZ` | Yes | When deviation was detected |
 | `metadata` | `JSONB` | Yes | Additional context (due date, overdue date) |
 
@@ -76,7 +99,7 @@ Inbound clinical event audit trail. Queried for patient timeline views and **eve
 | Column | Type | Used By Insights | Purpose |
 |--------|------|------------------|---------|  
 | `id` | `UUID` | Yes | PK |
-| `cloudevents_id` | `VARCHAR` | No | CloudEvents ID (used for idempotency by Compliance Service) |
+| `cloudevents_id` | `VARCHAR` | No | CloudEvents ID (used for idempotency by the Matcher Service) |
 | `subject` | `VARCHAR` | Yes | Patient UPID — filter key |
 | `type` | `VARCHAR` | Yes | CloudEvents `type` for display |
 | `event_time` | `TIMESTAMPTZ` | Yes | Clinical event timestamp |
@@ -173,25 +196,35 @@ Destination routing configuration for intelligence delivery.
 | `WITHDRAWN` | Enrollment cancelled |
 | `EXPIRED` | Protocol expired without completion |
 
-### 2.2 `StepState`
-
-| Value | Description | Compliance Category |
-|-------|-------------|---------------------|
-| `NOT_STARTED` | Step not yet activated | — |
-| `PENDING` | Not yet due | on_track |
-| `DUE` | Currently due | on_track |
-| `OVERDUE` | Past tolerance window | at_risk |
-| `MISSED` | Never completed (terminal) | non_compliant |
-| `COMPLETED` | Completed by event (terminal) | on_track |
-| `SKIPPED` | Skipped (optional) (terminal) | on_track |
-
-### 2.3 `CompletionStatus`
+### 2.2 `StepStatus` (`step_instance.step_status`, Matcher Service)
 
 | Value | Description |
 |-------|-------------|
-| `EARLY` | Completed before `due_date` |
-| `ON_TIME` | Completed between `due_date` and `overdue_date` |
-| `LATE` | Completed after `overdue_date` |
+| `NOT_STARTED` | The expected event has not arrived |
+| `COMPLETED` | Completed by a matched event (terminal) |
+
+### 2.3 `SlaStatus` (`step_instance.sla_status`, Step SLA Service)
+
+| Value | Description | At-risk hotspot category (outstanding steps only) |
+|-------|-------------|---------------------|
+| *(null / `''`)* | Not yet judged — no threshold reached yet, or an optional step | on_track |
+| `OVERDUE` | Due date passed before completion | at_risk |
+| `MISSED` | Due date + tolerance passed before completion (written off) | non_compliant |
+| `MET` | Completed on or before the due date | on_track |
+
+**1.x → 2.0.0 mapping** (`StepState` and `CompletionStatus` were removed):
+
+| 1.x | 2.0.0 `step_status` + `sla_status` |
+|-----|-----------------------------------|
+| `PENDING`, `DUE` | `NOT_STARTED` + not judged (the two are no longer distinguishable) |
+| `OVERDUE` (not done) | `NOT_STARTED` + `OVERDUE` |
+| `MISSED` | `NOT_STARTED` + `MISSED` |
+| `COMPLETED` + `EARLY` / `ON_TIME` | `COMPLETED` + `MET` |
+| `COMPLETED` + `LATE` | `COMPLETED` + `OVERDUE` (late) or `MISSED` (after write-off) |
+| `SKIPPED` | — (no longer exists) |
+
+The patient views show one badge per step, `StepInstance.displayStatus()`: `COMPLETED`, else the
+outstanding step's `OVERDUE` / `MISSED`, else `NOT_STARTED`.
 
 ### 2.4 `DeviationType`
 
@@ -199,6 +232,7 @@ Destination routing configuration for intelligence delivery.
 |-------|-------------|------------------|
 | `OVERDUE` | Step became overdue | Warning |
 | `MISSED` | Step was missed | Critical |
+| `ORDER_VIOLATION` | Step completed before its prerequisites | — |
 
 ### 2.5 `ComplianceCategory` (computed — not in DB)
 
@@ -246,7 +280,23 @@ Reason an event was rejected (stored on `inbound_event.rejection_reason`).
 compliance_rate = completed_steps / total_steps
 ```
 
-Where `completed_steps` includes `COMPLETED` (all completion statuses) and `SKIPPED`. `total_steps` counts all step instances for the protocol instance.
+Where `completed_steps` counts `step_status = 'COMPLETED'` (whatever the `sla_status`; 1.x also counted `SKIPPED`, which no longer exists). `total_steps` counts all step instances for the protocol instance.
+
+### 3.1a Deviation Occurrence Date
+
+Deviation metrics are bucketed on when the deviation clinically **happened**, not `detected_at`:
+
+```
+occurred_at = coalesce(
+    multiIf(deviation_type = 'OVERDUE',         DUE_DATE_REACHED.process_by,
+            deviation_type = 'MISSED',          MISSED_DATE_REACHED.process_by,
+            deviation_type = 'ORDER_VIOLATION', step_instance.completed_at),
+    step_instance.due_date,
+    deviation.detected_at)
+```
+
+The thresholds come from `step_sla_state_transition` (1.x read `step_instance.overdue_date` /
+`missed_date`). Same resolution as the pipeline's `mv_daily_deviation_kpis`.
 
 ### 3.2 Deviation Severity Mapping
 
@@ -301,7 +351,14 @@ processing_status_breakdown (in events/summary):
 ### 3.5 Step Analytics Formulas
 
 ```
-completion_rate = completed_count / total_instances
+completion_rate = completed_count / total_instances          -- completed = step_status 'COMPLETED'
+
+-- per action, distinct patients:
+completed_on_time = step_status 'COMPLETED' AND sla_status 'MET'
+completed_late    = step_status 'COMPLETED' AND sla_status IN ('OVERDUE','MISSED')
+overdue / missed  = sla_status 'OVERDUE' / 'MISSED'         -- includes steps completed late
+not_started       = step_status 'NOT_STARTED'
+sla_unjudged      = sla_status ''
 
 avg_days_to_complete = AVG(completed_at - due_date) in days  -- only for COMPLETED steps with a due_date
 
@@ -312,9 +369,9 @@ median_days_to_complete = PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY (completed
 ### 3.6 Completion Funnel Formulas
 
 ```
-reached_count = COUNT(DISTINCT patient_id) with a step_instance for this action_id (any state)
+reached_count = COUNT(DISTINCT patient_id) with a step_instance for this action_id (any status)
 
-completed_count = COUNT(DISTINCT patient_id) with state = 'COMPLETED' for this action_id
+completed_count = COUNT(DISTINCT patient_id) with step_status = 'COMPLETED' for this action_id
 
 completion_rate = completed_count / reached_count
 
@@ -351,7 +408,7 @@ active_deviations = COUNT(deviations) detected within last 30 days at facility
 total_events = COUNT(DISTINCT event_log.id) at facility
 ```
 
-Facility-level compliance is computed from `step_instance` aggregations (not per-protocol-instance averages). The `findStepComplianceByFacility()` query groups by `facility_id` and returns `totalSteps` and `completedSteps` (including `COMPLETED` and `SKIPPED` states).
+Facility-level compliance is computed from `step_instance` aggregations (not per-protocol-instance averages). The `findStepComplianceByFacility()` query groups by `facility_id` and returns `totalSteps` and `completedSteps` (`step_status = COMPLETED`; 2.0.0 has no SKIPPED).
 
 Ranking options (`rankBy` parameter):
 | Value | Sort Expression |
@@ -373,11 +430,11 @@ affected_patients = COUNT(DISTINCT protocol_instance.patient_id)
 
 ### 3.11 Deviation Resolution Rate Formulas
 
-Resolution is determined by tracking the final state of step instances that had an `OVERDUE` deviation:
+Resolution is determined by tracking the current status of step instances that had an `OVERDUE` deviation:
 
 ```
-resolved = step_instance.state reached 'COMPLETED' after an OVERDUE deviation was recorded
-escalated = step_instance.state reached 'MISSED' after an OVERDUE deviation was recorded
+resolved  = step_instance.step_status is 'COMPLETED' (completed after all, whatever the sla_status)
+escalated = step_instance.step_status is 'NOT_STARTED' AND sla_status is 'MISSED' (written off)
 
 resolution_rate = resolved_count / total_overdue_deviations
 

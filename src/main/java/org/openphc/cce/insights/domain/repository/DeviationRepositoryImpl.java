@@ -25,6 +25,10 @@ public class DeviationRepositoryImpl
         extends AbstractClickHouseRepository<Deviation, UUID>
         implements DeviationRepository {
 
+    /** protocol_instance_id is no longer on deviations in 2.0.0 — {@link #deviationsWithInstance}
+     *  derives it from the step, under the step table's column name. */
+    private static final String DEV_PROTOCOL_INSTANCE_ID = STEP_INSTANCES.PROTOCOL_INSTANCE_ID.getName();
+
     public DeviationRepositoryImpl(DSLContext dsl) {
         super(dsl);
     }
@@ -51,7 +55,7 @@ public class DeviationRepositoryImpl
         } catch (Exception ignored) {}
         return Deviation.builder()
                 .id(r.get(DEVIATIONS.ID.getName(), UUID.class))
-                .protocolInstanceId(r.get(DEVIATIONS.PROTOCOL_INSTANCE_ID.getName(), UUID.class))
+                .protocolInstanceId(r.get(DEV_PROTOCOL_INSTANCE_ID, UUID.class))
                 .stepInstanceId(r.get(DEVIATIONS.STEP_INSTANCE_ID.getName(), UUID.class))
                 .deviationType(dt)
                 .detectedAt(recordDateTime(r, DEVIATIONS.DETECTED_AT.getName()))
@@ -66,11 +70,11 @@ public class DeviationRepositoryImpl
 
     @Override
     public List<Deviation> findByProtocolInstanceId(UUID protocolInstanceId) {
-        var d = finalAs(DEVIATIONS, "d");
+        var d = deviationsWithInstance("d");
         return dsl.select(DSL.asterisk())
                   .from(d)
                   .where(DSL.condition(
-                          "d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName() + " = toUUID(?)",
+                          "d." + DEV_PROTOCOL_INSTANCE_ID + " = toUUID(?)",
                           protocolInstanceId.toString()))
                   .fetch()
                   .map(this::toDeviation);
@@ -80,10 +84,10 @@ public class DeviationRepositoryImpl
     public List<Deviation> findByProtocolInstanceIdIn(List<UUID> ids) {
         if (ids == null || ids.isEmpty()) return List.of();
         List<String> idStrings = ids.stream().map(UUID::toString).collect(java.util.stream.Collectors.toList());
-        var d = finalAs(DEVIATIONS, "d");
+        var d = deviationsWithInstance("d");
         return dsl.select(DSL.asterisk())
                   .from(d)
-                  .where(DSL.field("d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName()).in(idStrings))
+                  .where(DSL.field("d." + DEV_PROTOCOL_INSTANCE_ID).in(idStrings))
                   .fetch()
                   .map(this::toDeviation);
     }
@@ -92,21 +96,21 @@ public class DeviationRepositoryImpl
     public List<Object[]> countDeviationsByProtocolInstanceIdIn(List<UUID> ids) {
         if (ids == null || ids.isEmpty()) return List.of();
         List<String> idStrings = ids.stream().map(UUID::toString).collect(java.util.stream.Collectors.toList());
-        var d = finalAs(DEVIATIONS, "d");
+        var d = deviationsWithInstance("d");
         return dsl.select(
-                    DSL.field("d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName()),
+                    DSL.field("d." + DEV_PROTOCOL_INSTANCE_ID),
                     DSL.field("count()", Long.class).as("cnt")
                 )
                 .from(d)
-                .where(DSL.field("d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName()).in(idStrings))
-                .groupBy(DSL.field("d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName()))
+                .where(DSL.field("d." + DEV_PROTOCOL_INSTANCE_ID).in(idStrings))
+                .groupBy(DSL.field("d." + DEV_PROTOCOL_INSTANCE_ID))
                 .fetch()
                 .map(r -> new Object[]{r.get(0, UUID.class), r.get(1, Long.class)});
     }
 
     @Override
     public List<Object[]> findDeviationCountsByFacilityGroupedByProtocol(String facilityId) {
-        var d  = finalAs(DEVIATIONS, "d");
+        var d  = deviationsWithInstance("d");
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
         var pf = DSL.table("mv_patient_facility_latest").as("pf");
         String zeroUuid = "toUUID('00000000-0000-0000-0000-000000000000')";
@@ -119,7 +123,7 @@ public class DeviationRepositoryImpl
                 .join(pf).on(DSL.condition(
                         "pf.patient_id = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
                 .leftJoin(d).on(DSL.condition(
-                        "d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                        "d." + DEV_PROTOCOL_INSTANCE_ID + " = pi.id"))
                 .where(DSL.field("pf.facility_id").eq(facilityId))
                 .groupBy(DSL.field("pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName()))
                 .fetch()
@@ -128,7 +132,7 @@ public class DeviationRepositoryImpl
 
     @Override
     public Page<Deviation> findByDeviationType(DeviationType type, Pageable pageable) {
-        var d = finalAs(DEVIATIONS, "d");
+        var d = deviationsWithInstance("d");
         var condition = DSL.field("d." + DEVIATIONS.DEVIATION_TYPE.getName()).eq(type.name());
         List<Deviation> content = dsl.select(DSL.asterisk())
                 .from(d)
@@ -153,16 +157,16 @@ public class DeviationRepositoryImpl
         String dtype = str(deviationType);
         String fid   = str(facilityId);
         String pdid  = uuid(protocolDefinitionId);
-        var d  = finalAs(DEVIATIONS, "d");
-        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        var d  = deviationsWithInstance("d");
+        var pi = protocolInstancesWithCanonical("pi");
         var si = finalAs(STEP_INSTANCES, "si");
         var pf = DSL.table("mv_patient_facility_latest").as("pf");
 
         return dsl.select(
                     DSL.field("d." + DEVIATIONS.ID.getName()),
                     DSL.field("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()),
-                    DSL.field("d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName()),
-                    DSL.field("pi." + PROTOCOL_INSTANCES.PROTOCOL_CANONICAL.getName()),
+                    DSL.field("d." + DEV_PROTOCOL_INSTANCE_ID),
+                    DSL.field("pi." + "protocol_canonical"),
                     DSL.field("d." + DEVIATIONS.STEP_INSTANCE_ID.getName()),
                     DSL.field("si." + STEP_INSTANCES.ACTION_ID.getName()),
                     DSL.field("d." + DEVIATIONS.DEVIATION_TYPE.getName()),
@@ -170,7 +174,7 @@ public class DeviationRepositoryImpl
                     DSL.field("pf.facility_id"))
                   .from(d)
                   .join(pi).on(DSL.condition(
-                          "d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                          "d." + DEV_PROTOCOL_INSTANCE_ID + " = pi.id"))
                   .join(si).on(DSL.condition(
                           "d." + DEVIATIONS.STEP_INSTANCE_ID.getName() + " = si.id"))
                   .leftJoin(pf).on(DSL.condition(
@@ -205,7 +209,7 @@ public class DeviationRepositoryImpl
         String fid = str(facilityId);
         String aid = str(actionId);
         String periodExpr = dateTruncExpr(interval, "d." + DEVIATIONS.DETECTED_AT.getName());
-        var d  = finalAs(DEVIATIONS, "d");
+        var d  = deviationsWithInstance("d");
         var si = finalAs(STEP_INSTANCES, "si");
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
         var pf = DSL.table("mv_patient_facility_latest").as("pf");
@@ -218,7 +222,7 @@ public class DeviationRepositoryImpl
                   .join(si).on(DSL.condition(
                           "d." + DEVIATIONS.STEP_INSTANCE_ID.getName() + " = si.id"))
                   .leftJoin(pi).on(DSL.condition(
-                          "d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                          "d." + DEV_PROTOCOL_INSTANCE_ID + " = pi.id"))
                   .leftJoin(pf).on(DSL.condition(
                           "pf.patient_id = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
                   .where(DSL.condition(
@@ -242,14 +246,14 @@ public class DeviationRepositoryImpl
     public List<Object[]> findDeviationsByAction(UUID protocolDefId, OffsetDateTime startDate,
                                                   OffsetDateTime endDate) {
         String pid = uuid(protocolDefId);
-        var d  = finalAs(DEVIATIONS, "d");
+        var d  = deviationsWithInstance("d");
         var si = finalAs(STEP_INSTANCES, "si");
-        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        var pi = protocolInstancesWithCanonical("pi");
 
         return dsl.select(
                     DSL.field("si." + STEP_INSTANCES.ACTION_ID.getName()),
                     DSL.field("pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName()),
-                    DSL.field("pi." + PROTOCOL_INSTANCES.PROTOCOL_CANONICAL.getName()),
+                    DSL.field("pi." + "protocol_canonical"),
                     DSL.field("count()", Long.class).as("total_deviations"),
                     DSL.field("countIf(d." + DEVIATIONS.DEVIATION_TYPE.getName() + " = 'OVERDUE')", Long.class).as("overdue_count"),
                     DSL.field("countIf(d." + DEVIATIONS.DEVIATION_TYPE.getName() + " = 'MISSED')", Long.class).as("missed_count"),
@@ -259,7 +263,7 @@ public class DeviationRepositoryImpl
                   .join(si).on(DSL.condition(
                           "d." + DEVIATIONS.STEP_INSTANCE_ID.getName() + " = si.id"))
                   .join(pi).on(DSL.condition(
-                          "d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                          "d." + DEV_PROTOCOL_INSTANCE_ID + " = pi.id"))
                   .where(DSL.condition(
                           "toUUIDOrNull(?) IS NULL OR pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() +
                           " = toUUIDOrNull(?)", pid, pid))
@@ -272,7 +276,7 @@ public class DeviationRepositoryImpl
                   .groupBy(
                           DSL.field("si." + STEP_INSTANCES.ACTION_ID.getName()),
                           DSL.field("pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName()),
-                          DSL.field("pi." + PROTOCOL_INSTANCES.PROTOCOL_CANONICAL.getName()))
+                          DSL.field("pi." + "protocol_canonical"))
                   .orderBy(DSL.field("total_deviations").desc())
                   .fetch()
                   .map(r -> new Object[]{
@@ -285,7 +289,7 @@ public class DeviationRepositoryImpl
     public List<Object[]> findResolutionRate(UUID protocolDefId, OffsetDateTime startDate,
                                              OffsetDateTime endDate) {
         String pid = uuid(protocolDefId);
-        var d  = finalAs(DEVIATIONS, "d");
+        var d  = deviationsWithInstance("d");
         var si = finalAs(STEP_INSTANCES, "si");
 
         // Subquery: resolve IN clause against protocol_instances with FINAL if enabled.
@@ -295,18 +299,20 @@ public class DeviationRepositoryImpl
                                     PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUIDOrNull(?)", pid));
 
         return dsl.select(
-                    DSL.field("countIf(si." + STEP_INSTANCES.STATE.getName() + " = 'COMPLETED')", Long.class).as("resolved_count"),
-                    DSL.field("countIf(si." + STEP_INSTANCES.STATE.getName() + " = 'MISSED')", Long.class).as("escalated_count"),
+                    DSL.field("countIf(si." + STEP_INSTANCES.STEP_STATUS.getName() + " = 'COMPLETED')", Long.class).as("resolved_count"),
+                    // escalated = still outstanding and written off as MISSED (1.x: state MISSED)
+                    DSL.field("countIf(si." + STEP_INSTANCES.STEP_STATUS.getName() + " = 'NOT_STARTED' AND si." +
+                              STEP_INSTANCES.SLA_STATUS.getName() + " = 'MISSED')", Long.class).as("escalated_count"),
                     DSL.field("count()", Long.class).as("total_overdue"),
                     DSL.field("avgIf(dateDiff('second', d." + DEVIATIONS.DETECTED_AT.getName() +
                               ", si." + STEP_INSTANCES.COMPLETED_AT.getName() + ") / 86400.0" +
-                              ", si." + STEP_INSTANCES.STATE.getName() + " = 'COMPLETED')", Double.class).as("avg_days_to_resolve"))
+                              ", si." + STEP_INSTANCES.STEP_STATUS.getName() + " = 'COMPLETED')", Double.class).as("avg_days_to_resolve"))
                   .from(d)
                   .join(si).on(DSL.condition(
                           "d." + DEVIATIONS.STEP_INSTANCE_ID.getName() + " = si.id"))
                   .where(DSL.field("d." + DEVIATIONS.DEVIATION_TYPE.getName()).eq("OVERDUE"))
                   .and(DSL.condition("toUUIDOrNull(?) IS NULL", pid)
-                      .or(DSL.field("d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName()).in(piSubquery)))
+                      .or(DSL.field("d." + DEV_PROTOCOL_INSTANCE_ID).in(piSubquery)))
                   .and(DSL.condition(
                           "d." + DEVIATIONS.DETECTED_AT.getName() + " >= parseDateTime64BestEffort(?)",
                           dtStart(startDate)))
@@ -319,7 +325,7 @@ public class DeviationRepositoryImpl
 
     @Override
     public List<Object[]> countByTypeSince(OffsetDateTime since) {
-        var d = finalAs(DEVIATIONS, "d");
+        var d = deviationsWithInstance("d");
         return dsl.select(
                     DSL.field("d." + DEVIATIONS.DEVIATION_TYPE.getName()),
                     DSL.field("count()", Long.class))
@@ -336,7 +342,7 @@ public class DeviationRepositoryImpl
     public List<Object[]> countByTypeInRange(OffsetDateTime startDate, OffsetDateTime endDate,
                                              String facilityId) {
         String fid = str(facilityId);
-        var d  = finalAs(DEVIATIONS, "d");
+        var d  = deviationsWithInstance("d");
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
         var pf = DSL.table("mv_patient_facility_latest").as("pf");
 
@@ -345,7 +351,7 @@ public class DeviationRepositoryImpl
                     DSL.field("count()", Long.class))
                   .from(d)
                   .join(pi).on(DSL.condition(
-                          "d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                          "d." + DEV_PROTOCOL_INSTANCE_ID + " = pi.id"))
                   .leftJoin(pf).on(DSL.condition(
                           "pf.patient_id = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
                   .where(DSL.condition(
@@ -365,7 +371,7 @@ public class DeviationRepositoryImpl
                                                        OffsetDateTime startDate,
                                                        OffsetDateTime endDate) {
         String fid = str(facilityId);
-        var d  = finalAs(DEVIATIONS, "d");
+        var d  = deviationsWithInstance("d");
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
         var pf = DSL.table("mv_patient_facility_latest").as("pf");
 
@@ -379,7 +385,7 @@ public class DeviationRepositoryImpl
                     DSL.field("uniq(d." + DEVIATIONS.STEP_INSTANCE_ID.getName() + ")", Long.class).as("affected_steps"))
                   .from(d)
                   .join(pi).on(DSL.condition(
-                          "d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                          "d." + DEV_PROTOCOL_INSTANCE_ID + " = pi.id"))
                   .leftJoin(pf).on(DSL.condition(
                           "pf.patient_id = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
                   .where(DSL.condition("? = '' OR pf.facility_id = ?", fid, fid))
@@ -402,7 +408,7 @@ public class DeviationRepositoryImpl
     @Override
     public List<Object[]> countDeviationsByFacility(UUID protocolDefinitionId) {
         String pid = protocolDefinitionId != null ? protocolDefinitionId.toString() : "";
-        var d   = finalAs(DEVIATIONS, "d");
+        var d   = deviationsWithInstance("d");
         var pi  = finalAs(PROTOCOL_INSTANCES, "pi");
         var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
 
@@ -411,7 +417,7 @@ public class DeviationRepositoryImpl
                     DSL.field("uniq(d." + DEVIATIONS.ID.getName() + ")", Long.class).as("deviation_count"))
                   .from(d)
                   .join(pi).on(DSL.condition(
-                          "d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                          "d." + DEV_PROTOCOL_INSTANCE_ID + " = pi.id"))
                   .join(iel).on(DSL.condition(
                           "iel." + INBOUND_EVENT_LOGS.SUBJECT.getName() + " = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
                   .where(DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()).ne(""))
@@ -425,21 +431,21 @@ public class DeviationRepositoryImpl
 
     @Override
     public long countDistinctPatientsWithDeviations() {
-        var d  = finalAs(DEVIATIONS, "d");
+        var d  = deviationsWithInstance("d");
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
 
         Long r = dsl.select(
                         DSL.field("uniq(pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName() + ")", Long.class))
                     .from(d)
                     .join(pi).on(DSL.condition(
-                            "d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                            "d." + DEV_PROTOCOL_INSTANCE_ID + " = pi.id"))
                     .fetchOne(0, Long.class);
         return r != null ? r : 0L;
     }
 
     @Override
     public Object[] aggregateDeviationMetrics(UUID protocolDefinitionId) {
-        var d  = finalAs(DEVIATIONS, "d");
+        var d  = deviationsWithInstance("d");
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
         String devType  = "d." + DEVIATIONS.DEVIATION_TYPE.getName();
         String zeroUuid = "toUUID('00000000-0000-0000-0000-000000000000')";
@@ -453,7 +459,7 @@ public class DeviationRepositoryImpl
                 )
                 .from(pi)
                 .leftJoin(d).on(DSL.condition(
-                        "d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                        "d." + DEV_PROTOCOL_INSTANCE_ID + " = pi.id"))
                 .where(DSL.condition(
                         "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
                         protocolDefinitionId.toString()))
@@ -474,7 +480,7 @@ public class DeviationRepositoryImpl
 
     @Override
     public Object[] aggregateDeviationMetricsByFacility(String facilityId) {
-        var d  = finalAs(DEVIATIONS, "d");
+        var d  = deviationsWithInstance("d");
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
         var pf = DSL.table("mv_patient_facility_latest").as("pf");
         String devType  = "d." + DEVIATIONS.DEVIATION_TYPE.getName();
@@ -491,7 +497,7 @@ public class DeviationRepositoryImpl
                 .join(pf).on(DSL.condition(
                         "pf.patient_id = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
                 .leftJoin(d).on(DSL.condition(
-                        "d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                        "d." + DEV_PROTOCOL_INSTANCE_ID + " = pi.id"))
                 .where(DSL.field("pf.facility_id").eq(facilityId))
                 .groupBy(DSL.field("pi.id"))
                 .asTable("t");
@@ -510,7 +516,7 @@ public class DeviationRepositoryImpl
 
     @Override
     public Object[] aggregateDeviationMetricsByProtocolAndFacility(UUID protocolDefinitionId, String facilityId) {
-        var d  = finalAs(DEVIATIONS, "d");
+        var d  = deviationsWithInstance("d");
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
         var pf = DSL.table("mv_patient_facility_latest").as("pf");
         String devType  = "d." + DEVIATIONS.DEVIATION_TYPE.getName();
@@ -527,7 +533,7 @@ public class DeviationRepositoryImpl
                 .join(pf).on(DSL.condition(
                         "pf.patient_id = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
                 .leftJoin(d).on(DSL.condition(
-                        "d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                        "d." + DEV_PROTOCOL_INSTANCE_ID + " = pi.id"))
                 .where(DSL.condition(
                         "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
                         protocolDefinitionId.toString()))
@@ -549,7 +555,7 @@ public class DeviationRepositoryImpl
 
     @Override
     public Object[] aggregateDeviationMetricsAll() {
-        var d  = finalAs(DEVIATIONS, "d");
+        var d  = deviationsWithInstance("d");
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
         String devType  = "d." + DEVIATIONS.DEVIATION_TYPE.getName();
         String zeroUuid = "toUUID('00000000-0000-0000-0000-000000000000')";
@@ -563,7 +569,7 @@ public class DeviationRepositoryImpl
                 )
                 .from(pi)
                 .leftJoin(d).on(DSL.condition(
-                        "d." + DEVIATIONS.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                        "d." + DEV_PROTOCOL_INSTANCE_ID + " = pi.id"))
                 .groupBy(DSL.field("pi.id"))
                 .asTable("t");
 
