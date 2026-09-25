@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.openphc.cce.insights.domain.repository.DeviationRepository;
-import org.openphc.cce.insights.domain.repository.ComplianceEventLogRepository;
+import org.openphc.cce.insights.domain.repository.MatcherEventLogRepository;
 import org.openphc.cce.insights.domain.repository.ProtocolInstanceRepository;
 import org.openphc.cce.insights.domain.repository.StepInstanceRepository;
 import org.openphc.cce.insights.domain.entity.ProtocolInstance;
@@ -22,7 +22,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class PractitionerRankingService {
 
-    private final ComplianceEventLogRepository complianceEventLogRepository;
+    private final MatcherEventLogRepository matcherEventLogRepository;
     private final StepInstanceRepository stepInstanceRepository;
     private final DeviationRepository deviationRepository;
     private final ProtocolInstanceRepository protocolInstanceRepository;
@@ -43,7 +43,7 @@ public class PractitionerRankingService {
 
         // Build facility name lookup
         Map<String, String> facilityNameMap = new LinkedHashMap<>();
-        for (Object[] row : complianceEventLogRepository.findFacilityNames()) {
+        for (Object[] row : matcherEventLogRepository.findFacilityNames()) {
             facilityNameMap.put((String) row[0], (String) row[1]);
         }
 
@@ -57,7 +57,7 @@ public class PractitionerRankingService {
         Map<String, Long> eventCountMap = new LinkedHashMap<>();
         Map<String, Set<String>> patientsByRef = new LinkedHashMap<>();
 
-        List<Object[]> candidateEvents = complianceEventLogRepository
+        List<Object[]> candidateEvents = matcherEventLogRepository
                 .findPractitionerCandidateEvents(startDate, endDate, facilityId);
         for (Object[] row : candidateEvents) {
             String subject = (String) row[0];
@@ -188,7 +188,7 @@ public class PractitionerRankingService {
     @Cacheable(value = "lookups", key = "'practitioners'")
     public List<String> getDistinctPractitionerRefs() {
         Set<String> refs = new TreeSet<>();
-        for (Object[] row : complianceEventLogRepository.findPractitionerCandidateEvents(null, null, null)) {
+        for (Object[] row : matcherEventLogRepository.findPractitionerCandidateEvents(null, null, null)) {
             String dataJson = (String) row[2];
             if (dataJson == null || dataJson.isEmpty()) continue;
             try {

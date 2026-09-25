@@ -5,7 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.openphc.cce.insights.domain.entity.ProtocolDefinition;
 import org.openphc.cce.insights.domain.entity.ProtocolInstance;
 import org.openphc.cce.insights.domain.entity.StepInstance;
-import org.openphc.cce.insights.domain.enums.StepState;
+import org.openphc.cce.insights.domain.enums.SlaStatus;
 import org.openphc.cce.insights.domain.repository.*;
 import org.openphc.cce.insights.web.dto.ComplianceSummaryDto;
 import org.openphc.cce.insights.web.dto.FacilitySummaryDto;
@@ -29,7 +29,7 @@ public class ComplianceSummaryService {
     private final ProtocolInstanceRepository protocolInstanceRepository;
     private final StepInstanceRepository stepInstanceRepository;
     private final DeviationRepository deviationRepository;
-    private final ComplianceEventLogRepository complianceEventLogRepository;
+    private final MatcherEventLogRepository matcherEventLogRepository;
 
     @Cacheable(value = "analytics", key = "'compliance-all-' + (#facilityId ?: 'all')")
     public ComplianceSummaryDto getAllProtocolsComplianceSummary(String facilityId) {
@@ -58,9 +58,9 @@ public class ComplianceSummaryService {
                 .compliantPatients(compliantPatients)
                 .complianceRate(Math.round(complianceRate * 100.0) / 100.0)
                 .stepMetrics(ComplianceSummaryDto.StepMetrics.builder()
-                        .totalSteps(toLong(sm[8])).completed(toLong(sm[0]))
-                        .onTime(toLong(sm[6])).late(toLong(sm[7])).early(toLong(sm[5]))
-                        .overdue(toLong(sm[1])).missed(toLong(sm[2])).due(toLong(sm[3])).pending(toLong(sm[4]))
+                        .totalSteps(toLong(sm[8])).completed(toLong(sm[0])).notStarted(toLong(sm[1]))
+                        .slaMet(toLong(sm[2])).overdue(toLong(sm[3])).missed(toLong(sm[4])).slaUnjudged(toLong(sm[5]))
+                        .completedOnTime(toLong(sm[6])).completedLate(toLong(sm[7]))
                         .build())
                 .deviationCount(toLong(dm[1]))
                 .deviationBreakdown(Map.of(
@@ -113,9 +113,9 @@ public class ComplianceSummaryService {
                 .statusBreakdown(statusBreakdown)
                 .complianceRate(Math.round(complianceRate * 100.0) / 100.0)
                 .stepMetrics(ComplianceSummaryDto.StepMetrics.builder()
-                        .totalSteps(toLong(sm[8])).completed(toLong(sm[0]))
-                        .onTime(toLong(sm[6])).late(toLong(sm[7])).early(toLong(sm[5]))
-                        .overdue(toLong(sm[1])).missed(toLong(sm[2])).due(toLong(sm[3])).pending(toLong(sm[4]))
+                        .totalSteps(toLong(sm[8])).completed(toLong(sm[0])).notStarted(toLong(sm[1]))
+                        .slaMet(toLong(sm[2])).overdue(toLong(sm[3])).missed(toLong(sm[4])).slaUnjudged(toLong(sm[5]))
+                        .completedOnTime(toLong(sm[6])).completedLate(toLong(sm[7]))
                         .build())
                 .deviationCount(toLong(dm[1]))
                 .deviationBreakdown(Map.of(
@@ -156,9 +156,7 @@ public class ComplianceSummaryService {
         List<PatientComplianceDto> results = new ArrayList<>();
         for (ProtocolInstance pi : page.getContent()) {
             List<StepInstance> steps = stepsByInstance.getOrDefault(pi.getId(), List.of());
-            long completedCount = steps.stream()
-                    .filter(s -> s.getState() == StepState.COMPLETED || s.getState() == StepState.SKIPPED)
-                    .count();
+            long completedCount = steps.stream().filter(StepInstance::isCompleted).count();
             double rate = steps.isEmpty() ? 0.0 : (double) completedCount / steps.size();
             String category = computeCategory(steps);
 
@@ -186,7 +184,7 @@ public class ComplianceSummaryService {
 
     @Cacheable(value = "analytics", key = "'facility-' + #facilityId")
     public FacilitySummaryDto getFacilityComplianceSummary(String facilityId) {
-        List<Object[]> rows = complianceEventLogRepository.findPatientsByFacility(facilityId);
+        List<Object[]> rows = matcherEventLogRepository.findPatientsByFacility(facilityId);
         Set<String> patients = new LinkedHashSet<>();
         for (Object[] row : rows) patients.add((String) row[1]);
 
@@ -243,9 +241,9 @@ public class ComplianceSummaryService {
     }
 
     private String computeCategory(List<StepInstance> steps) {
-        boolean hasMissed = steps.stream().anyMatch(s -> s.getState() == StepState.MISSED);
+        boolean hasMissed = steps.stream().anyMatch(s -> !s.isCompleted() && s.getSlaStatus() == SlaStatus.MISSED);
         if (hasMissed) return "non_compliant";
-        boolean hasOverdue = steps.stream().anyMatch(s -> s.getState() == StepState.OVERDUE);
+        boolean hasOverdue = steps.stream().anyMatch(s -> !s.isCompleted() && s.getSlaStatus() == SlaStatus.OVERDUE);
         if (hasOverdue) return "non_compliant";
         return "on_track";
     }
@@ -264,7 +262,7 @@ public class ComplianceSummaryService {
     }
 
     private Set<UUID> getFacilityInstanceIds(String facilityId) {
-        List<Object[]> rows = complianceEventLogRepository.findPatientsByFacility(facilityId);
+        List<Object[]> rows = matcherEventLogRepository.findPatientsByFacility(facilityId);
         Set<UUID> ids = new HashSet<>();
         for (Object[] row : rows) {
             ids.add((UUID) row[2]);

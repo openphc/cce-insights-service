@@ -2,7 +2,7 @@ package org.openphc.cce.insights.service;
 
 import lombok.RequiredArgsConstructor;
 import org.openphc.cce.insights.domain.repository.DeviationRepository;
-import org.openphc.cce.insights.domain.repository.ComplianceEventLogRepository;
+import org.openphc.cce.insights.domain.repository.MatcherEventLogRepository;
 import org.openphc.cce.insights.domain.repository.StepInstanceRepository;
 import org.openphc.cce.insights.web.dto.AtRiskHotspotDto;
 import org.openphc.cce.insights.web.dto.RepeatDeviationPatientDto;
@@ -21,13 +21,13 @@ public class PatientRiskService {
 
     private final DeviationRepository deviationRepository;
     private final StepInstanceRepository stepInstanceRepository;
-    private final ComplianceEventLogRepository complianceEventLogRepository;
+    private final MatcherEventLogRepository matcherEventLogRepository;
 
     @Cacheable(value = "analytics", key = "'risk-hotspots'")
     public List<AtRiskHotspotDto> getAtRiskHotspots(OffsetDateTime startDate, OffsetDateTime endDate) {
         // Build facility name lookup
         Map<String, String> facilityNameMap = new LinkedHashMap<>();
-        for (Object[] row : complianceEventLogRepository.findFacilityNames()) {
+        for (Object[] row : matcherEventLogRepository.findFacilityNames()) {
             facilityNameMap.put((String) row[0], (String) row[1]);
         }
 

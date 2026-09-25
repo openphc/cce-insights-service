@@ -12,7 +12,7 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ComplianceEventLog {
+public class MatcherEventLog {
 
     private UUID id;
     private String cloudeventsId;

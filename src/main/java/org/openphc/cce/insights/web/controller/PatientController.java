@@ -5,12 +5,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.openphc.cce.insights.domain.entity.Deviation;
-import org.openphc.cce.insights.domain.entity.ComplianceEventLog;
+import org.openphc.cce.insights.domain.entity.MatcherEventLog;
 import org.openphc.cce.insights.domain.entity.ProtocolDefinition;
 import org.openphc.cce.insights.domain.entity.ProtocolInstance;
 import org.openphc.cce.insights.domain.entity.StepInstance;
 import org.openphc.cce.insights.domain.repository.DeviationRepository;
-import org.openphc.cce.insights.domain.repository.ComplianceEventLogRepository;
+import org.openphc.cce.insights.domain.repository.MatcherEventLogRepository;
 import org.openphc.cce.insights.domain.repository.ProtocolDefinitionRepository;
 import org.openphc.cce.insights.domain.repository.ProtocolInstanceRepository;
 import org.openphc.cce.insights.domain.repository.StepInstanceRepository;
@@ -34,7 +34,7 @@ public class PatientController {
     private final ProtocolInstanceRepository protocolInstanceRepository;
     private final StepInstanceRepository stepInstanceRepository;
     private final DeviationRepository deviationRepository;
-    private final ComplianceEventLogRepository complianceEventLogRepository;
+    private final MatcherEventLogRepository matcherEventLogRepository;
     private final ProtocolDefinitionRepository protocolDefinitionRepository;
     private final ObjectMapper objectMapper;
 
@@ -152,6 +152,12 @@ public class PatientController {
         long completed = steps.stream().filter(s -> s.getCompletedAt() != null).count();
         double rate = steps.isEmpty() ? 0 : Math.round((double) completed / steps.size() * 1000.0) / 10.0;
 
+        // SLA thresholds (1.x overdue_date / missed_date) live in step_sla_state_transitions since 2.0.0.
+        Map<UUID, Object[]> thresholds = stepInstanceRepository
+                .findSlaThresholdsByStepInstanceIdIn(steps.stream().map(StepInstance::getId).collect(Collectors.toList()))
+                .stream()
+                .collect(Collectors.toMap(r -> (UUID) r[0], r -> r, (a, b) -> a));
+
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("protocolInstanceId", pi.getId());
         result.put("patientId", pi.getPatientId());
@@ -164,13 +170,14 @@ public class PatientController {
             Map<String, Object> sm = new LinkedHashMap<>();
             sm.put("stepInstanceId", s.getId());
             sm.put("actionId", s.getActionId());
-            sm.put("state", s.getState());
+            sm.put("stepStatus", s.getStepStatus());
+            if (s.getSlaStatus() != null) sm.put("slaStatus", s.getSlaStatus());
             sm.put("dueDate", s.getDueDate());
             if (s.getCompletedAt() != null) sm.put("completedAt", s.getCompletedAt());
-            if (s.getCompletionStatus() != null) sm.put("completionStatus", s.getCompletionStatus());
             if (s.getCompletedBySource() != null) sm.put("completedBySource", s.getCompletedBySource());
-            if (s.getOverdueDate() != null) sm.put("overdueDate", s.getOverdueDate());
-            if (s.getMissedDate() != null) sm.put("missedDate", s.getMissedDate());
+            Object[] t = thresholds.get(s.getId());
+            if (t != null && t[1] != null) sm.put("overdueDate", t[1]);
+            if (t != null && t[2] != null) sm.put("missedDate", t[2]);
             return sm;
         }).collect(Collectors.toList());
         result.put("steps", stepList);
@@ -197,9 +204,9 @@ public class PatientController {
             @RequestParam(required = false) OffsetDateTime endDate,
             @RequestParam(defaultValue = "50") int limit) {
         // Try both formats: plain patientId and Patient/patientId prefix
-        List<ComplianceEventLog> events = complianceEventLogRepository.findBySubjectOrderByEventTimeDesc(patientId);
+        List<MatcherEventLog> events = matcherEventLogRepository.findBySubjectOrderByEventTimeDesc(patientId);
         if (events.isEmpty()) {
-            events = complianceEventLogRepository.findBySubjectOrderByEventTimeDesc("Patient/" + patientId);
+            events = matcherEventLogRepository.findBySubjectOrderByEventTimeDesc("Patient/" + patientId);
         }
 
         List<Map<String, Object>> result = events.stream()

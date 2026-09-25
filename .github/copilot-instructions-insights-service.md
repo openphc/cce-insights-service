@@ -19,7 +19,7 @@ Spring Boot 3.4.x / Java 21 microservice that serves compliance analytics — pr
 - **IDs:** `UUID` for all entity primary keys
 - **Caching:** Caffeine in-memory caching with 3 tiers — `lookups` (60 min TTL), `analytics` (30 min TTL), `metrics` (15 min TTL). TTLs configurable via env vars.
 - **Build tool:** Gradle 8.x
-- **No Flyway migrations:** The Insights Service does not own any tables. Schema is managed by the Compliance Service.
+- **No Flyway migrations:** The Insights Service does not own any tables. Schema is managed by the Protocol, Matcher and Step SLA services (the 1.x Compliance Service, split in 2.0.0); the service reads their ClickHouse copies (`cce_analytics`, DDL in `cce-data-pipeline/schema`).
 
 ## API Endpoints
 
@@ -154,27 +154,28 @@ All endpoints prefixed with `/v1/insights/`. All require the `dashboard:read` OA
 
 | Table | Owner | Access | Purpose |
 |---|---|---|---|
-| `protocol_instance` | Compliance Service | Read-only | Patient enrollments, compliance rates |
-| `step_instance` | Compliance Service | Read-only | Step states, timing, completion status |
-| `deviation` | Compliance Service | Read-only | Deviation records, trends |
-| `protocol_definition` | Compliance Service | Read-only | Protocol metadata (name, version) |
-| `event_log` | Compliance Service | Read-only | Patient event timeline, facility ID source |
+| `protocol_instance` | Matcher Service | Read-only | Patient enrollments, compliance rates (no `protocol_canonical` since 2.0.0 — join `protocol_definition`) |
+| `step_instance` | Matcher (`step_status`) / Step SLA (`sla_status`) | Read-only | Step status pair, timing, completion |
+| `step_sla_state_transition` | Matcher / Step SLA | Read-only | SLA thresholds (`process_by`) — deviation occurrence dates |
+| `deviation` | Step SLA / Matcher | Read-only | Deviation records, trends (no `protocol_instance_id` since 2.0.0 — go through `step_instance`) |
+| `protocol_definition` | Protocol Service | Read-only | Protocol metadata (name, version) |
+| `matcher_event_log` (1.x `event_log`) | Matcher Service | Read-only | Patient event timeline, facility ID source |
 | `inbound_event` | Collector Service | Read-only | Ingestion pipeline, source comparison, source event counts |
 
 ### Key Aggregation Queries
 
-- **Protocol compliance rate:** Count of `step_instance` by `completion_status` grouped by protocol
+- **Protocol compliance rate:** Count of `step_instance` by `step_status` (and `step_status` × `sla_status` for on-time / late) grouped by protocol
 - **Facility summary:** JOIN `protocol_instance` → `event_log` (for `facility_id`) → `step_instance`
-- **Step analytics:** COUNT by `state` and `completion_status` per `action_id`, with `PERCENTILE_CONT(0.5)` for median
+- **Step analytics:** COUNT by `step_status` and `sla_status` per `action_id`, with `medianIf` for median
 - **Completion funnel:** COUNT DISTINCT `patient_id` reached vs completed per `action_id`
 - **Outcome distribution:** COUNT `protocol_instance` grouped by `status`
 - **Enrollment trends:** COUNT `protocol_instance` grouped by `DATE_TRUNC(:interval, enrolled_at)`
 - **Facility ranking:** Cross-table aggregation of compliance rate, deviation count, event volume per `facility_id`
 - **Deviation trends:** COUNT deviations grouped by `deviation_type`, `detected_at` (date-truncated)
 - **Deviations by action:** COUNT deviations grouped by `step_instance.action_id`
-- **Resolution rate:** Track `OVERDUE` deviations → `step_instance.state` (COMPLETED = resolved, MISSED = escalated)
-- **Processing quality:** COUNT `event_log` grouped by `source`, `processing_status`
-- **At-risk hotspots:** Classify patients per facility as on_track/at_risk/non_compliant using correlated subqueries on `step_instance.state`
+- **Resolution rate:** Track `OVERDUE` deviations → `step_instance` (`step_status` COMPLETED = resolved, NOT_STARTED + `sla_status` MISSED = escalated)
+- **Processing quality:** COUNT `matcher_event_log` grouped by `source`, `processing_status`
+- **At-risk hotspots:** Classify patients per facility as on_track/at_risk/non_compliant from their outstanding steps' `sla_status` (OVERDUE = at risk, MISSED = non-compliant)
 - **Repeat deviations:** COUNT deviations per `patient_id` with `HAVING COUNT(*) >= :minDeviations`
 - **Patient timeline:** JOIN `event_log` + `step_instance` ordered by `event_time`
 - **Ingestion funnel:** COUNT `inbound_event` grouped by `status` (ACCEPTED/REJECTED/DUPLICATE)

@@ -11,7 +11,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
-import static org.openphc.cce.insights.jooq.Tables.COMPLIANCE_EVENT_LOGS;
+import static org.openphc.cce.insights.jooq.Tables.MATCHER_EVENT_LOGS;
 import static org.openphc.cce.insights.jooq.Tables.INBOUND_EVENT_LOGS;
 
 @Repository
@@ -294,9 +294,9 @@ public class InboundEventRepositoryImpl
                                                      OffsetDateTime startDate, OffsetDateTime endDate) {
         String fid = str(facilityId);
         var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
-        // Subquery: accepted events whose cloudevents_id is not in compliance_event_logs
-        var celSubquery = dsl.select(DSL.field(COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
-                             .from(DSL.table(DSL.sql(COMPLIANCE_EVENT_LOGS.getName() + finalClause())));
+        // Subquery: accepted events whose cloudevents_id is not in matcher_event_logs
+        var celSubquery = dsl.select(DSL.field(MATCHER_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
+                             .from(DSL.table(DSL.sql(MATCHER_EVENT_LOGS.getName() + finalClause())));
         return dsl.select(
                     DSL.field("iel." + INBOUND_EVENT_LOGS.SOURCE.getName()),
                     DSL.field("count()", Long.class).as("lost_count"))
@@ -320,8 +320,8 @@ public class InboundEventRepositoryImpl
     public long countPipelineLoss(String facilityId, OffsetDateTime startDate, OffsetDateTime endDate) {
         String fid = str(facilityId);
         var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
-        var celSubquery = dsl.select(DSL.field(COMPLIANCE_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
-                             .from(DSL.table(DSL.sql(COMPLIANCE_EVENT_LOGS.getName() + finalClause())));
+        var celSubquery = dsl.select(DSL.field(MATCHER_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
+                             .from(DSL.table(DSL.sql(MATCHER_EVENT_LOGS.getName() + finalClause())));
         Long r = dsl.select(DSL.field("count()", Long.class))
                     .from(iel)
                     .where(DSL.field("iel." + INBOUND_EVENT_LOGS.STATUS.getName()).eq("ACCEPTED"))

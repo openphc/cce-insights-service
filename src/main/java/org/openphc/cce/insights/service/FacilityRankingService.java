@@ -2,7 +2,7 @@ package org.openphc.cce.insights.service;
 
 import lombok.RequiredArgsConstructor;
 import org.openphc.cce.insights.domain.repository.DeviationRepository;
-import org.openphc.cce.insights.domain.repository.ComplianceEventLogRepository;
+import org.openphc.cce.insights.domain.repository.MatcherEventLogRepository;
 import org.openphc.cce.insights.domain.repository.StepInstanceRepository;
 import org.openphc.cce.insights.web.dto.FacilityRankingDto;
 import org.springframework.stereotype.Service;
@@ -16,7 +16,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class FacilityRankingService {
 
-    private final ComplianceEventLogRepository complianceEventLogRepository;
+    private final MatcherEventLogRepository matcherEventLogRepository;
     private final DeviationRepository deviationRepository;
     private final StepInstanceRepository stepInstanceRepository;
 
@@ -24,11 +24,11 @@ public class FacilityRankingService {
     public List<FacilityRankingDto> getRankings(OffsetDateTime startDate, OffsetDateTime endDate,
                                                  String sortBy, String order, int limit,
                                                  java.util.UUID protocolDefinitionId) {
-        List<Object[]> facilityEvents = complianceEventLogRepository.findFacilityEventCounts(protocolDefinitionId);
+        List<Object[]> facilityEvents = matcherEventLogRepository.findFacilityEventCounts(protocolDefinitionId);
 
         // Build facility name lookup
         Map<String, String> facilityNameMap = new LinkedHashMap<>();
-        for (Object[] row : complianceEventLogRepository.findFacilityNames()) {
+        for (Object[] row : matcherEventLogRepository.findFacilityNames()) {
             facilityNameMap.put((String) row[0], (String) row[1]);
         }
 
@@ -40,7 +40,7 @@ public class FacilityRankingService {
             eventCountMap.put(facilityId, ((Number) row[2]).longValue());
         }
 
-        List<Object[]> activePatients = complianceEventLogRepository.findActivePatientsByFacility(protocolDefinitionId);
+        List<Object[]> activePatients = matcherEventLogRepository.findActivePatientsByFacility(protocolDefinitionId);
         for (Object[] row : activePatients) {
             activePatientMap.put((String) row[0], ((Number) row[1]).longValue());
         }

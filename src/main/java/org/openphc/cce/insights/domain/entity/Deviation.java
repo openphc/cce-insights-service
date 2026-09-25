@@ -16,6 +16,7 @@ import java.util.UUID;
 public class Deviation {
 
     private UUID id;
+    /** Not a deviations column since 2.0.0 — read through step_instances (si.protocol_instance_id). */
     private UUID protocolInstanceId;
     private UUID stepInstanceId;
     private DeviationType deviationType;
