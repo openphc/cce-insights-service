@@ -198,6 +198,11 @@ List patients enrolled in a protocol, filterable by compliance status.
 
 Full compliance timeline for a patient across all enrolled protocols. Combines event history and step status into a chronological view.
 
+> **`{patientId}` may contain a slash** — ids are taken verbatim from the event subject, and some sources
+> send a FHIR reference (e.g. `Group/856237`). Send it URL-encoded (`Group%2F856237`); the same applies to
+> every `/patients/{patientId}/…` endpoint. The embedded Tomcat is configured to pass `%2F` through
+> (`TomcatConfig`) rather than reject it with a 400.
+
 **Required Scope:** `dashboard:read`
 
 **Query Parameters:**
