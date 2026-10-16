@@ -491,6 +491,8 @@ Only patients with `total_deviations >= :minDeviations` (default 3) are included
 | `startDate` | ISO 8601 | Various timestamp columns | Range start (inclusive) |
 | `endDate` | ISO 8601 | Various timestamp columns | Range end (inclusive) |
 
+On the compliance summaries (`/protocols/{id}/compliance-summary`, `/protocols/compliance-summary`) and `/protocols/{id}/step-analytics`, `startDate`/`endDate` select the **enrolments** whose `protocol_instance.enrolled_at` (the clinical time of the enrolling event) falls in the range; every figure is then counted on those enrolments. A missing bound leaves that side open. The facility compliance summary does not apply the range.
+
 ### 4.2 Event Volume Filters
 
 | Parameter | Type | Applied To | Description |
