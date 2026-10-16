@@ -67,8 +67,14 @@ public class ProtocolAnalyticsService {
         }
     }
 
-    @Cacheable(value = "analytics", key = "'step-analytics-' + #protocolDefinitionId + '-' + (#facilityId ?: 'all')")
-    public StepAnalyticsDto getStepAnalytics(UUID protocolDefinitionId, String facilityId) {
+    /**
+     * Per-step analytics of one protocol for the patients enrolled within [startDate, endDate]
+     * ({@code enrolled_at}, the clinical time of the enrolling event); a null bound is open.
+     */
+    @Cacheable(value = "analytics",
+            key = "'step-analytics-' + #protocolDefinitionId + '-' + (#facilityId ?: 'all') + '-' + #startDate + '-' + #endDate")
+    public StepAnalyticsDto getStepAnalytics(UUID protocolDefinitionId, String facilityId,
+                                             OffsetDateTime startDate, OffsetDateTime endDate) {
         ProtocolDefinition pd = protocolDefinitionRepository.findById(protocolDefinitionId)
                 .orElseThrow(() -> new EntityNotFoundException(
                         "Protocol definition not found: " + protocolDefinitionId));
@@ -77,8 +83,8 @@ public class ProtocolAnalyticsService {
         Map<String, String> requiredBehaviorMap = resolveRequiredBehaviorMap(pd);
 
         List<Object[]> rows = (facilityId != null && !facilityId.isEmpty())
-                ? stepInstanceRepository.findStepAnalyticsByFacility(protocolDefinitionId, facilityId)
-                : stepInstanceRepository.findStepAnalytics(protocolDefinitionId);
+                ? stepInstanceRepository.findStepAnalyticsByFacility(protocolDefinitionId, facilityId, startDate, endDate)
+                : stepInstanceRepository.findStepAnalytics(protocolDefinitionId, startDate, endDate);
 
         List<StepAnalyticsDto.StepMetric> steps = rows.stream().map(row -> {
             String actionId = (String) row[0];

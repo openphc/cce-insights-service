@@ -30,7 +30,8 @@ public class ProtocolAnalyticsController {
             @RequestParam(required = false) String facilityId,
             @RequestParam(required = false) OffsetDateTime startDate,
             @RequestParam(required = false) OffsetDateTime endDate) {
-        StepAnalyticsDto analytics = protocolAnalyticsService.getStepAnalytics(protocolDefinitionId, facilityId);
+        StepAnalyticsDto analytics = protocolAnalyticsService.getStepAnalytics(
+                protocolDefinitionId, facilityId, startDate, endDate);
         return ResponseEntity.ok(ApiResponse.ok(analytics));
     }
 

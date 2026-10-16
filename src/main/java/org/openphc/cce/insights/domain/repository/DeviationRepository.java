@@ -47,11 +47,12 @@ public interface DeviationRepository extends ReadOnlyRepository<Deviation, UUID>
     List<Object[]> findDeviationCountsByFacilityGroupedByProtocol(String facilityId);
 
     // Returns single row: [compliantPatients, totalDeviations, overdueDevs, missedDevs, orderViolationDevs]
-    Object[] aggregateDeviationMetrics(UUID protocolDefinitionId);
+    Object[] aggregateDeviationMetrics(UUID protocolDefinitionId, OffsetDateTime startDate, OffsetDateTime endDate);
 
-    Object[] aggregateDeviationMetricsAll();
+    Object[] aggregateDeviationMetricsAll(OffsetDateTime startDate, OffsetDateTime endDate);
 
-    Object[] aggregateDeviationMetricsByFacility(String facilityId);
+    Object[] aggregateDeviationMetricsByFacility(String facilityId, OffsetDateTime startDate, OffsetDateTime endDate);
 
-    Object[] aggregateDeviationMetricsByProtocolAndFacility(UUID protocolDefinitionId, String facilityId);
+    Object[] aggregateDeviationMetricsByProtocolAndFacility(UUID protocolDefinitionId, String facilityId,
+                                                            OffsetDateTime startDate, OffsetDateTime endDate);
 }

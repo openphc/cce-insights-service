@@ -232,7 +232,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     A[GET /v1/insights/protocols/:id/step-analytics] --> B[Parse params:<br/>facilityId, startDate, endDate]
-    B --> C[Query step_instance<br/>JOIN protocol_instance<br/>WHERE protocol_definition_id = :id]
+    B --> C[Query step_instance<br/>JOIN protocol_instance<br/>WHERE protocol_definition_id = :id<br/>AND enrolled_at within startDate..endDate]
     C --> D[GROUP BY action_id]
     D --> E[For each action_id]
 

@@ -18,6 +18,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -37,7 +38,7 @@ class ComplianceSummaryControllerIT extends AbstractIntegrationTest {
 
     @Test
     void getProtocolComplianceSummary_returnsAggregatedMetrics() throws Exception {
-        when(complianceSummaryService.getProtocolComplianceSummary(eq(PROTOCOL_ID), any()))
+        when(complianceSummaryService.getProtocolComplianceSummary(eq(PROTOCOL_ID), any(), any(), any()))
                 .thenReturn(ComplianceSummaryDto.builder()
                         .protocolDefinitionId(PROTOCOL_ID)
                         .totalEnrollments(3)
@@ -64,8 +65,24 @@ class ComplianceSummaryControllerIT extends AbstractIntegrationTest {
     }
 
     @Test
+    void getProtocolComplianceSummary_passesTheDateRangeToTheService() throws Exception {
+        OffsetDateTime startDate = OffsetDateTime.parse("2026-07-01T00:00:00Z");
+        OffsetDateTime endDate = OffsetDateTime.parse("2026-08-18T23:59:59Z");
+        when(complianceSummaryService.getProtocolComplianceSummary(eq(PROTOCOL_ID), any(), any(), any()))
+                .thenReturn(ComplianceSummaryDto.builder().protocolDefinitionId(PROTOCOL_ID).totalEnrollments(3).build());
+
+        mockMvc.perform(get("/v1/insights/protocols/550e8400-e29b-41d4-a716-446655440000/compliance-summary")
+                        .param("startDate", "2026-07-01T00:00:00Z")
+                        .param("endDate", "2026-08-18T23:59:59Z"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalEnrollments").value(3));
+
+        verify(complianceSummaryService).getProtocolComplianceSummary(PROTOCOL_ID, null, startDate, endDate);
+    }
+
+    @Test
     void getProtocolComplianceSummary_notFound() throws Exception {
-        when(complianceSummaryService.getProtocolComplianceSummary(eq(UNKNOWN_ID), any()))
+        when(complianceSummaryService.getProtocolComplianceSummary(eq(UNKNOWN_ID), any(), any(), any()))
                 .thenThrow(new EntityNotFoundException("Protocol definition not found: " + UNKNOWN_ID));
 
         mockMvc.perform(get("/v1/insights/protocols/00000000-0000-0000-0000-000000000000/compliance-summary"))

@@ -444,7 +444,7 @@ public class DeviationRepositoryImpl
     }
 
     @Override
-    public Object[] aggregateDeviationMetrics(UUID protocolDefinitionId) {
+    public Object[] aggregateDeviationMetrics(UUID protocolDefinitionId, OffsetDateTime startDate, OffsetDateTime endDate) {
         var d  = deviationsWithInstance("d");
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
         String devType  = "d." + DEVIATIONS.DEVIATION_TYPE.getName();
@@ -463,6 +463,7 @@ public class DeviationRepositoryImpl
                 .where(DSL.condition(
                         "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
                         protocolDefinitionId.toString()))
+                .and(enrolledWithin(startDate, endDate))
                 .groupBy(DSL.field("pi.id"))
                 .asTable("t");
 
@@ -479,7 +480,7 @@ public class DeviationRepositoryImpl
     }
 
     @Override
-    public Object[] aggregateDeviationMetricsByFacility(String facilityId) {
+    public Object[] aggregateDeviationMetricsByFacility(String facilityId, OffsetDateTime startDate, OffsetDateTime endDate) {
         var d  = deviationsWithInstance("d");
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
         var pf = DSL.table("mv_patient_facility_latest").as("pf");
@@ -499,6 +500,7 @@ public class DeviationRepositoryImpl
                 .leftJoin(d).on(DSL.condition(
                         "d." + DEV_PROTOCOL_INSTANCE_ID + " = pi.id"))
                 .where(DSL.field("pf.facility_id").eq(facilityId))
+                .and(enrolledWithin(startDate, endDate))
                 .groupBy(DSL.field("pi.id"))
                 .asTable("t");
 
@@ -515,7 +517,8 @@ public class DeviationRepositoryImpl
     }
 
     @Override
-    public Object[] aggregateDeviationMetricsByProtocolAndFacility(UUID protocolDefinitionId, String facilityId) {
+    public Object[] aggregateDeviationMetricsByProtocolAndFacility(UUID protocolDefinitionId, String facilityId,
+                                                                   OffsetDateTime startDate, OffsetDateTime endDate) {
         var d  = deviationsWithInstance("d");
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
         var pf = DSL.table("mv_patient_facility_latest").as("pf");
@@ -538,6 +541,7 @@ public class DeviationRepositoryImpl
                         "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
                         protocolDefinitionId.toString()))
                 .and(DSL.field("pf.facility_id").eq(facilityId))
+                .and(enrolledWithin(startDate, endDate))
                 .groupBy(DSL.field("pi.id"))
                 .asTable("t");
 
@@ -554,7 +558,7 @@ public class DeviationRepositoryImpl
     }
 
     @Override
-    public Object[] aggregateDeviationMetricsAll() {
+    public Object[] aggregateDeviationMetricsAll(OffsetDateTime startDate, OffsetDateTime endDate) {
         var d  = deviationsWithInstance("d");
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
         String devType  = "d." + DEVIATIONS.DEVIATION_TYPE.getName();
@@ -570,6 +574,7 @@ public class DeviationRepositoryImpl
                 .from(pi)
                 .leftJoin(d).on(DSL.condition(
                         "d." + DEV_PROTOCOL_INSTANCE_ID + " = pi.id"))
+                .where(enrolledWithin(startDate, endDate))
                 .groupBy(DSL.field("pi.id"))
                 .asTable("t");
 

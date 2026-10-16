@@ -370,7 +370,7 @@ public class StepInstanceRepositoryImpl
     }
 
     @Override
-    public List<Object[]> findStepAnalytics(UUID protocolDefId) {
+    public List<Object[]> findStepAnalytics(UUID protocolDefId, OffsetDateTime startDate, OffsetDateTime endDate) {
         var stepInstances = finalAs(STEP_INSTANCES, "si");
         var protocolInstances = finalAs(PROTOCOL_INSTANCES, "pi");
 
@@ -381,13 +381,15 @@ public class StepInstanceRepositoryImpl
                 .where(DSL.condition(
                         "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
                         protocolDefId.toString()))
+                .and(enrolledWithin(startDate, endDate))
                 .groupBy(DSL.field("si." + STEP_INSTANCES.ACTION_ID.getName()))
                 .fetch()
                 .map(StepInstanceRepositoryImpl::toStepAnalyticsRow);
     }
 
     @Override
-    public List<Object[]> findStepAnalyticsByFacility(UUID protocolDefId, String facilityId) {
+    public List<Object[]> findStepAnalyticsByFacility(UUID protocolDefId, String facilityId,
+                                                      OffsetDateTime startDate, OffsetDateTime endDate) {
         var stepInstances = finalAs(STEP_INSTANCES, "si");
         var protocolInstances = finalAs(PROTOCOL_INSTANCES, "pi");
         var patientFacility = MV_PATIENT_FACILITY_LATEST.as("pf");
@@ -402,6 +404,7 @@ public class StepInstanceRepositoryImpl
                         "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
                         protocolDefId.toString()))
                 .and(DSL.field("pf.facility_id").eq(facilityId))
+                .and(enrolledWithin(startDate, endDate))
                 .groupBy(DSL.field("si." + STEP_INSTANCES.ACTION_ID.getName()))
                 .fetch()
                 .map(StepInstanceRepositoryImpl::toStepAnalyticsRow);
@@ -607,7 +610,7 @@ public class StepInstanceRepositoryImpl
     }
 
     @Override
-    public Object[] aggregateStepMetrics(UUID protocolDefinitionId) {
+    public Object[] aggregateStepMetrics(UUID protocolDefinitionId, OffsetDateTime startDate, OffsetDateTime endDate) {
         var si = finalAs(STEP_INSTANCES, "si");
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
 
@@ -618,12 +621,13 @@ public class StepInstanceRepositoryImpl
                 .where(DSL.condition(
                         "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
                         protocolDefinitionId.toString()))
+                .and(enrolledWithin(startDate, endDate))
                 .fetchOne();
         return r != null ? r.intoArray() : new Object[]{0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L};
     }
 
     @Override
-    public Object[] aggregateStepMetricsByFacility(String facilityId) {
+    public Object[] aggregateStepMetricsByFacility(String facilityId, OffsetDateTime startDate, OffsetDateTime endDate) {
         var si = finalAs(STEP_INSTANCES, "si");
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
         var pf = MV_PATIENT_FACILITY_LATEST.as("pf");
@@ -635,12 +639,14 @@ public class StepInstanceRepositoryImpl
                 .leftJoin(si).on(DSL.condition(
                         "si." + STEP_INSTANCES.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
                 .where(DSL.field("pf.facility_id").eq(facilityId))
+                .and(enrolledWithin(startDate, endDate))
                 .fetchOne();
         return r != null ? r.intoArray() : new Object[]{0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L};
     }
 
     @Override
-    public Object[] aggregateStepMetricsByProtocolAndFacility(UUID protocolDefinitionId, String facilityId) {
+    public Object[] aggregateStepMetricsByProtocolAndFacility(UUID protocolDefinitionId, String facilityId,
+                                                              OffsetDateTime startDate, OffsetDateTime endDate) {
         var si = finalAs(STEP_INSTANCES, "si");
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
         var pf = MV_PATIENT_FACILITY_LATEST.as("pf");
@@ -655,12 +661,13 @@ public class StepInstanceRepositoryImpl
                         "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
                         protocolDefinitionId.toString()))
                 .and(DSL.field("pf.facility_id").eq(facilityId))
+                .and(enrolledWithin(startDate, endDate))
                 .fetchOne();
         return r != null ? r.intoArray() : new Object[]{0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L};
     }
 
     @Override
-    public Object[] aggregateStepMetricsAll() {
+    public Object[] aggregateStepMetricsAll(OffsetDateTime startDate, OffsetDateTime endDate) {
         var si = finalAs(STEP_INSTANCES, "si");
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
 
@@ -668,6 +675,7 @@ public class StepInstanceRepositoryImpl
                 .from(pi)
                 .leftJoin(si).on(DSL.condition(
                         "si." + STEP_INSTANCES.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
+                .where(enrolledWithin(startDate, endDate))
                 .fetchOne();
         return r != null ? r.intoArray() : new Object[]{0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L};
     }

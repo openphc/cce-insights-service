@@ -22,9 +22,10 @@ public interface StepInstanceRepository extends ReadOnlyRepository<StepInstance,
      */
     List<Object[]> findSlaThresholdsByStepInstanceIdIn(List<UUID> stepInstanceIds);
 
-    List<Object[]> findStepAnalytics(UUID protocolDefId);
+    List<Object[]> findStepAnalytics(UUID protocolDefId, OffsetDateTime startDate, OffsetDateTime endDate);
 
-    List<Object[]> findStepAnalyticsByFacility(UUID protocolDefId, String facilityId);
+    List<Object[]> findStepAnalyticsByFacility(UUID protocolDefId, String facilityId,
+                                               OffsetDateTime startDate, OffsetDateTime endDate);
 
     List<Object[]> findCompletionFunnel(UUID protocolDefId);
 
@@ -64,13 +65,14 @@ public interface StepInstanceRepository extends ReadOnlyRepository<StepInstance,
     // Returns single row, same order as the step_* columns of mv_daily_compliance_kpis:
     // [completed, notStarted, slaMet, slaOverdue, slaMissed, slaUnjudged, completedOnTime, completedLate,
     //  totalSteps, totalEnrollments]
-    Object[] aggregateStepMetrics(UUID protocolDefinitionId);
+    Object[] aggregateStepMetrics(UUID protocolDefinitionId, OffsetDateTime startDate, OffsetDateTime endDate);
 
-    Object[] aggregateStepMetricsAll();
+    Object[] aggregateStepMetricsAll(OffsetDateTime startDate, OffsetDateTime endDate);
 
-    Object[] aggregateStepMetricsByFacility(String facilityId);
+    Object[] aggregateStepMetricsByFacility(String facilityId, OffsetDateTime startDate, OffsetDateTime endDate);
 
-    Object[] aggregateStepMetricsByProtocolAndFacility(UUID protocolDefinitionId, String facilityId);
+    Object[] aggregateStepMetricsByProtocolAndFacility(UUID protocolDefinitionId, String facilityId,
+                                                       OffsetDateTime startDate, OffsetDateTime endDate);
 
     // Returns single row: [totalReceived, totalVerified] — completed counts for the
     // consent-request and consent-verification steps, across all protocols.

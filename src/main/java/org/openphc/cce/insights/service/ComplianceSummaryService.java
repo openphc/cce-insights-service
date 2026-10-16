@@ -18,6 +18,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 
+import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -31,15 +32,22 @@ public class ComplianceSummaryService {
     private final DeviationRepository deviationRepository;
     private final MatcherEventLogRepository matcherEventLogRepository;
 
-    @Cacheable(value = "analytics", key = "'compliance-all-' + (#facilityId ?: 'all')")
-    public ComplianceSummaryDto getAllProtocolsComplianceSummary(String facilityId) {
+    /**
+     * Compliance across every protocol for the patients enrolled within [startDate, endDate]
+     * ({@code enrolled_at}, the clinical time of the enrolling event); a null bound is open.
+     */
+    @Cacheable(value = "analytics",
+            key = "'compliance-all-' + (#facilityId ?: 'all') + '-' + #startDate + '-' + #endDate")
+    public ComplianceSummaryDto getAllProtocolsComplianceSummary(String facilityId,
+                                                                 OffsetDateTime startDate,
+                                                                 OffsetDateTime endDate) {
         boolean hasFacility = facilityId != null && !facilityId.isEmpty();
         Object[] sm = hasFacility
-                ? stepInstanceRepository.aggregateStepMetricsByFacility(facilityId)
-                : stepInstanceRepository.aggregateStepMetricsAll();
+                ? stepInstanceRepository.aggregateStepMetricsByFacility(facilityId, startDate, endDate)
+                : stepInstanceRepository.aggregateStepMetricsAll(startDate, endDate);
         Object[] dm = hasFacility
-                ? deviationRepository.aggregateDeviationMetricsByFacility(facilityId)
-                : deviationRepository.aggregateDeviationMetricsAll();
+                ? deviationRepository.aggregateDeviationMetricsByFacility(facilityId, startDate, endDate)
+                : deviationRepository.aggregateDeviationMetricsAll(startDate, endDate);
 
         long totalEnrollments = toLong(sm[9]);
         if (totalEnrollments == 0) {
@@ -70,8 +78,16 @@ public class ComplianceSummaryService {
                 .build();
     }
 
-    @Cacheable(value = "analytics", key = "'compliance-' + #protocolDefinitionId + '-' + (#facilityId ?: 'all')")
-    public ComplianceSummaryDto getProtocolComplianceSummary(UUID protocolDefinitionId, String facilityId) {
+    /**
+     * Compliance of one protocol for the patients enrolled within [startDate, endDate]
+     * ({@code enrolled_at}, the clinical time of the enrolling event); a null bound is open.
+     * Every card — patients, steps, deviations, status breakdown — is counted on that same
+     * set of enrolments.
+     */
+    @Cacheable(value = "analytics",
+            key = "'compliance-' + #protocolDefinitionId + '-' + (#facilityId ?: 'all') + '-' + #startDate + '-' + #endDate")
+    public ComplianceSummaryDto getProtocolComplianceSummary(UUID protocolDefinitionId, String facilityId,
+                                                             OffsetDateTime startDate, OffsetDateTime endDate) {
         ProtocolDefinition pd = protocolDefinitionRepository.findById(protocolDefinitionId)
                 .orElseThrow(() -> new EntityNotFoundException(
                         "Protocol definition not found: " + protocolDefinitionId));
@@ -80,11 +96,13 @@ public class ComplianceSummaryService {
 
         // Always 2 aggregate queries — no per-instance loop regardless of facility filter
         Object[] sm = hasFacility
-                ? stepInstanceRepository.aggregateStepMetricsByProtocolAndFacility(protocolDefinitionId, facilityId)
-                : stepInstanceRepository.aggregateStepMetrics(protocolDefinitionId);
+                ? stepInstanceRepository.aggregateStepMetricsByProtocolAndFacility(protocolDefinitionId, facilityId,
+                        startDate, endDate)
+                : stepInstanceRepository.aggregateStepMetrics(protocolDefinitionId, startDate, endDate);
         Object[] dm = hasFacility
-                ? deviationRepository.aggregateDeviationMetricsByProtocolAndFacility(protocolDefinitionId, facilityId)
-                : deviationRepository.aggregateDeviationMetrics(protocolDefinitionId);
+                ? deviationRepository.aggregateDeviationMetricsByProtocolAndFacility(protocolDefinitionId, facilityId,
+                        startDate, endDate)
+                : deviationRepository.aggregateDeviationMetrics(protocolDefinitionId, startDate, endDate);
 
         long totalEnrollments = toLong(sm[9]);
         if (totalEnrollments == 0) {
@@ -92,7 +110,10 @@ public class ComplianceSummaryService {
         }
 
         // Load instances only for statusBreakdown (group by ACTIVE/COMPLETED/etc)
-        List<ProtocolInstance> instances = protocolInstanceRepository.findByProtocolDefinitionId(protocolDefinitionId);
+        List<ProtocolInstance> instances = protocolInstanceRepository.findByProtocolDefinitionId(protocolDefinitionId)
+                .stream()
+                .filter(pi -> isEnrolledWithin(pi, startDate, endDate)) // same enrolments as the aggregates above
+                .collect(Collectors.toList());
         if (hasFacility) {
             Set<UUID> facilityInstanceIds = getFacilityInstanceIds(facilityId);
             instances = instances.stream()
@@ -268,6 +289,17 @@ public class ComplianceSummaryService {
             ids.add((UUID) row[2]);
         }
         return ids;
+    }
+
+    /** Whether an enrolment's enrolled_at falls within [startDate, endDate]; a null bound is open. */
+    private static boolean isEnrolledWithin(ProtocolInstance protocolInstance,
+                                            OffsetDateTime startDate, OffsetDateTime endDate) {
+        OffsetDateTime enrolledAt = protocolInstance.getEnrolledAt();
+        if (enrolledAt == null) {
+            return startDate == null && endDate == null; // undated enrolments only count with no range
+        }
+        return (startDate == null || !enrolledAt.isBefore(startDate))
+                && (endDate == null || !enrolledAt.isAfter(endDate));
     }
 
     private static long toLong(Object val) {

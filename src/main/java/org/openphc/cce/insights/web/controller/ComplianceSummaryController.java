@@ -23,8 +23,11 @@ public class ComplianceSummaryController {
 
     @GetMapping("/protocols/compliance-summary")
     public ResponseEntity<ApiResponse<ComplianceSummaryDto>> getAllProtocolsComplianceSummary(
-            @RequestParam(required = false) String facilityId) {
-        ComplianceSummaryDto summary = complianceSummaryService.getAllProtocolsComplianceSummary(facilityId);
+            @RequestParam(required = false) String facilityId,
+            @RequestParam(required = false) OffsetDateTime startDate,
+            @RequestParam(required = false) OffsetDateTime endDate) {
+        ComplianceSummaryDto summary = complianceSummaryService.getAllProtocolsComplianceSummary(
+                facilityId, startDate, endDate);
         return ResponseEntity.ok(ApiResponse.ok(summary));
     }
 
@@ -34,7 +37,8 @@ public class ComplianceSummaryController {
             @RequestParam(required = false) String facilityId,
             @RequestParam(required = false) OffsetDateTime startDate,
             @RequestParam(required = false) OffsetDateTime endDate) {
-        ComplianceSummaryDto summary = complianceSummaryService.getProtocolComplianceSummary(protocolDefinitionId, facilityId);
+        ComplianceSummaryDto summary = complianceSummaryService.getProtocolComplianceSummary(
+                protocolDefinitionId, facilityId, startDate, endDate);
         return ResponseEntity.ok(ApiResponse.ok(summary));
     }
 
