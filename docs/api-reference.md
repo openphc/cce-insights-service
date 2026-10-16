@@ -19,7 +19,7 @@ All endpoints are accessed through the **CCE Gateway Service** (not directly by 
 
 ### 1.1 GET `/v1/insights/protocols/{protocolDefinitionId}/compliance-summary`
 
-Aggregate compliance metrics for a specific protocol across all enrolled patients.
+Aggregate compliance metrics for a specific protocol. With `startDate`/`endDate`, every figure — patients, compliant patients, step metrics, deviations and status breakdown — is counted on the patients **enrolled** within the range (`protocol_instances.enrolled_at`, the clinical time of the enrolling event). Without them, all enrolments are counted.
 
 **Required Scope:** `dashboard:read`
 
@@ -34,8 +34,8 @@ Aggregate compliance metrics for a specific protocol across all enrolled patient
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `facilityId` | String | — | Filter by facility FOSA ID |
-| `startDate` | ISO 8601 | — | Start of date range |
-| `endDate` | ISO 8601 | — | End of date range |
+| `startDate` | ISO 8601 | — | Count patients enrolled on or after this time (`enrolled_at`) |
+| `endDate` | ISO 8601 | — | Count patients enrolled on or before this time (`enrolled_at`) |
 
 **Response: `200 OK`**
 
@@ -107,8 +107,8 @@ Facility-level compliance metrics across all protocols.
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `protocolDefinitionId` | UUID | — | Filter by specific protocol |
-| `startDate` | ISO 8601 | — | Start of date range |
-| `endDate` | ISO 8601 | — | End of date range |
+| `startDate` | ISO 8601 | — | Accepted, not applied: the facility summary is all-time |
+| `endDate` | ISO 8601 | — | Accepted, not applied: the facility summary is all-time |
 
 **Response: `200 OK`**
 
@@ -1153,8 +1153,8 @@ Per-step completion rates, average time-to-complete, and timeliness distribution
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `facilityId` | String | — | Filter by facility FOSA ID |
-| `startDate` | ISO 8601 | — | Filter step instances created after |
-| `endDate` | ISO 8601 | — | Filter step instances created before |
+| `startDate` | ISO 8601 | — | Count the steps of patients enrolled on or after this time (`enrolled_at`) |
+| `endDate` | ISO 8601 | — | Count the steps of patients enrolled on or before this time (`enrolled_at`) |
 
 **Response: `200 OK`**
 
@@ -2131,7 +2131,7 @@ Patient/facility/practitioner/consent compliance rollups for the Dashboard's fou
 
 ### 16.1 GET `/v1/insights/protocols/compliance-summary`
 
-Returns compliance summary aggregated across all protocols in a single call.
+Returns compliance summary aggregated across all protocols in a single call. With `startDate`/`endDate`, only patients **enrolled** within the range (`protocol_instances.enrolled_at`) are counted, as in §1.1.
 
 **Required Scope:** `dashboard:read`
 
@@ -2140,6 +2140,8 @@ Returns compliance summary aggregated across all protocols in a single call.
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `facilityId` | String | — | Filter by facility |
+| `startDate` | ISO 8601 | — | Count patients enrolled on or after this time (`enrolled_at`) |
+| `endDate` | ISO 8601 | — | Count patients enrolled on or before this time (`enrolled_at`) |
 
 **Response: `200 OK`**
 

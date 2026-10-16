@@ -1,5 +1,6 @@
 package org.openphc.cce.insights.domain.repository;
 
+import org.jooq.Condition;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Table;
@@ -216,6 +217,18 @@ public abstract class AbstractClickHouseRepository<T, ID> implements ReadOnlyRep
     /** Convert null end date to far-future — parseDateTime64BestEffort-safe, effectively no upper bound. */
     protected static String dtEnd(OffsetDateTime v) {
         return v == null ? "2099-12-31 23:59:59" : v.toString();
+    }
+
+    /**
+     * Restricts a query aliasing protocol_instances as {@code pi} to the enrolments whose
+     * {@code enrolled_at} — the clinical time of the enrolling event — falls within
+     * [startDate, endDate]. A null bound leaves that side open, so (null, null) keeps every
+     * enrolment.
+     */
+    protected static Condition enrolledWithin(OffsetDateTime startDate, OffsetDateTime endDate) {
+        String enrolledAt = "pi." + PROTOCOL_INSTANCES.ENROLLED_AT.getName();
+        return DSL.condition(enrolledAt + " >= parseDateTime64BestEffort(?)", dtStart(startDate))
+                  .and(DSL.condition(enrolledAt + " <= parseDateTime64BestEffort(?)", dtEnd(endDate)));
     }
 
     /** Convert null UUID to empty string (sentinel for "no filter"). */
