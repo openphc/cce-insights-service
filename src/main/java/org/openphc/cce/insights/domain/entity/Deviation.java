@@ -21,6 +21,9 @@ public class Deviation {
     private UUID stepInstanceId;
     private DeviationType deviationType;
     private OffsetDateTime detectedAt;
+    /** Clinical time the deviation happened (see AbstractClickHouseRepository#deviationsWithOccurrence);
+     *  null when read without it. */
+    private OffsetDateTime occurredAt;
     private String metadata;
     private UUID intelligenceEventId;
 }

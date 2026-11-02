@@ -36,7 +36,7 @@ public class DeviationAnalyticsService {
                 .build()).collect(Collectors.toList());
     }
 
-    @Cacheable(value = "analytics", key = "'dev-trends-' + #interval + '-' + #facilityId")
+    @Cacheable(value = "analytics", key = "'dev-trends-' + #interval + '-' + #facilityId + '-' + #startDate + '-' + #endDate")
     public DeviationTrendDto getDeviationTrends(String interval, OffsetDateTime startDate,
                                                  OffsetDateTime endDate, String facilityId) {
         String dbInterval = DateUtil.mapInterval(interval);
@@ -102,7 +102,7 @@ public class DeviationAnalyticsService {
                 .build();
     }
 
-    @Cacheable(value = "analytics", key = "'dev-action-' + #protocolDefId")
+    @Cacheable(value = "analytics", key = "'dev-action-' + #protocolDefId + '-' + #startDate + '-' + #endDate")
     public List<DeviationByActionDto> getDeviationsByAction(UUID protocolDefId,
                                                              OffsetDateTime startDate,
                                                              OffsetDateTime endDate) {
@@ -119,7 +119,7 @@ public class DeviationAnalyticsService {
                 .build()).collect(Collectors.toList());
     }
 
-    @Cacheable(value = "analytics", key = "'dev-resolution-' + #protocolDefId")
+    @Cacheable(value = "analytics", key = "'dev-resolution-' + #protocolDefId + '-' + #startDate + '-' + #endDate")
     public DeviationResolutionDto getResolutionRate(UUID protocolDefId,
                                                      OffsetDateTime startDate,
                                                      OffsetDateTime endDate) {

@@ -203,14 +203,16 @@ public class ComplianceSummaryService {
         return results;
     }
 
-    @Cacheable(value = "analytics", key = "'facility-' + #facilityId")
-    public FacilitySummaryDto getFacilityComplianceSummary(String facilityId) {
-        List<Object[]> rows = matcherEventLogRepository.findPatientsByFacility(facilityId);
+    /** Compliance of one facility for the patients enrolled within [startDate, endDate] (a null bound is open). */
+    @Cacheable(value = "analytics", key = "'facility-' + #facilityId + '-' + #startDate + '-' + #endDate")
+    public FacilitySummaryDto getFacilityComplianceSummary(String facilityId,
+                                                           OffsetDateTime startDate, OffsetDateTime endDate) {
+        List<Object[]> rows = matcherEventLogRepository.findPatientsByFacility(facilityId, startDate, endDate);
         Set<String> patients = new LinkedHashSet<>();
         for (Object[] row : rows) patients.add((String) row[1]);
 
         // 2 aggregate queries replace findAll() + N+1 per-instance loops
-        List<Object[]> stepMetrics = stepInstanceRepository.findProtocolStepMetricsByFacility(facilityId);
+        List<Object[]> stepMetrics = stepInstanceRepository.findProtocolStepMetricsByFacility(facilityId, startDate, endDate);
         if (stepMetrics.isEmpty()) {
             return FacilitySummaryDto.builder()
                     .facilityId(facilityId)
@@ -221,7 +223,8 @@ public class ComplianceSummaryService {
                     .build();
         }
 
-        List<Object[]> deviationCounts = deviationRepository.findDeviationCountsByFacilityGroupedByProtocol(facilityId);
+        List<Object[]> deviationCounts = deviationRepository.findDeviationCountsByFacilityGroupedByProtocol(
+                facilityId, startDate, endDate);
         Map<String, Long> devsByProtocol = deviationCounts.stream()
                 .collect(Collectors.toMap(r -> (String) r[0], r -> (Long) r[1]));
 
@@ -283,7 +286,8 @@ public class ComplianceSummaryService {
     }
 
     private Set<UUID> getFacilityInstanceIds(String facilityId) {
-        List<Object[]> rows = matcherEventLogRepository.findPatientsByFacility(facilityId);
+        // Every enrolment at the facility: callers apply their own enrolled-within filter.
+        List<Object[]> rows = matcherEventLogRepository.findPatientsByFacility(facilityId, null, null);
         Set<UUID> ids = new HashSet<>();
         for (Object[] row : rows) {
             ids.add((UUID) row[2]);

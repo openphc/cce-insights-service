@@ -81,6 +81,16 @@ public class ProtocolInstanceRepositoryImpl
     }
 
     @Override
+    public long countDistinctPatientsEnrolledWithin(OffsetDateTime startDate, OffsetDateTime endDate) {
+        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
+        Long r = dsl.select(DSL.field("uniqExact(pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName() + ")", Long.class))
+                    .from(pi)
+                    .where(enrolledWithin(startDate, endDate))
+                    .fetchOne(0, Long.class);
+        return r != null ? r : 0L;
+    }
+
+    @Override
     public List<ProtocolInstance> findByPatientId(String patientId) {
         var pi = protocolInstancesWithCanonical("pi");
         return dsl.select(DSL.asterisk())
@@ -124,7 +134,8 @@ public class ProtocolInstanceRepositoryImpl
     }
 
     @Override
-    public List<Object[]> countByProtocolDefinitionIdGroupByStatus(UUID protocolDefId) {
+    public List<Object[]> countByProtocolDefinitionIdGroupByStatus(UUID protocolDefId,
+                                                                   OffsetDateTime startDate, OffsetDateTime endDate) {
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
         return dsl.select(
                     DSL.field("pi." + PROTOCOL_INSTANCES.STATUS.getName()),
@@ -133,6 +144,7 @@ public class ProtocolInstanceRepositoryImpl
                   .where(DSL.condition(
                           "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
                           protocolDefId.toString()))
+                  .and(enrolledWithin(startDate, endDate))
                   .groupBy(DSL.field("pi." + PROTOCOL_INSTANCES.STATUS.getName()))
                   .fetch()
                   .map(r -> new Object[]{r.value1(), r.value2()});
