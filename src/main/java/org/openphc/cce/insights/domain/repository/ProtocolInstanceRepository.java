@@ -13,13 +13,16 @@ public interface ProtocolInstanceRepository extends ReadOnlyRepository<ProtocolI
 
     List<String> findDistinctPatientIds();
 
+    /** Distinct patients with an enrolment whose clinical enrolled_at falls within [startDate, endDate]. */
+    long countDistinctPatientsEnrolledWithin(OffsetDateTime startDate, OffsetDateTime endDate);
+
     List<ProtocolInstance> findByPatientId(String patientId);
 
     List<ProtocolInstance> findByProtocolDefinitionId(UUID protocolDefinitionId);
 
     Page<ProtocolInstance> findByProtocolDefinitionId(UUID protocolDefinitionId, Pageable pageable);
 
-    List<Object[]> countByProtocolDefinitionIdGroupByStatus(UUID protocolDefId);
+    List<Object[]> countByProtocolDefinitionIdGroupByStatus(UUID protocolDefId, OffsetDateTime startDate, OffsetDateTime endDate);
 
     List<Object[]> findEnrollmentTrends(UUID protocolDefId, String interval,
                                         OffsetDateTime startDate, OffsetDateTime endDate);

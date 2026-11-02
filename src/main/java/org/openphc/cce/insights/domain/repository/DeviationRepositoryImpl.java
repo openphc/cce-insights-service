@@ -1,5 +1,6 @@
 package org.openphc.cce.insights.domain.repository;
 
+import org.jooq.Condition;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Table;
@@ -43,6 +44,11 @@ public class DeviationRepositoryImpl
         return toDeviation(r);
     }
 
+    /** Global date filter on a {@link #deviationsWithOccurrence} alias {@code d}: its clinical occurred_at. */
+    private static Condition occurredWithin(OffsetDateTime startDate, OffsetDateTime endDate) {
+        return clinicalTimeWithin("d." + DEVIATION_OCCURRED_AT, startDate, endDate);
+    }
+
     // ══════════════════════════════════════════════════════════════════════════════
     // Result mappers
     // ══════════════════════════════════════════════════════════════════════════════
@@ -59,6 +65,7 @@ public class DeviationRepositoryImpl
                 .stepInstanceId(r.get(DEVIATIONS.STEP_INSTANCE_ID.getName(), UUID.class))
                 .deviationType(dt)
                 .detectedAt(recordDateTime(r, DEVIATIONS.DETECTED_AT.getName()))
+                .occurredAt(r.field(DEVIATION_OCCURRED_AT) != null ? recordDateTime(r, DEVIATION_OCCURRED_AT) : null)
                 .metadata(r.get(DEVIATIONS.METADATA.getName(), String.class))
                 .intelligenceEventId(parseUUID(r.get(DEVIATIONS.INTELLIGENCE_EVENT_ID.getName(), String.class)))
                 .build();
@@ -84,7 +91,7 @@ public class DeviationRepositoryImpl
     public List<Deviation> findByProtocolInstanceIdIn(List<UUID> ids) {
         if (ids == null || ids.isEmpty()) return List.of();
         List<String> idStrings = ids.stream().map(UUID::toString).collect(java.util.stream.Collectors.toList());
-        var d = deviationsWithInstance("d");
+        var d = deviationsWithOccurrence("d");
         return dsl.select(DSL.asterisk())
                   .from(d)
                   .where(DSL.field("d." + DEV_PROTOCOL_INSTANCE_ID).in(idStrings))
@@ -109,7 +116,7 @@ public class DeviationRepositoryImpl
     }
 
     @Override
-    public List<Object[]> findDeviationCountsByFacilityGroupedByProtocol(String facilityId) {
+    public List<Object[]> findDeviationCountsByFacilityGroupedByProtocol(String facilityId, OffsetDateTime startDate, OffsetDateTime endDate) {
         var d  = deviationsWithInstance("d");
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
         var pf = DSL.table("mv_patient_facility_latest").as("pf");
@@ -125,6 +132,7 @@ public class DeviationRepositoryImpl
                 .leftJoin(d).on(DSL.condition(
                         "d." + DEV_PROTOCOL_INSTANCE_ID + " = pi.id"))
                 .where(DSL.field("pf.facility_id").eq(facilityId))
+                .and(enrolledWithin(startDate, endDate))
                 .groupBy(DSL.field("pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName()))
                 .fetch()
                 .map(r -> new Object[]{r.get(0, String.class), r.get(1, Long.class)});
@@ -157,7 +165,7 @@ public class DeviationRepositoryImpl
         String dtype = str(deviationType);
         String fid   = str(facilityId);
         String pdid  = uuid(protocolDefinitionId);
-        var d  = deviationsWithInstance("d");
+        var d  = deviationsWithOccurrence("d");
         var pi = protocolInstancesWithCanonical("pi");
         var si = finalAs(STEP_INSTANCES, "si");
         var pf = DSL.table("mv_patient_facility_latest").as("pf");
@@ -185,13 +193,8 @@ public class DeviationRepositoryImpl
                   .and(DSL.condition(
                           "toUUIDOrNull(?) IS NULL OR pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() +
                           " = toUUIDOrNull(?)", pdid, pdid))
-                  .and(DSL.condition(
-                          "d." + DEVIATIONS.DETECTED_AT.getName() + " >= parseDateTime64BestEffort(?)",
-                          dtStart(startDate)))
-                  .and(DSL.condition(
-                          "d." + DEVIATIONS.DETECTED_AT.getName() + " <= parseDateTime64BestEffort(?)",
-                          dtEnd(endDate)))
-                  .orderBy(DSL.field("d." + DEVIATIONS.DETECTED_AT.getName()).desc())
+                  .and(occurredWithin(startDate, endDate))
+                  .orderBy(DSL.field("d." + DEVIATION_OCCURRED_AT).desc())
                   .limit(lim)
                   .fetch()
                   .map(r -> new Object[]{
@@ -208,8 +211,8 @@ public class DeviationRepositoryImpl
                                                String actionId) {
         String fid = str(facilityId);
         String aid = str(actionId);
-        String periodExpr = dateTruncExpr(interval, "d." + DEVIATIONS.DETECTED_AT.getName());
-        var d  = deviationsWithInstance("d");
+        String periodExpr = dateTruncExpr(interval, "d." + DEVIATION_OCCURRED_AT);
+        var d  = deviationsWithOccurrence("d");
         var si = finalAs(STEP_INSTANCES, "si");
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
         var pf = DSL.table("mv_patient_facility_latest").as("pf");
@@ -225,12 +228,7 @@ public class DeviationRepositoryImpl
                           "d." + DEV_PROTOCOL_INSTANCE_ID + " = pi.id"))
                   .leftJoin(pf).on(DSL.condition(
                           "pf.patient_id = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
-                  .where(DSL.condition(
-                          "d." + DEVIATIONS.DETECTED_AT.getName() + " >= parseDateTime64BestEffort(?)",
-                          dtStart(startDate)))
-                  .and(DSL.condition(
-                          "d." + DEVIATIONS.DETECTED_AT.getName() + " <= parseDateTime64BestEffort(?)",
-                          dtEnd(endDate)))
+                  .where(occurredWithin(startDate, endDate))
                   .and(DSL.condition("? = '' OR pf.facility_id = ?", fid, fid))
                   .and(DSL.condition(
                           "? = '' OR si." + STEP_INSTANCES.ACTION_ID.getName() + " = ?", aid, aid))
@@ -246,7 +244,7 @@ public class DeviationRepositoryImpl
     public List<Object[]> findDeviationsByAction(UUID protocolDefId, OffsetDateTime startDate,
                                                   OffsetDateTime endDate) {
         String pid = uuid(protocolDefId);
-        var d  = deviationsWithInstance("d");
+        var d  = deviationsWithOccurrence("d");
         var si = finalAs(STEP_INSTANCES, "si");
         var pi = protocolInstancesWithCanonical("pi");
 
@@ -267,12 +265,7 @@ public class DeviationRepositoryImpl
                   .where(DSL.condition(
                           "toUUIDOrNull(?) IS NULL OR pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() +
                           " = toUUIDOrNull(?)", pid, pid))
-                  .and(DSL.condition(
-                          "d." + DEVIATIONS.DETECTED_AT.getName() + " >= parseDateTime64BestEffort(?)",
-                          dtStart(startDate)))
-                  .and(DSL.condition(
-                          "d." + DEVIATIONS.DETECTED_AT.getName() + " <= parseDateTime64BestEffort(?)",
-                          dtEnd(endDate)))
+                  .and(occurredWithin(startDate, endDate))
                   .groupBy(
                           DSL.field("si." + STEP_INSTANCES.ACTION_ID.getName()),
                           DSL.field("pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName()),
@@ -289,7 +282,7 @@ public class DeviationRepositoryImpl
     public List<Object[]> findResolutionRate(UUID protocolDefId, OffsetDateTime startDate,
                                              OffsetDateTime endDate) {
         String pid = uuid(protocolDefId);
-        var d  = deviationsWithInstance("d");
+        var d  = deviationsWithOccurrence("d");
         var si = finalAs(STEP_INSTANCES, "si");
 
         // Subquery: resolve IN clause against protocol_instances with FINAL if enabled.
@@ -304,7 +297,8 @@ public class DeviationRepositoryImpl
                     DSL.field("countIf(si." + STEP_INSTANCES.STEP_STATUS.getName() + " = 'NOT_STARTED' AND si." +
                               STEP_INSTANCES.SLA_STATUS.getName() + " = 'MISSED')", Long.class).as("escalated_count"),
                     DSL.field("count()", Long.class).as("total_overdue"),
-                    DSL.field("avgIf(dateDiff('second', d." + DEVIATIONS.DETECTED_AT.getName() +
+                    // clinical occurrence → completion (detected_at lags the clinical clock, so it can go negative)
+                    DSL.field("avgIf(dateDiff('second', d." + DEVIATION_OCCURRED_AT +
                               ", si." + STEP_INSTANCES.COMPLETED_AT.getName() + ") / 86400.0" +
                               ", si." + STEP_INSTANCES.STEP_STATUS.getName() + " = 'COMPLETED')", Double.class).as("avg_days_to_resolve"))
                   .from(d)
@@ -313,26 +307,19 @@ public class DeviationRepositoryImpl
                   .where(DSL.field("d." + DEVIATIONS.DEVIATION_TYPE.getName()).eq("OVERDUE"))
                   .and(DSL.condition("toUUIDOrNull(?) IS NULL", pid)
                       .or(DSL.field("d." + DEV_PROTOCOL_INSTANCE_ID).in(piSubquery)))
-                  .and(DSL.condition(
-                          "d." + DEVIATIONS.DETECTED_AT.getName() + " >= parseDateTime64BestEffort(?)",
-                          dtStart(startDate)))
-                  .and(DSL.condition(
-                          "d." + DEVIATIONS.DETECTED_AT.getName() + " <= parseDateTime64BestEffort(?)",
-                          dtEnd(endDate)))
+                  .and(occurredWithin(startDate, endDate))
                   .fetch()
                   .map(r -> new Object[]{r.value1(), r.value2(), r.value3(), r.value4()});
     }
 
     @Override
     public List<Object[]> countByTypeSince(OffsetDateTime since) {
-        var d = deviationsWithInstance("d");
+        var d = deviationsWithOccurrence("d");
         return dsl.select(
                     DSL.field("d." + DEVIATIONS.DEVIATION_TYPE.getName()),
                     DSL.field("count()", Long.class))
                   .from(d)
-                  .where(DSL.condition(
-                          "d." + DEVIATIONS.DETECTED_AT.getName() + " >= parseDateTime64BestEffort(?)",
-                          dt(since)))
+                  .where(occurredWithin(since, null))
                   .groupBy(DSL.field("d." + DEVIATIONS.DEVIATION_TYPE.getName()))
                   .fetch()
                   .map(r -> new Object[]{r.get(0, String.class), r.get(1, Long.class)});
@@ -342,7 +329,7 @@ public class DeviationRepositoryImpl
     public List<Object[]> countByTypeInRange(OffsetDateTime startDate, OffsetDateTime endDate,
                                              String facilityId) {
         String fid = str(facilityId);
-        var d  = deviationsWithInstance("d");
+        var d  = deviationsWithOccurrence("d");
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
         var pf = DSL.table("mv_patient_facility_latest").as("pf");
 
@@ -354,12 +341,7 @@ public class DeviationRepositoryImpl
                           "d." + DEV_PROTOCOL_INSTANCE_ID + " = pi.id"))
                   .leftJoin(pf).on(DSL.condition(
                           "pf.patient_id = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
-                  .where(DSL.condition(
-                          "d." + DEVIATIONS.DETECTED_AT.getName() + " >= parseDateTime64BestEffort(?)",
-                          dtStart(startDate)))
-                  .and(DSL.condition(
-                          "d." + DEVIATIONS.DETECTED_AT.getName() + " <= parseDateTime64BestEffort(?)",
-                          dtEnd(endDate)))
+                  .where(occurredWithin(startDate, endDate))
                   .and(DSL.condition("? = '' OR pf.facility_id = ?", fid, fid))
                   .groupBy(DSL.field("d." + DEVIATIONS.DEVIATION_TYPE.getName()))
                   .fetch()
@@ -371,7 +353,7 @@ public class DeviationRepositoryImpl
                                                        OffsetDateTime startDate,
                                                        OffsetDateTime endDate) {
         String fid = str(facilityId);
-        var d  = deviationsWithInstance("d");
+        var d  = deviationsWithOccurrence("d");
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
         var pf = DSL.table("mv_patient_facility_latest").as("pf");
 
@@ -389,12 +371,7 @@ public class DeviationRepositoryImpl
                   .leftJoin(pf).on(DSL.condition(
                           "pf.patient_id = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
                   .where(DSL.condition("? = '' OR pf.facility_id = ?", fid, fid))
-                  .and(DSL.condition(
-                          "d." + DEVIATIONS.DETECTED_AT.getName() + " >= parseDateTime64BestEffort(?)",
-                          dtStart(startDate)))
-                  .and(DSL.condition(
-                          "d." + DEVIATIONS.DETECTED_AT.getName() + " <= parseDateTime64BestEffort(?)",
-                          dtEnd(endDate)))
+                  .and(occurredWithin(startDate, endDate))
                   .groupBy(DSL.field("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
                   .having(DSL.field("count()", Long.class).ge((long) minDeviations))
                   .orderBy(DSL.field("total_deviations").desc())
@@ -406,9 +383,10 @@ public class DeviationRepositoryImpl
     }
 
     @Override
-    public List<Object[]> countDeviationsByFacility(UUID protocolDefinitionId) {
+    public List<Object[]> countDeviationsByFacility(UUID protocolDefinitionId,
+                                                    OffsetDateTime startDate, OffsetDateTime endDate) {
         String pid = protocolDefinitionId != null ? protocolDefinitionId.toString() : "";
-        var d   = deviationsWithInstance("d");
+        var d   = deviationsWithOccurrence("d");
         var pi  = finalAs(PROTOCOL_INSTANCES, "pi");
         var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
 
@@ -424,21 +402,25 @@ public class DeviationRepositoryImpl
                   .and(DSL.condition(
                           "toUUIDOrNull(?) IS NULL OR pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() +
                           " = toUUIDOrNull(?)", pid, pid))
+                  .and(occurredWithin(startDate, endDate))
                   .groupBy(DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()))
                   .fetch()
                   .map(r -> new Object[]{r.get(0, String.class), r.get(1, Long.class)});
     }
 
     @Override
-    public long countDistinctPatientsWithDeviations() {
+    public long countDistinctPatientsWithDeviations(OffsetDateTime startDate, OffsetDateTime endDate) {
         var d  = deviationsWithInstance("d");
         var pi = finalAs(PROTOCOL_INSTANCES, "pi");
 
+        // Exact, and over the same enrolled-within cohort as
+        // ProtocolInstanceRepository#countDistinctPatientsEnrolledWithin — the caller subtracts the two.
         Long r = dsl.select(
-                        DSL.field("uniq(pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName() + ")", Long.class))
+                        DSL.field("uniqExact(pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName() + ")", Long.class))
                     .from(d)
                     .join(pi).on(DSL.condition(
                             "d." + DEV_PROTOCOL_INSTANCE_ID + " = pi.id"))
+                    .where(enrolledWithin(startDate, endDate))
                     .fetchOne(0, Long.class);
         return r != null ? r : 0L;
     }

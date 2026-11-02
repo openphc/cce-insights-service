@@ -23,7 +23,7 @@ public class PatientRiskService {
     private final StepInstanceRepository stepInstanceRepository;
     private final MatcherEventLogRepository matcherEventLogRepository;
 
-    @Cacheable(value = "analytics", key = "'risk-hotspots'")
+    @Cacheable(value = "analytics", key = "'risk-hotspots-' + #startDate + '-' + #endDate")
     public List<AtRiskHotspotDto> getAtRiskHotspots(OffsetDateTime startDate, OffsetDateTime endDate) {
         // Build facility name lookup
         Map<String, String> facilityNameMap = new LinkedHashMap<>();
@@ -33,7 +33,7 @@ public class PatientRiskService {
 
         // Per-facility patient risk counts, aggregated entirely in ClickHouse (see
         // StepInstanceRepository#findAtRiskHotspotCounts for why this replaced a Java-side join).
-        return stepInstanceRepository.findAtRiskHotspotCounts().stream().map(row -> {
+        return stepInstanceRepository.findAtRiskHotspotCounts(startDate, endDate).stream().map(row -> {
             String facilityId = (String) row[0];
             long nonCompliant = ((Number) row[1]).longValue();
             long atRisk = ((Number) row[2]).longValue();
@@ -60,7 +60,7 @@ public class PatientRiskService {
         }).collect(Collectors.toList());
     }
 
-    @Cacheable(value = "analytics", key = "'repeat-deviations-' + #minDeviations")
+    @Cacheable(value = "analytics", key = "'repeat-deviations-' + #minDeviations + '-' + #startDate + '-' + #endDate")
     public List<RepeatDeviationPatientDto> getRepeatDeviationPatients(int minDeviations,
                                                                        OffsetDateTime startDate,
                                                                        OffsetDateTime endDate) {
