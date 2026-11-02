@@ -179,7 +179,8 @@ public class DeviationRepositoryImpl
                     DSL.field("si." + STEP_INSTANCES.ACTION_ID.getName()),
                     DSL.field("d." + DEVIATIONS.DEVIATION_TYPE.getName()),
                     DSL.field("d." + DEVIATIONS.DETECTED_AT.getName()).as(DEVIATIONS.DETECTED_AT.getName()),
-                    DSL.field("pf.facility_id"))
+                    DSL.field("pf.facility_id"),
+                    DSL.field("d." + DEVIATION_OCCURRED_AT).as(DEVIATION_OCCURRED_AT))
                   .from(d)
                   .join(pi).on(DSL.condition(
                           "d." + DEV_PROTOCOL_INSTANCE_ID + " = pi.id"))
@@ -202,7 +203,8 @@ public class DeviationRepositoryImpl
                           r.get(3, String.class), r.get(4, String.class), r.get(5, String.class),
                           r.get(6, String.class),
                           recordDateTime(r, DEVIATIONS.DETECTED_AT.getName()),
-                          r.get(8, String.class)});
+                          r.get(8, String.class),
+                          recordDateTime(r, DEVIATION_OCCURRED_AT)});
     }
 
     @Override
