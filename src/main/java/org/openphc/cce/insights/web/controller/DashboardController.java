@@ -27,8 +27,10 @@ public class DashboardController {
     }
 
     @GetMapping("/compliance-summary")
-    public ResponseEntity<ApiResponse<DashboardComplianceSummaryDto>> getComplianceSummary() {
-        DashboardComplianceSummaryDto summary = dashboardService.getComplianceSummary();
+    public ResponseEntity<ApiResponse<DashboardComplianceSummaryDto>> getComplianceSummary(
+            @RequestParam(required = false) OffsetDateTime startDate,
+            @RequestParam(required = false) OffsetDateTime endDate) {
+        DashboardComplianceSummaryDto summary = dashboardService.getComplianceSummary(startDate, endDate);
         return ResponseEntity.ok(ApiResponse.ok(summary));
     }
 }
