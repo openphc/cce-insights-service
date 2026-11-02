@@ -212,8 +212,9 @@ public class PatientController {
         List<Map<String, Object>> result = events.stream()
                 .filter(e -> resourceType == null || extractResourceType(e.getData()).equals(resourceType))
                 .filter(e -> source == null || source.equals(e.getSource()))
-                .filter(e -> startDate == null || !e.getEventTime().isBefore(startDate))
-                .filter(e -> endDate == null || !e.getEventTime().isAfter(endDate))
+                // event_time is Nullable — an undated event is outside any range, as in the SQL filters
+                .filter(e -> startDate == null || (e.getEventTime() != null && !e.getEventTime().isBefore(startDate)))
+                .filter(e -> endDate == null || (e.getEventTime() != null && !e.getEventTime().isAfter(endDate)))
                 .limit(limit)
                 .map(e -> {
                     Map<String, Object> map = new LinkedHashMap<>();
@@ -283,17 +284,19 @@ public class PatientController {
                             map.put("stepName", stepName);
                             map.put("deviationType", d.getDeviationType());
                             map.put("detectedAt", d.getDetectedAt());
+                            map.put("occurredAt", d.getOccurredAt());
                             map.put("metadata", metadata);
                             map.put("description", description);
                             return map;
                         }))
                 .filter(m -> deviationType == null ||
                         m.get("deviationType").toString().equalsIgnoreCase(deviationType))
+                // global date filter on the clinical occurrence time, not the detection time
                 .filter(m -> startDate == null ||
-                        !((OffsetDateTime) m.get("detectedAt")).isBefore(startDate))
+                        !((OffsetDateTime) m.get("occurredAt")).isBefore(startDate))
                 .filter(m -> endDate == null ||
-                        !((OffsetDateTime) m.get("detectedAt")).isAfter(endDate))
-                .sorted(Comparator.comparing(m -> ((OffsetDateTime) m.get("detectedAt")),
+                        !((OffsetDateTime) m.get("occurredAt")).isAfter(endDate))
+                .sorted(Comparator.comparing(m -> ((OffsetDateTime) m.get("occurredAt")),
                         Comparator.reverseOrder()))
                 .collect(Collectors.toList());
         return ResponseEntity.ok(ApiResponse.ok(result));

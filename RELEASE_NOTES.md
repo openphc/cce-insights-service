@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+### Global date filter uses clinical time (all pages except Ingestion)
+
+`startDate` / `endDate` now select data by when it clinically happened, not when the system
+received or flagged it. Ingestion endpoints (`/ingestion/*`) stay on `received_at`.
+
+- **Events** (dashboard overview, event volume, source comparison, processing quality,
+  practitioner ranking): `inbound_event_logs.event_time` (was `received_at` / matcher
+  `received_at`); trend buckets follow. `/events/by-source` no longer shares the ingestion query.
+- **Deviations** (list, trends, by-action, resolution rate, intelligence summary, repeat
+  deviations, facility ranking, patient deviations): clinical `occurred_at` — the SLA threshold
+  breached (OVERDUE → due, MISSED → missed, ORDER_VIOLATION → completion), else `due_date`, else
+  `detected_at`; same derivation as `mv_daily_deviation_kpis`. Was `detected_at`. Resolution
+  `avgDaysToResolve` is measured from `occurred_at`. Patient deviations gain `occurredAt`. The
+  last-24h / 7d / 30d counters (and the dashboard `newDeviations24h`) count `occurred_at`, relative
+  to now.
+- **Enrolment cohort** (`enrolled_at`, as CCE-147): now also completion funnel, outcome
+  distribution, at-risk hotspots, facility compliance summary and dashboard compliance summary,
+  which previously ignored the range. Facility-ranking referral counts use the step's clinical
+  `completed_at`.
+- `/dashboard/compliance-summary` accepts `startDate` / `endDate`.
+- Cache keys of every date-filtered endpoint include the range (several returned the first
+  cached range for any range).
+- Intelligence deliveries stay on `created_at` (no clinical clock on that table).
+
 ### CCE 2.0.0 ClickHouse schema (breaking API changes)
 
 Reads the 2.0.0 `cce_analytics` schema (Protocol / Matcher / Step SLA services replace the 1.x

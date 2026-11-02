@@ -180,7 +180,7 @@ public class EventVolumeService {
     @Cacheable(value = "metrics", key = "'vol-source-' + #startDate + '-' + #endDate")
     public List<SourceSystemCountDto> getBySource(OffsetDateTime startDate, OffsetDateTime endDate) {
         // Source counts from inbound_event — shows ALL events received per source with status breakdown
-        List<Object[]> rows = inboundEventRepository.countBySourceAndStatus(null, startDate, endDate);
+        List<Object[]> rows = inboundEventRepository.countEventsBySourceAndStatus(null, startDate, endDate);
         // rows: [source, status, count]
         Map<String, Map<String, Long>> grouped = new LinkedHashMap<>();
         for (Object[] row : rows) {
