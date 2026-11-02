@@ -207,12 +207,7 @@ public class MatcherEventLogRepositoryImpl
                   .and(DSL.field("iel." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName())
                           .in("Encounter", "Observation", "MedicationRequest", "Procedure", "Consent"))
                   .and(DSL.field("iel." + INBOUND_EVENT_LOGS.SUBJECT.getName()).ne(""))
-                  .and(DSL.condition(
-                          "iel." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
-                          dtStart(startDate)))
-                  .and(DSL.condition(
-                          "iel." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
-                          dtEnd(endDate)))
+                  .and(eventTimeWithin("iel", startDate, endDate))
                   .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?", fid, fid))
                   .fetch()
                   .map(r -> new Object[]{r.get(0, String.class), r.get(1, String.class), r.get(2, String.class)});
@@ -246,12 +241,7 @@ public class MatcherEventLogRepositoryImpl
                   .and(DSL.field("iel." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName()).ne(""))
                   .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?", fid, fid))
                   .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.SOURCE.getName() + " = ?", src, src))
-                  .and(DSL.condition(
-                          "cel." + MATCHER_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
-                          dtStart(startDate)))
-                  .and(DSL.condition(
-                          "cel." + MATCHER_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
-                          dtEnd(endDate)))
+                  .and(eventTimeWithin("iel", startDate, endDate))
                   .groupBy(DSL.field("iel." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName()))
                   .orderBy(DSL.field("cnt").desc())
                   .fetch()
@@ -272,12 +262,7 @@ public class MatcherEventLogRepositoryImpl
                           " = cel." + MATCHER_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
                   .where(DSL.field("cel." + MATCHER_EVENT_LOGS.PROCESSING_STATUS.getName()).ne("DUPLICATE"))
                   .and(DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()).ne(""))
-                  .and(DSL.condition(
-                          "cel." + MATCHER_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
-                          dtStart(startDate)))
-                  .and(DSL.condition(
-                          "cel." + MATCHER_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
-                          dtEnd(endDate)))
+                  .and(eventTimeWithin("iel", startDate, endDate))
                   .groupBy(
                           DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()),
                           DSL.field("iel." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName()))
@@ -306,12 +291,7 @@ public class MatcherEventLogRepositoryImpl
                   .where(DSL.field("cel." + MATCHER_EVENT_LOGS.PROCESSING_STATUS.getName()).ne("DUPLICATE"))
                   .and(DSL.field("iel." + INBOUND_EVENT_LOGS.PRACTITIONER_REF.getName()).ne(""))
                   .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?", fid, fid))
-                  .and(DSL.condition(
-                          "cel." + MATCHER_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
-                          dtStart(startDate)))
-                  .and(DSL.condition(
-                          "cel." + MATCHER_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
-                          dtEnd(endDate)))
+                  .and(eventTimeWithin("iel", startDate, endDate))
                   .groupBy(
                           DSL.field("iel." + INBOUND_EVENT_LOGS.PRACTITIONER_REF.getName()),
                           DSL.field("iel." + INBOUND_EVENT_LOGS.PRACTITIONER_DISPLAY.getName()),
@@ -340,12 +320,7 @@ public class MatcherEventLogRepositoryImpl
                   .where(DSL.field("cel." + MATCHER_EVENT_LOGS.PROCESSING_STATUS.getName()).ne("DUPLICATE"))
                   .and(DSL.field("iel." + INBOUND_EVENT_LOGS.SOURCE.getName()).ne(""))
                   .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?", fid, fid))
-                  .and(DSL.condition(
-                          "cel." + MATCHER_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
-                          dtStart(startDate)))
-                  .and(DSL.condition(
-                          "cel." + MATCHER_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
-                          dtEnd(endDate)))
+                  .and(eventTimeWithin("iel", startDate, endDate))
                   .groupBy(
                           DSL.field("iel." + INBOUND_EVENT_LOGS.SOURCE.getName()),
                           DSL.field("iel." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName()))
@@ -361,7 +336,7 @@ public class MatcherEventLogRepositoryImpl
         String fid = str(facilityId);
         String src = str(source);
         String rt  = str(resourceType);
-        String periodExpr = dateTruncExpr(interval, "cel." + MATCHER_EVENT_LOGS.RECEIVED_AT.getName());
+        String periodExpr = dateTruncExpr(interval, "iel." + INBOUND_EVENT_LOGS.EVENT_TIME.getName());
         var cel = finalAs(MATCHER_EVENT_LOGS, "cel");
         var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
         return dsl.select(
@@ -376,12 +351,7 @@ public class MatcherEventLogRepositoryImpl
                   .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?", fid, fid))
                   .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.SOURCE.getName() + " = ?", src, src))
                   .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName() + " = ?", rt, rt))
-                  .and(DSL.condition(
-                          "cel." + MATCHER_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
-                          dtStart(startDate)))
-                  .and(DSL.condition(
-                          "cel." + MATCHER_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
-                          dtEnd(endDate)))
+                  .and(eventTimeWithin("iel", startDate, endDate))
                   .groupBy(
                           DSL.field(DSL.sql("period")),
                           DSL.field("iel." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName()))
@@ -404,12 +374,7 @@ public class MatcherEventLogRepositoryImpl
                           "iel." + INBOUND_EVENT_LOGS.CLOUDEVENTS_ID.getName() +
                           " = cel." + MATCHER_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
                   .where(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?", fid, fid))
-                  .and(DSL.condition(
-                          "cel." + MATCHER_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
-                          dtStart(startDate)))
-                  .and(DSL.condition(
-                          "cel." + MATCHER_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
-                          dtEnd(endDate)))
+                  .and(eventTimeWithin("iel", startDate, endDate))
                   .groupBy(DSL.field("cel." + MATCHER_EVENT_LOGS.PROCESSING_STATUS.getName()))
                   .fetch()
                   .map(r -> new Object[]{r.get(0, String.class), r.get(1, Long.class)});
@@ -434,12 +399,7 @@ public class MatcherEventLogRepositoryImpl
                   .where(DSL.field("iel." + INBOUND_EVENT_LOGS.SOURCE.getName()).ne(""))
                   .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.SOURCE.getName() + " = ?", src, src))
                   .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?", fid, fid))
-                  .and(DSL.condition(
-                          "cel." + MATCHER_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
-                          dtStart(startDate)))
-                  .and(DSL.condition(
-                          "cel." + MATCHER_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
-                          dtEnd(endDate)))
+                  .and(eventTimeWithin("iel", startDate, endDate))
                   .groupBy(
                           DSL.field("iel." + INBOUND_EVENT_LOGS.SOURCE.getName()),
                           DSL.field("cel." + MATCHER_EVENT_LOGS.PROCESSING_STATUS.getName()))
@@ -449,7 +409,8 @@ public class MatcherEventLogRepositoryImpl
     }
 
     @Override
-    public List<Object[]> findFacilityEventCounts(UUID protocolDefId) {
+    public List<Object[]> findFacilityEventCounts(UUID protocolDefId,
+                                                  OffsetDateTime startDate, OffsetDateTime endDate) {
         String pid = protocolDefId != null ? protocolDefId.toString() : "";
         var cel = finalAs(MATCHER_EVENT_LOGS, "cel");
         var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
@@ -469,6 +430,7 @@ public class MatcherEventLogRepositoryImpl
                   .and(DSL.condition(
                           "toUUIDOrNull(?) IS NULL OR pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() +
                           " = toUUIDOrNull(?)", pid, pid))
+                  .and(eventTimeWithin("iel", startDate, endDate))
                   .groupBy(DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()))
                   .orderBy(DSL.field("total_events").desc())
                   .fetch()
@@ -476,7 +438,8 @@ public class MatcherEventLogRepositoryImpl
     }
 
     @Override
-    public List<Object[]> findActivePatientsByFacility(UUID protocolDefId) {
+    public List<Object[]> findActivePatientsByFacility(UUID protocolDefId,
+                                                       OffsetDateTime startDate, OffsetDateTime endDate) {
         String pid = protocolDefId != null ? protocolDefId.toString() : "";
         var cel = finalAs(MATCHER_EVENT_LOGS, "cel");
         var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
@@ -496,6 +459,7 @@ public class MatcherEventLogRepositoryImpl
                   .and(DSL.condition(
                           "toUUIDOrNull(?) IS NULL OR pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() +
                           " = toUUIDOrNull(?)", pid, pid))
+                  .and(eventTimeWithin("iel", startDate, endDate))
                   .groupBy(DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()))
                   .orderBy(DSL.field("patient_count").desc())
                   .fetch()
@@ -526,7 +490,7 @@ public class MatcherEventLogRepositoryImpl
     }
 
     @Override
-    public List<Object[]> findPatientsByFacility(String facilityId) {
+    public List<Object[]> findPatientsByFacility(String facilityId, OffsetDateTime startDate, OffsetDateTime endDate) {
         var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
         var pi  = finalAs(PROTOCOL_INSTANCES, "pi");
         return dsl.selectDistinct(
@@ -539,6 +503,7 @@ public class MatcherEventLogRepositoryImpl
                           " = iel." + INBOUND_EVENT_LOGS.SUBJECT.getName()))
                   .where(DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()).eq(facilityId))
                   .and(DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()).ne(""))
+                  .and(enrolledWithin(startDate, endDate))
                   .orderBy(DSL.field("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
                   .fetch()
                   .map(r -> new Object[]{
@@ -591,12 +556,7 @@ public class MatcherEventLogRepositoryImpl
                           " = cel." + MATCHER_EVENT_LOGS.CLOUDEVENTS_ID.getName()))
                   .where(DSL.field("iel." + INBOUND_EVENT_LOGS.PRACTITIONER_REF.getName()).ne(""))
                   .and(DSL.field("cel." + MATCHER_EVENT_LOGS.PROCESSING_STATUS.getName()).ne("DUPLICATE"))
-                  .and(DSL.condition(
-                          "iel." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
-                          dtStart(startDate)))
-                  .and(DSL.condition(
-                          "iel." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
-                          dtEnd(endDate)))
+                  .and(eventTimeWithin("iel", startDate, endDate))
                   .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?", fid, fid))
                   .groupBy(
                           DSL.field("iel." + INBOUND_EVENT_LOGS.PRACTITIONER_REF.getName()),

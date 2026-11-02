@@ -21,6 +21,7 @@ import java.util.UUID;
 import java.util.stream.StreamSupport;
 
 import static org.openphc.cce.insights.jooq.Tables.DEVIATIONS;
+import static org.openphc.cce.insights.jooq.Tables.INBOUND_EVENT_LOGS;
 import static org.openphc.cce.insights.jooq.Tables.PROTOCOL_DEFINITIONS;
 import static org.openphc.cce.insights.jooq.Tables.PROTOCOL_INSTANCES;
 import static org.openphc.cce.insights.jooq.Tables.STEP_INSTANCES;
@@ -195,14 +196,54 @@ public abstract class AbstractClickHouseRepository<T, ID> implements ReadOnlyRep
      * mv_daily_deviation_kpis (schema/07).
      */
     protected Table<?> slaThresholds() {
-        return DSL.table(DSL.sql(
-                "(SELECT " + STEP_SLA_STATE_TRANSITIONS.STEP_INSTANCE_ID.getName() + ","
+        return DSL.table(DSL.sql(slaThresholdsSql() + " sla"));
+    }
+
+    private String slaThresholdsSql() {
+        return "(SELECT " + STEP_SLA_STATE_TRANSITIONS.STEP_INSTANCE_ID.getName() + ","
                 + " minIfOrNull(process_by, transition_type = 'DUE_DATE_REACHED') AS due_threshold,"
                 + " minIfOrNull(process_by, transition_type = 'MISSED_DATE_REACHED') AS missed_threshold"
                 + " FROM " + STEP_SLA_STATE_TRANSITIONS.getName() + finalClause()
                 + " WHERE _is_deleted = 0"
-                + " GROUP BY " + STEP_SLA_STATE_TRANSITIONS.STEP_INSTANCE_ID.getName() + ") sla"));
+                + " GROUP BY " + STEP_SLA_STATE_TRANSITIONS.STEP_INSTANCE_ID.getName() + ")";
     }
+
+    /**
+     * {@link #deviationsWithInstance} plus {@code occurred_at}: the CLINICAL time the deviation
+     * happened, which the global date filter is applied to (detected_at is only when the SLA job
+     * flagged it). Resolved by type from the threshold the step breached — OVERDUE → due threshold,
+     * MISSED → missed threshold, ORDER_VIOLATION → the step's completion — falling back to the
+     * step's due_date, then detected_at. Same derivation as the pipeline's mv_daily_deviation_kpis
+     * (schema/07), so date-filtered deviation reads reconcile with it. Steps and thresholds are
+     * Nullable-typed, so a LEFT JOIN miss reads NULL and falls through the coalesce.
+     */
+    protected Table<?> deviationsWithOccurrence(String alias) {
+        String pid = STEP_INSTANCES.PROTOCOL_INSTANCE_ID.getName();
+        String type = "dv." + DEVIATIONS.DEVIATION_TYPE.getName();
+        return DSL.table(DSL.sql(
+                "(SELECT dv.*, si." + pid + " AS " + pid + ","
+                + " coalesce(multiIf("
+                + type + " = 'OVERDUE', sla.due_threshold, "
+                + type + " = 'MISSED', sla.missed_threshold, "
+                + type + " = 'ORDER_VIOLATION', si." + STEP_INSTANCES.COMPLETED_AT.getName() + ","
+                + " CAST(NULL AS Nullable(DateTime64(6)))),"
+                + " si." + STEP_INSTANCES.DUE_DATE.getName() + ", dv." + DEVIATIONS.DETECTED_AT.getName() + ")"
+                + " AS " + DEVIATION_OCCURRED_AT
+                + " FROM " + DEVIATIONS.getName() + " dv" + finalClause()
+                // Join keys renamed so that only dv.* contributes id / step_instance_id to the
+                // derived table — with two joins, ClickHouse otherwise qualifies the clashing names
+                // and d.id / d.step_instance_id stop resolving.
+                + " ANY LEFT JOIN (SELECT id AS si_id, " + pid + ", " + STEP_INSTANCES.DUE_DATE.getName() + ", "
+                + STEP_INSTANCES.COMPLETED_AT.getName()
+                + " FROM " + STEP_INSTANCES.getName() + finalClause() + ") AS si"
+                + " ON si.si_id = dv." + DEVIATIONS.STEP_INSTANCE_ID.getName()
+                + " LEFT JOIN (SELECT " + STEP_SLA_STATE_TRANSITIONS.STEP_INSTANCE_ID.getName() + " AS sla_step_id,"
+                + " due_threshold, missed_threshold FROM " + slaThresholdsSql() + ") AS sla"
+                + " ON sla.sla_step_id = dv." + DEVIATIONS.STEP_INSTANCE_ID.getName() + ") " + alias));
+    }
+
+    /** Clinical-occurrence column of {@link #deviationsWithOccurrence}. */
+    protected static final String DEVIATION_OCCURRED_AT = "occurred_at";
 
     /** Convert null OffsetDateTime to empty string (sentinel for "no filter"). */
     protected static String dt(OffsetDateTime v) {
@@ -229,6 +270,27 @@ public abstract class AbstractClickHouseRepository<T, ID> implements ReadOnlyRep
         String enrolledAt = "pi." + PROTOCOL_INSTANCES.ENROLLED_AT.getName();
         return DSL.condition(enrolledAt + " >= parseDateTime64BestEffort(?)", dtStart(startDate))
                   .and(DSL.condition(enrolledAt + " <= parseDateTime64BestEffort(?)", dtEnd(endDate)));
+    }
+
+    /**
+     * Restricts a query to the rows whose clinical-time {@code column} falls within
+     * [startDate, endDate]. With no range at all it adds no predicate, so rows whose clinical time
+     * is NULL (inbound_event_logs.event_time is Nullable) still count on an unfiltered view; a null
+     * bound alone leaves that side open.
+     */
+    protected static Condition clinicalTimeWithin(String column, OffsetDateTime startDate, OffsetDateTime endDate) {
+        if (startDate == null && endDate == null) return DSL.noCondition();
+        return DSL.condition(column + " >= parseDateTime64BestEffort(?)", dtStart(startDate))
+                  .and(DSL.condition(column + " <= parseDateTime64BestEffort(?)", dtEnd(endDate)));
+    }
+
+    /**
+     * Restricts a query aliasing inbound_event_logs as {@code alias} to the events whose CLINICAL
+     * {@code event_time} falls within [startDate, endDate] — the clock of every non-ingestion
+     * date filter. received_at (system arrival time) stays for the ingestion pipeline only.
+     */
+    protected static Condition eventTimeWithin(String alias, OffsetDateTime startDate, OffsetDateTime endDate) {
+        return clinicalTimeWithin(alias + "." + INBOUND_EVENT_LOGS.EVENT_TIME.getName(), startDate, endDate);
     }
 
     /** Convert null UUID to empty string (sentinel for "no filter"). */

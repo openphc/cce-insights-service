@@ -27,11 +27,11 @@ public interface StepInstanceRepository extends ReadOnlyRepository<StepInstance,
     List<Object[]> findStepAnalyticsByFacility(UUID protocolDefId, String facilityId,
                                                OffsetDateTime startDate, OffsetDateTime endDate);
 
-    List<Object[]> findCompletionFunnel(UUID protocolDefId);
+    List<Object[]> findCompletionFunnel(UUID protocolDefId, OffsetDateTime startDate, OffsetDateTime endDate);
 
-    List<Object[]> findStepComplianceByFacility(UUID protocolDefinitionId);
+    List<Object[]> findStepComplianceByFacility(UUID protocolDefinitionId, OffsetDateTime startDate, OffsetDateTime endDate);
 
-    List<Object[]> findReferralEventCountsByFacility(UUID protocolDefinitionId);
+    List<Object[]> findReferralEventCountsByFacility(UUID protocolDefinitionId, OffsetDateTime startDate, OffsetDateTime endDate);
 
     List<Object[]> findStepComplianceByPractitioner();
 
@@ -57,10 +57,10 @@ public interface StepInstanceRepository extends ReadOnlyRepository<StepInstance,
      * hundred ids (ClickHouse HTTP transport rejected the request — Code: 62, transport error: 400).
      * Returns one row per facility: [facilityId, nonCompliantCount, atRiskCount, onTrackCount].
      */
-    List<Object[]> findAtRiskHotspotCounts();
+    List<Object[]> findAtRiskHotspotCounts(OffsetDateTime startDate, OffsetDateTime endDate);
 
     // Returns one row per protocol: [protocolDefinitionId, protocolCanonical, enrollments, totalSteps, completedSteps]
-    List<Object[]> findProtocolStepMetricsByFacility(String facilityId);
+    List<Object[]> findProtocolStepMetricsByFacility(String facilityId, OffsetDateTime startDate, OffsetDateTime endDate);
 
     // Returns single row, same order as the step_* columns of mv_daily_compliance_kpis:
     // [completed, notStarted, slaMet, slaOverdue, slaMissed, slaUnjudged, completedOnTime, completedLate,
@@ -76,5 +76,5 @@ public interface StepInstanceRepository extends ReadOnlyRepository<StepInstance,
 
     // Returns single row: [totalReceived, totalVerified] — completed counts for the
     // consent-request and consent-verification steps, across all protocols.
-    Object[] aggregateConsentMetrics();
+    Object[] aggregateConsentMetrics(OffsetDateTime startDate, OffsetDateTime endDate);
 }

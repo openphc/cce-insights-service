@@ -45,13 +45,14 @@ public interface MatcherEventLogRepository extends ReadOnlyRepository<MatcherEve
     List<Object[]> findProcessingQualityBySource(String source, String facilityId,
                                                   OffsetDateTime startDate, OffsetDateTime endDate);
 
-    List<Object[]> findFacilityEventCounts(UUID protocolDefId);
+    List<Object[]> findFacilityEventCounts(UUID protocolDefId, OffsetDateTime startDate, OffsetDateTime endDate);
 
-    List<Object[]> findActivePatientsByFacility(UUID protocolDefId);
+    List<Object[]> findActivePatientsByFacility(UUID protocolDefId, OffsetDateTime startDate, OffsetDateTime endDate);
 
     List<Object[]> findFacilityPatientMapping();
 
-    List<Object[]> findPatientsByFacility(String facilityId);
+    /** (facility_id, patient_id, protocol_instance_id) of the facility's enrolments with enrolled_at within [startDate, endDate]. */
+    List<Object[]> findPatientsByFacility(String facilityId, OffsetDateTime startDate, OffsetDateTime endDate);
 
     List<Object[]> findPractitionerSummary();
 
