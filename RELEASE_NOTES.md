@@ -14,11 +14,13 @@ received or flagged it. Ingestion endpoints (`/ingestion/*`) stay on `received_a
   deviations, facility ranking, patient deviations): clinical `occurred_at` — the SLA threshold
   breached (OVERDUE → due, MISSED → missed, ORDER_VIOLATION → completion), else `due_date`, else
   `detected_at`; same derivation as `mv_daily_deviation_kpis`. Was `detected_at`. Resolution
-  `avgDaysToResolve` is measured from `occurred_at`. Patient deviations gain `occurredAt`. The
+  `avgDaysToResolve` is measured from `occurred_at`. The deviation list (`/deviations`) and patient
+  deviations gain `occurredAt` beside `detectedAt`. The
   last-24h / 7d / 30d counters (and the dashboard `newDeviations24h`) count `occurred_at`, relative
   to now.
 - **Enrolment cohort** (`enrolled_at`, as CCE-147): now also completion funnel, outcome
-  distribution, at-risk hotspots, facility compliance summary and dashboard compliance summary,
+  distribution, at-risk hotspots, facility compliance summary, dashboard compliance summary and
+  the protocol patient list (`/protocols/{id}/patients`, now accepting `startDate` / `endDate`),
   which previously ignored the range. Facility-ranking referral counts use the step's clinical
   `completed_at`.
 - `/dashboard/compliance-summary` accepts `startDate` / `endDate`.
