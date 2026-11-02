@@ -31,7 +31,11 @@ public interface InboundEventRepository extends ReadOnlyRepository<InboundEvent,
     List<Object[]> findIngestionTrends(String interval, String facilityId, String source,
                                         OffsetDateTime startDate, OffsetDateTime endDate);
 
+    /** Ingestion view: windowed by received_at (system arrival time). */
     List<Object[]> countBySourceAndStatus(String facilityId, OffsetDateTime startDate, OffsetDateTime endDate);
+
+    /** Event-volume view: same counts, windowed by the clinical event_time. */
+    List<Object[]> countEventsBySourceAndStatus(String facilityId, OffsetDateTime startDate, OffsetDateTime endDate);
 
     List<Object[]> countBySourceAndRejectionReason(String facilityId,
                                                     OffsetDateTime startDate, OffsetDateTime endDate);

@@ -48,7 +48,8 @@ public class ComplianceSummaryController {
             @RequestParam(required = false) UUID protocolDefinitionId,
             @RequestParam(required = false) OffsetDateTime startDate,
             @RequestParam(required = false) OffsetDateTime endDate) {
-        FacilitySummaryDto summary = complianceSummaryService.getFacilityComplianceSummary(facilityId);
+        FacilitySummaryDto summary = complianceSummaryService.getFacilityComplianceSummary(
+                facilityId, startDate, endDate);
         return ResponseEntity.ok(ApiResponse.ok(summary));
     }
 
