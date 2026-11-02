@@ -53,8 +53,11 @@ jobs:
     - name: Build with Gradle
       run: ./gradlew build -x generateJooq
 
+    # Built from the repository Dockerfile (non-root user, wget HEALTHCHECK on /actuator/health).
+    # bootBuildImage on Spring Boot 3.4.4 calls Docker API 1.24, which the runner's Docker 29
+    # rejects ("client version 1.24 is too old").
     - name: Build container image
-      run: ./gradlew bootBuildImage -x generateJooq --imageName=${IMAGE_URI}:${{ steps.version.outputs.version_tag }}
+      run: docker build -t ${IMAGE_URI}:${{ steps.version.outputs.version_tag }} .
 
     - name: Tag image as latest
       run: docker tag ${IMAGE_URI}:${{ steps.version.outputs.version_tag }} ${IMAGE_URI}:${LATEST_TAG}
