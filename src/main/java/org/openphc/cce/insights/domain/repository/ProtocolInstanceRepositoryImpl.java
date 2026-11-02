@@ -113,11 +113,14 @@ public class ProtocolInstanceRepositoryImpl
     }
 
     @Override
-    public Page<ProtocolInstance> findByProtocolDefinitionId(UUID protocolDefinitionId, Pageable pageable) {
+    public Page<ProtocolInstance> findByProtocolDefinitionId(UUID protocolDefinitionId,
+                                                             OffsetDateTime startDate, OffsetDateTime endDate,
+                                                             Pageable pageable) {
         var pi = protocolInstancesWithCanonical("pi");
         var condition = DSL.condition(
                 "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
-                protocolDefinitionId.toString());
+                protocolDefinitionId.toString())
+            .and(enrolledWithin(startDate, endDate));
         List<ProtocolInstance> content = dsl.select(DSL.asterisk())
                 .from(pi)
                 .where(condition)
@@ -201,6 +204,8 @@ public class ProtocolInstanceRepositoryImpl
     @Override
     public Page<ProtocolInstance> findByProtocolDefinitionIdAndPatientIdContaining(UUID protocolDefId,
                                                                                     String patientId,
+                                                                                    OffsetDateTime startDate,
+                                                                                    OffsetDateTime endDate,
                                                                                     Pageable pageable) {
         String pattern = "%" + patientId.toLowerCase() + "%";
         var pi = protocolInstancesWithCanonical("pi");
@@ -208,7 +213,8 @@ public class ProtocolInstanceRepositoryImpl
                 "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
                 protocolDefId.toString())
             .and(DSL.condition(
-                    "lower(pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName() + ") LIKE ?", pattern));
+                    "lower(pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName() + ") LIKE ?", pattern))
+            .and(enrolledWithin(startDate, endDate));
         List<ProtocolInstance> content = dsl.select(DSL.asterisk())
                 .from(pi)
                 .where(condition)

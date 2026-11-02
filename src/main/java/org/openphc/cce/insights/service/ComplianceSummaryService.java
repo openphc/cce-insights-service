@@ -146,21 +146,25 @@ public class ComplianceSummaryService {
                 .build();
     }
 
-    @Cacheable(value = "analytics", key = "'protocol-patients-' + #protocolDefinitionId + '-' + #statusFilter + '-' + #patientIdFilter + '-' + #limit + '-' + #offset")
-    public List<PatientComplianceDto> getProtocolPatients(UUID protocolDefinitionId, String statusFilter, String patientIdFilter, int limit, int offset) {
+    @Cacheable(value = "analytics", key = "'protocol-patients-' + #protocolDefinitionId + '-' + #statusFilter + '-' + #patientIdFilter + '-' + #startDate + '-' + #endDate + '-' + #limit + '-' + #offset")
+    public List<PatientComplianceDto> getProtocolPatients(UUID protocolDefinitionId, String statusFilter, String patientIdFilter,
+                                                          OffsetDateTime startDate, OffsetDateTime endDate,
+                                                          int limit, int offset) {
         protocolDefinitionRepository.findById(protocolDefinitionId)
                 .orElseThrow(() -> new EntityNotFoundException(
                         "Protocol definition not found: " + protocolDefinitionId));
 
+        // Same enrolment cohort (enrolled_at in range) as the protocol compliance summary.
         Pageable pageable = PageRequest.of(offset / Math.max(limit, 1), limit, Sort.by(Sort.Direction.DESC, "enrolledAt"));
         Page<ProtocolInstance> page;
         if (patientIdFilter != null && !patientIdFilter.isEmpty()) {
-            page = protocolInstanceRepository.findByProtocolDefinitionIdAndPatientIdContaining(protocolDefinitionId, patientIdFilter, pageable);
+            page = protocolInstanceRepository.findByProtocolDefinitionIdAndPatientIdContaining(
+                    protocolDefinitionId, patientIdFilter, startDate, endDate, pageable);
         } else if (statusFilter != null && !statusFilter.isEmpty()) {
             // Fetch all sorted, then filter in-memory (status is computed, not a DB column)
-            page = protocolInstanceRepository.findByProtocolDefinitionId(protocolDefinitionId, pageable);
+            page = protocolInstanceRepository.findByProtocolDefinitionId(protocolDefinitionId, startDate, endDate, pageable);
         } else {
-            page = protocolInstanceRepository.findByProtocolDefinitionId(protocolDefinitionId, pageable);
+            page = protocolInstanceRepository.findByProtocolDefinitionId(protocolDefinitionId, startDate, endDate, pageable);
         }
 
         // Batch-load steps and deviation counts for the whole page in 2 queries
