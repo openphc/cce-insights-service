@@ -20,7 +20,10 @@ public interface ProtocolInstanceRepository extends ReadOnlyRepository<ProtocolI
 
     List<ProtocolInstance> findByProtocolDefinitionId(UUID protocolDefinitionId);
 
-    Page<ProtocolInstance> findByProtocolDefinitionId(UUID protocolDefinitionId, Pageable pageable);
+    /** Enrolments of a protocol with enrolled_at in [startDate, endDate] (null bounds are open), newest first. */
+    Page<ProtocolInstance> findByProtocolDefinitionId(UUID protocolDefinitionId,
+                                                      OffsetDateTime startDate, OffsetDateTime endDate,
+                                                      Pageable pageable);
 
     List<Object[]> countByProtocolDefinitionIdGroupByStatus(UUID protocolDefId, OffsetDateTime startDate, OffsetDateTime endDate);
 
@@ -33,5 +36,7 @@ public interface ProtocolInstanceRepository extends ReadOnlyRepository<ProtocolI
 
     Page<ProtocolInstance> findByProtocolDefinitionIdAndPatientIdContaining(UUID protocolDefId,
                                                                              String patientId,
+                                                                             OffsetDateTime startDate,
+                                                                             OffsetDateTime endDate,
                                                                              Pageable pageable);
 }

@@ -31,6 +31,7 @@ public class DeviationAnalyticsService {
                 .stepInstanceId(uuidOf(row[4]))
                 .actionId((String) row[5])
                 .deviationType((String) row[6])
+                .occurredAt(DateUtil.toOffsetDateTime(row[9]))
                 .detectedAt(DateUtil.toOffsetDateTime(row[7]))
                 .facilityId((String) row[8])
                 .build()).collect(Collectors.toList());
