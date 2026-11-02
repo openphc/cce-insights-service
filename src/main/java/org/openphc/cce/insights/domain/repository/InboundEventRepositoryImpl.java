@@ -1,5 +1,6 @@
 package org.openphc.cce.insights.domain.repository;
 
+import org.jooq.Condition;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.Table;
@@ -82,12 +83,7 @@ public class InboundEventRepositoryImpl
                     .and(DSL.field("iel." + INBOUND_EVENT_LOGS.SUBJECT.getName()).ne(""))
                     .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.SOURCE.getName() + " = ?", src, src))
                     .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?", fid, fid))
-                    .and(DSL.condition(
-                            "iel." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
-                            dtStart(startDate)))
-                    .and(DSL.condition(
-                            "iel." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
-                            dtEnd(endDate)))
+                    .and(eventTimeWithin("iel", startDate, endDate))
                     .fetchOne(0, Long.class);
         return r != null ? r : 0L;
     }
@@ -99,12 +95,7 @@ public class InboundEventRepositoryImpl
                     .from(iel)
                     .where(DSL.field("iel." + INBOUND_EVENT_LOGS.STATUS.getName()).eq("ACCEPTED"))
                     .and(DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()).ne(""))
-                    .and(DSL.condition(
-                            "iel." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
-                            dtStart(startDate)))
-                    .and(DSL.condition(
-                            "iel." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
-                            dtEnd(endDate)))
+                    .and(eventTimeWithin("iel", startDate, endDate))
                     .fetchOne(0, Long.class);
         return r != null ? r : 0L;
     }
@@ -119,12 +110,7 @@ public class InboundEventRepositoryImpl
                     .from(iel)
                     .where(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.SOURCE.getName() + " = ?", src, src))
                     .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?", fid, fid))
-                    .and(DSL.condition(
-                            "iel." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
-                            dtStart(startDate)))
-                    .and(DSL.condition(
-                            "iel." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
-                            dtEnd(endDate)))
+                    .and(eventTimeWithin("iel", startDate, endDate))
                     .fetchOne(0, Long.class);
         return r != null ? r : 0L;
     }
@@ -143,12 +129,7 @@ public class InboundEventRepositoryImpl
                   .and(DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()).ne(""))
                   .and(DSL.field("iel." + INBOUND_EVENT_LOGS.SUBJECT.getName()).ne(""))
                   .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.SOURCE.getName() + " = ?", src, src))
-                  .and(DSL.condition(
-                          "iel." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
-                          dtStart(startDate)))
-                  .and(DSL.condition(
-                          "iel." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
-                          dtEnd(endDate)))
+                  .and(eventTimeWithin("iel", startDate, endDate))
                   .groupBy(DSL.field("iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName()))
                   .orderBy(DSL.field("patient_count").desc())
                   .fetch()
@@ -233,6 +214,22 @@ public class InboundEventRepositoryImpl
     @Override
     public List<Object[]> countBySourceAndStatus(String facilityId,
                                                    OffsetDateTime startDate, OffsetDateTime endDate) {
+        return countBySourceAndStatus(facilityId,
+                DSL.condition(
+                        "iel." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
+                        dtStart(startDate))
+                   .and(DSL.condition(
+                        "iel." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
+                        dtEnd(endDate))));
+    }
+
+    @Override
+    public List<Object[]> countEventsBySourceAndStatus(String facilityId,
+                                                        OffsetDateTime startDate, OffsetDateTime endDate) {
+        return countBySourceAndStatus(facilityId, eventTimeWithin("iel", startDate, endDate));
+    }
+
+    private List<Object[]> countBySourceAndStatus(String facilityId, Condition timeRange) {
         String fid = str(facilityId);
         var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
         return dsl.select(
@@ -242,12 +239,7 @@ public class InboundEventRepositoryImpl
                   .from(iel)
                   .where(DSL.field("iel." + INBOUND_EVENT_LOGS.SOURCE.getName()).ne(""))
                   .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?", fid, fid))
-                  .and(DSL.condition(
-                          "iel." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
-                          dtStart(startDate)))
-                  .and(DSL.condition(
-                          "iel." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
-                          dtEnd(endDate)))
+                  .and(timeRange)
                   .groupBy(
                           DSL.field("iel." + INBOUND_EVENT_LOGS.SOURCE.getName()),
                           DSL.field("iel." + INBOUND_EVENT_LOGS.STATUS.getName()))
@@ -375,12 +367,7 @@ public class InboundEventRepositoryImpl
                   .and(DSL.field("b." + INBOUND_EVENT_LOGS.STATUS.getName()).ne("DUPLICATE"))
                   .and(DSL.condition("a.event_time IS NOT NULL AND b.event_time IS NOT NULL"))
                   .and(DSL.condition("? = '' OR a." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?", fid, fid))
-                  .and(DSL.condition(
-                          "a." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
-                          dtStart(startDate)))
-                  .and(DSL.condition(
-                          "a." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
-                          dtEnd(endDate)))
+                  .and(eventTimeWithin("a", startDate, endDate))
                   .groupBy(DSL.field("a.resource_type"))
                   .orderBy(DSL.field("event_count").desc())
                   .fetch()
@@ -412,12 +399,7 @@ public class InboundEventRepositoryImpl
                   .and(DSL.field("a." + INBOUND_EVENT_LOGS.STATUS.getName()).ne("DUPLICATE"))
                   .and(DSL.condition("a.event_time IS NOT NULL"))
                   .and(DSL.condition("? = '' OR a." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?", fid, fid))
-                  .and(DSL.condition(
-                          "a." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
-                          dtStart(startDate)))
-                  .and(DSL.condition(
-                          "a." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
-                          dtEnd(endDate)))
+                  .and(eventTimeWithin("a", startDate, endDate))
                   .and(DSL.notExists(notExistsSubquery))
                   .groupBy(DSL.field("a.resource_type"))
                   .orderBy(DSL.field("event_count").desc())
@@ -451,12 +433,7 @@ public class InboundEventRepositoryImpl
                   .and(DSL.field("b." + INBOUND_EVENT_LOGS.STATUS.getName()).ne("DUPLICATE"))
                   .and(DSL.condition("a.event_time IS NOT NULL AND b.event_time IS NOT NULL"))
                   .and(DSL.condition("? = '' OR a." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?", fid, fid))
-                  .and(DSL.condition(
-                          "a." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
-                          dtStart(startDate)))
-                  .and(DSL.condition(
-                          "a." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
-                          dtEnd(endDate)))
+                  .and(eventTimeWithin("a", startDate, endDate))
                   .orderBy(DSL.field("a.event_time").desc())
                   .limit(limit)
                   .fetch()
@@ -472,7 +449,7 @@ public class InboundEventRepositoryImpl
                                            OffsetDateTime startDate, OffsetDateTime endDate) {
         String fid = str(facilityId);
         String src = str(source);
-        String periodExpr = dateTruncExpr(interval, "iel." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName());
+        String periodExpr = dateTruncExpr(interval, "iel." + INBOUND_EVENT_LOGS.EVENT_TIME.getName());
         var iel = finalAs(INBOUND_EVENT_LOGS, "iel");
         return dsl.select(
                     DSL.field(DSL.sql(periodExpr)).as("period"),
@@ -483,12 +460,7 @@ public class InboundEventRepositoryImpl
                   .and(DSL.field("iel." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName()).ne(""))
                   .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?", fid, fid))
                   .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.SOURCE.getName() + " = ?", src, src))
-                  .and(DSL.condition(
-                          "iel." + INBOUND_EVENT_LOGS.EVENT_TIME.getName() + " >= parseDateTime64BestEffort(?)",
-                          dtStart(startDate)))
-                  .and(DSL.condition(
-                          "iel." + INBOUND_EVENT_LOGS.EVENT_TIME.getName() + " <= parseDateTime64BestEffort(?)",
-                          dtEnd(endDate)))
+                  .and(eventTimeWithin("iel", startDate, endDate))
                   .groupBy(
                           DSL.field(DSL.sql("period")),
                           DSL.field("iel." + INBOUND_EVENT_LOGS.RESOURCE_TYPE.getName()))
@@ -507,12 +479,7 @@ public class InboundEventRepositoryImpl
                   .from(iel)
                   .where(DSL.field("iel." + INBOUND_EVENT_LOGS.SOURCE.getName()).ne(""))
                   .and(DSL.condition("? = '' OR iel." + INBOUND_EVENT_LOGS.FACILITY_ID.getName() + " = ?", fid, fid))
-                  .and(DSL.condition(
-                          "iel." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName() + " >= parseDateTime64BestEffort(?)",
-                          dtStart(startDate)))
-                  .and(DSL.condition(
-                          "iel." + INBOUND_EVENT_LOGS.RECEIVED_AT.getName() + " <= parseDateTime64BestEffort(?)",
-                          dtEnd(endDate)))
+                  .and(eventTimeWithin("iel", startDate, endDate))
                   .groupBy(DSL.field("iel." + INBOUND_EVENT_LOGS.SOURCE.getName()))
                   .orderBy(DSL.field("cnt").desc())
                   .fetch()

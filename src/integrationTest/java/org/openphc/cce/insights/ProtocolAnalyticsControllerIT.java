@@ -50,7 +50,7 @@ class ProtocolAnalyticsControllerIT extends AbstractIntegrationTest {
                                 .build()))
                         .build());
 
-        when(protocolAnalyticsService.getCompletionFunnel(PROTOCOL_ID))
+        when(protocolAnalyticsService.getCompletionFunnel(eq(PROTOCOL_ID), any(), any()))
                 .thenReturn(CompletionFunnelDto.builder()
                         .protocolDefinitionId(PROTOCOL_ID)
                         .protocolCanonical("http://example.org/anc|1.0")
@@ -60,7 +60,7 @@ class ProtocolAnalyticsControllerIT extends AbstractIntegrationTest {
                                 .completedCount(2).completionRate(0.67).dropOffRate(0.33).build()))
                         .build());
 
-        when(protocolAnalyticsService.getOutcomeDistribution(PROTOCOL_ID))
+        when(protocolAnalyticsService.getOutcomeDistribution(eq(PROTOCOL_ID), any(), any()))
                 .thenReturn(OutcomeDistributionDto.builder()
                         .protocolDefinitionId(PROTOCOL_ID)
                         .protocolCanonical("http://example.org/anc|1.0")

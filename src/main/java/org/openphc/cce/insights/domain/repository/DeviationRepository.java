@@ -33,9 +33,10 @@ public interface DeviationRepository extends ReadOnlyRepository<Deviation, UUID>
     List<Object[]> findRepeatDeviationPatients(int minDeviations, String facilityId,
                                                OffsetDateTime startDate, OffsetDateTime endDate);
 
-    List<Object[]> countDeviationsByFacility(UUID protocolDefinitionId);
+    List<Object[]> countDeviationsByFacility(UUID protocolDefinitionId, OffsetDateTime startDate, OffsetDateTime endDate);
 
-    long countDistinctPatientsWithDeviations();
+    /** Distinct patients, among those enrolled within [startDate, endDate], with at least one deviation. */
+    long countDistinctPatientsWithDeviations(OffsetDateTime startDate, OffsetDateTime endDate);
 
     // Batch load full Deviation objects for a set of protocol instances
     List<Deviation> findByProtocolInstanceIdIn(List<UUID> ids);
@@ -44,7 +45,7 @@ public interface DeviationRepository extends ReadOnlyRepository<Deviation, UUID>
     List<Object[]> countDeviationsByProtocolInstanceIdIn(List<UUID> ids);
 
     // Returns one row per protocol: [protocolDefinitionId, totalDeviations]
-    List<Object[]> findDeviationCountsByFacilityGroupedByProtocol(String facilityId);
+    List<Object[]> findDeviationCountsByFacilityGroupedByProtocol(String facilityId, OffsetDateTime startDate, OffsetDateTime endDate);
 
     // Returns single row: [compliantPatients, totalDeviations, overdueDevs, missedDevs, orderViolationDevs]
     Object[] aggregateDeviationMetrics(UUID protocolDefinitionId, OffsetDateTime startDate, OffsetDateTime endDate);

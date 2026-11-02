@@ -88,11 +88,16 @@ public class DashboardService {
                 .build();
     }
 
-    @Cacheable(value = "metrics", key = "'dashboard-compliance-summary'")
-    public DashboardComplianceSummaryDto getComplianceSummary() {
+    /**
+     * Compliance headline for the patients enrolled within [startDate, endDate] (clinical
+     * enrolled_at — same cohort as the compliance summary); facility and practitioner bands come
+     * from their rankings over the same window. A null bound is open.
+     */
+    @Cacheable(value = "metrics", key = "'dashboard-compliance-summary-' + #startDate + '-' + #endDate")
+    public DashboardComplianceSummaryDto getComplianceSummary(OffsetDateTime startDate, OffsetDateTime endDate) {
         // Patient compliance
-        long totalPatients = protocolInstanceRepository.findDistinctPatientIds().size();
-        long patientsWithDeviations = deviationRepository.countDistinctPatientsWithDeviations();
+        long totalPatients = protocolInstanceRepository.countDistinctPatientsEnrolledWithin(startDate, endDate);
+        long patientsWithDeviations = deviationRepository.countDistinctPatientsWithDeviations(startDate, endDate);
         long compliantPatients = totalPatients - patientsWithDeviations;
         double patientComplianceRate = totalPatients > 0
                 ? Math.round((double) compliantPatients / totalPatients * 1000.0) / 10.0
@@ -100,7 +105,7 @@ public class DashboardService {
 
         // Facility compliance — get all facilities (large limit)
         List<FacilityRankingDto> allFacilities = facilityRankingService.getRankings(
-                null, null, "complianceRate", "desc", 1000, null);
+                startDate, endDate, "complianceRate", "desc", 1000, null);
         long totalFacilities = allFacilities.size();
         long facilityAbove90 = allFacilities.stream()
                 .filter(f -> f.getComplianceRate() > 90.0)
@@ -114,7 +119,7 @@ public class DashboardService {
 
         // Practitioner compliance — get all practitioners (large limit)
         List<PractitionerRankingDto> allPractitioners = practitionerRankingService.getRankings(
-                "complianceRate", "desc", 1000, null, null, null, null);
+                "complianceRate", "desc", 1000, startDate, endDate, null, null);
         long totalPractitioners = allPractitioners.size();
         long practitionerAbove90 = allPractitioners.stream()
                 .filter(p -> p.getComplianceRate() > 90.0)
@@ -127,7 +132,7 @@ public class DashboardService {
                 .count();
 
         // Consent funnel (consent-request -> consent-verification), across all protocols
-        Object[] consentRow = stepInstanceRepository.aggregateConsentMetrics();
+        Object[] consentRow = stepInstanceRepository.aggregateConsentMetrics(startDate, endDate);
         long totalReceived = ((Number) consentRow[0]).longValue();
         long totalVerified = ((Number) consentRow[1]).longValue();
         double verificationRate = totalReceived > 0
