@@ -16,6 +16,7 @@ public class DeviationDto {
     private UUID stepInstanceId;
     private String actionId;
     private String deviationType;
-    private OffsetDateTime detectedAt;
+    private OffsetDateTime occurredAt;   // clinical occurrence date (when the deviation happened)
+    private OffsetDateTime detectedAt;   // system detection date (when we flagged it)
     private String facilityId;
 }

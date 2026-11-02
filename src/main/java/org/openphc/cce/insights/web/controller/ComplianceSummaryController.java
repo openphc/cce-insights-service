@@ -59,6 +59,8 @@ public class ComplianceSummaryController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String facilityId,
             @RequestParam(required = false) String patientId,
+            @RequestParam(required = false) OffsetDateTime startDate,
+            @RequestParam(required = false) OffsetDateTime endDate,
             @RequestParam(defaultValue = "20") int limit,
             @RequestParam(required = false) String cursor) {
         int offset = 0;
@@ -66,7 +68,7 @@ public class ComplianceSummaryController {
             try { offset = Integer.parseInt(cursor); } catch (NumberFormatException ignored) {}
         }
         var result = complianceSummaryService.getProtocolPatients(
-                protocolDefinitionId, status, patientId, limit, offset);
+                protocolDefinitionId, status, patientId, startDate, endDate, limit, offset);
         String nextCursor = result.size() == limit ? String.valueOf(offset + limit) : null;
         var pagination = PaginationDto.builder()
                 .limit(limit)
