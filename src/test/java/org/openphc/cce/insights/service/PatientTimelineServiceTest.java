@@ -16,6 +16,7 @@ import org.openphc.cce.insights.domain.repository.DailyKpiRepository;
 import org.openphc.cce.insights.domain.repository.DeviationRepository;
 import org.openphc.cce.insights.domain.repository.ProtocolDefinitionRepository;
 import org.openphc.cce.insights.domain.repository.ProtocolInstanceRepository;
+import org.openphc.cce.insights.domain.repository.StepGroupInstanceRepository;
 import org.openphc.cce.insights.domain.repository.StepInstanceRepository;
 import org.openphc.cce.insights.web.dto.PatientTimelineDto;
 
@@ -67,7 +68,7 @@ class PatientTimelineServiceTest {
         dailyKpiRepository = mock(DailyKpiRepository.class);
         when(dailyKpiRepository.getFacilityReference()).thenReturn(List.of());
         service = new PatientTimelineService(protocolInstanceRepository, stepInstanceRepository,
-                protocolDefinitionRepository, deviationRepository, matcherEventLogRepository,
+                mock(StepGroupInstanceRepository.class), protocolDefinitionRepository, deviationRepository, matcherEventLogRepository,
                 dailyKpiRepository, new ObjectMapper());
 
         ProtocolInstance instance = ProtocolInstance.builder()

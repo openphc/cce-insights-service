@@ -67,6 +67,12 @@ public class StepInstances extends TableImpl<Record> {
     public final TableField<Record, Object> ACTION_ID = createField(DSL.name("action_id"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
 
     /**
+     * The column
+     * <code>cce_analytics.step_instances.step_group_instance_id</code>.
+     */
+    public final TableField<Record, Object> STEP_GROUP_INSTANCE_ID = createField(DSL.name("step_group_instance_id"), org.jooq.impl.SQLDataType.OTHER, this, "");
+
+    /**
      * The column <code>cce_analytics.step_instances.repeat_index</code>.
      */
     public final TableField<Record, Object> REPEAT_INDEX = createField(DSL.name("repeat_index"), org.jooq.impl.SQLDataType.OTHER.nullable(false), this, "");
