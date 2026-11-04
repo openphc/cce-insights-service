@@ -41,6 +41,7 @@ import org.openphc.cce.insights.jooq.tables.ReceiverAdaptor;
 import org.openphc.cce.insights.jooq.tables.RollupDeliveryCurrent;
 import org.openphc.cce.insights.jooq.tables.RollupProtocolInstanceCurrent;
 import org.openphc.cce.insights.jooq.tables.RollupStepCurrent;
+import org.openphc.cce.insights.jooq.tables.StepGroupInstances;
 import org.openphc.cce.insights.jooq.tables.StepInstanceHistory;
 import org.openphc.cce.insights.jooq.tables.StepInstances;
 import org.openphc.cce.insights.jooq.tables.StepSlaStateTransitions;
@@ -89,6 +90,7 @@ public class Keys {
     public static final UniqueKey<Record> PK_ROLLUP_DELIVERY_CURRENT = Internal.createUniqueKey(RollupDeliveryCurrent.ROLLUP_DELIVERY_CURRENT, DSL.name("PK_rollup_delivery_current"), new TableField[] { RollupDeliveryCurrent.ROLLUP_DELIVERY_CURRENT.ID }, true);
     public static final UniqueKey<Record> PK_ROLLUP_PROTOCOL_INSTANCE_CURRENT = Internal.createUniqueKey(RollupProtocolInstanceCurrent.ROLLUP_PROTOCOL_INSTANCE_CURRENT, DSL.name("PK_rollup_protocol_instance_current"), new TableField[] { RollupProtocolInstanceCurrent.ROLLUP_PROTOCOL_INSTANCE_CURRENT.PROTOCOL_DEFINITION_ID, RollupProtocolInstanceCurrent.ROLLUP_PROTOCOL_INSTANCE_CURRENT.ID }, true);
     public static final UniqueKey<Record> PK_ROLLUP_STEP_CURRENT = Internal.createUniqueKey(RollupStepCurrent.ROLLUP_STEP_CURRENT, DSL.name("PK_rollup_step_current"), new TableField[] { RollupStepCurrent.ROLLUP_STEP_CURRENT.PROTOCOL_INSTANCE_ID, RollupStepCurrent.ROLLUP_STEP_CURRENT.ID }, true);
+    public static final UniqueKey<Record> PK_STEP_GROUP_INSTANCES = Internal.createUniqueKey(StepGroupInstances.STEP_GROUP_INSTANCES, DSL.name("PK_step_group_instances"), new TableField[] { StepGroupInstances.STEP_GROUP_INSTANCES.ID }, true);
     public static final UniqueKey<Record> PK_STEP_INSTANCE_HISTORY = Internal.createUniqueKey(StepInstanceHistory.STEP_INSTANCE_HISTORY, DSL.name("PK_step_instance_history"), new TableField[] { StepInstanceHistory.STEP_INSTANCE_HISTORY.ID }, true);
     public static final UniqueKey<Record> PK_STEP_INSTANCES = Internal.createUniqueKey(StepInstances.STEP_INSTANCES, DSL.name("PK_step_instances"), new TableField[] { StepInstances.STEP_INSTANCES.ID }, true);
     public static final UniqueKey<Record> PK_STEP_SLA_STATE_TRANSITIONS = Internal.createUniqueKey(StepSlaStateTransitions.STEP_SLA_STATE_TRANSITIONS, DSL.name("PK_step_sla_state_transitions"), new TableField[] { StepSlaStateTransitions.STEP_SLA_STATE_TRANSITIONS.ID }, true);

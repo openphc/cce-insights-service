@@ -175,6 +175,10 @@ public abstract class AbstractClickHouseRepository<T, ID> implements ReadOnlyRep
      * A deviation whose step has not reached ClickHouse yet carries the nil UUID, so it drops out of
      * every read keyed by, or joined to, a real protocol instance. FINAL (when enabled) applies to
      * deviations.
+     *
+     * Only a step's deviations are read. A group with its own deadline (Matcher V8) gets deviations
+     * with no step_instance_id. Every Insights view of deviations is per step, so those are left
+     * out here, as the pipeline's step-level views leave them out.
      */
     protected Table<?> deviationsWithInstance(String alias) {
         return DSL.table(DSL.sql(
@@ -183,7 +187,8 @@ public abstract class AbstractClickHouseRepository<T, ID> implements ReadOnlyRep
                 + " FROM " + DEVIATIONS.getName() + " dv" + finalClause()
                 + " ANY LEFT JOIN (SELECT id, " + STEP_INSTANCES.PROTOCOL_INSTANCE_ID.getName()
                 + " FROM " + STEP_INSTANCES.getName() + ") AS si"
-                + " ON si.id = dv." + DEVIATIONS.STEP_INSTANCE_ID.getName() + ") " + alias));
+                + " ON si.id = dv." + DEVIATIONS.STEP_INSTANCE_ID.getName()
+                + " WHERE isNotNull(dv." + DEVIATIONS.STEP_INSTANCE_ID.getName() + ")) " + alias));
     }
 
     /**
@@ -193,7 +198,7 @@ public abstract class AbstractClickHouseRepository<T, ID> implements ReadOnlyRep
      * dates an OVERDUE / MISSED deviation breached; 1.x kept them on step_instances as
      * overdue_date / missed_date. Mandatory steps only — others have no row. The thresholds are
      * Nullable, so a LEFT JOIN miss reads NULL. Same derivation as the pipeline's
-     * mv_daily_deviation_kpis (schema/07).
+     * mv_daily_deviation_kpis (schema/07). A group's rows (no step_instance_id) are left out.
      */
     protected Table<?> slaThresholds() {
         return DSL.table(DSL.sql(slaThresholdsSql() + " sla"));
@@ -205,6 +210,7 @@ public abstract class AbstractClickHouseRepository<T, ID> implements ReadOnlyRep
                 + " minIfOrNull(process_by, transition_type = 'MISSED_DATE_REACHED') AS missed_threshold"
                 + " FROM " + STEP_SLA_STATE_TRANSITIONS.getName() + finalClause()
                 + " WHERE _is_deleted = 0"
+                + " AND isNotNull(" + STEP_SLA_STATE_TRANSITIONS.STEP_INSTANCE_ID.getName() + ")"
                 + " GROUP BY " + STEP_SLA_STATE_TRANSITIONS.STEP_INSTANCE_ID.getName() + ")";
     }
 
@@ -216,6 +222,9 @@ public abstract class AbstractClickHouseRepository<T, ID> implements ReadOnlyRep
      * step's due_date, then detected_at. Same derivation as the pipeline's mv_daily_deviation_kpis
      * (schema/07), so date-filtered deviation reads reconcile with it. Steps and thresholds are
      * Nullable-typed, so a LEFT JOIN miss reads NULL and falls through the coalesce.
+     *
+     * Like {@link #deviationsWithInstance}, only a step's deviations are read: a group's own
+     * (Matcher V8, no step_instance_id) are left out.
      */
     protected Table<?> deviationsWithOccurrence(String alias) {
         String pid = STEP_INSTANCES.PROTOCOL_INSTANCE_ID.getName();
@@ -239,7 +248,8 @@ public abstract class AbstractClickHouseRepository<T, ID> implements ReadOnlyRep
                 + " ON si.si_id = dv." + DEVIATIONS.STEP_INSTANCE_ID.getName()
                 + " LEFT JOIN (SELECT " + STEP_SLA_STATE_TRANSITIONS.STEP_INSTANCE_ID.getName() + " AS sla_step_id,"
                 + " due_threshold, missed_threshold FROM " + slaThresholdsSql() + ") AS sla"
-                + " ON sla.sla_step_id = dv." + DEVIATIONS.STEP_INSTANCE_ID.getName() + ") " + alias));
+                + " ON sla.sla_step_id = dv." + DEVIATIONS.STEP_INSTANCE_ID.getName()
+                + " WHERE isNotNull(dv." + DEVIATIONS.STEP_INSTANCE_ID.getName() + ")) " + alias));
     }
 
     /** Clinical-occurrence column of {@link #deviationsWithOccurrence}. */
