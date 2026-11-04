@@ -25,10 +25,25 @@ CREATE TABLE protocol_instance (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- A step group's instances, such as visits (Matcher V8)
+CREATE TABLE step_group_instance (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    protocol_instance_id UUID NOT NULL REFERENCES protocol_instance(id),
+    parent_group_instance_id UUID REFERENCES step_group_instance(id),
+    group_action_id VARCHAR NOT NULL,
+    cycle_index INTEGER NOT NULL DEFAULT 0,
+    due_date TIMESTAMPTZ,
+    sla_status VARCHAR,                                      -- NULL (not judged) | OVERDUE | MISSED | MET
+    opened_at TIMESTAMPTZ NOT NULL,
+    completed_at TIMESTAMPTZ,
+    closed_at TIMESTAMPTZ
+);
+
 CREATE TABLE step_instance (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     protocol_instance_id UUID NOT NULL REFERENCES protocol_instance(id),
     action_id VARCHAR(256) NOT NULL,
+    step_group_instance_id UUID REFERENCES step_group_instance(id),  -- NULL for a step in no group
     repeat_index INT NOT NULL DEFAULT 0,
     step_status VARCHAR(32) NOT NULL DEFAULT 'NOT_STARTED',  -- NOT_STARTED | COMPLETED
     sla_status VARCHAR(32),                                  -- NULL (not judged) | OVERDUE | MISSED | MET
@@ -40,7 +55,8 @@ CREATE TABLE step_instance (
 
 CREATE TABLE step_sla_state_transition (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    step_instance_id UUID NOT NULL REFERENCES step_instance(id),
+    step_instance_id UUID REFERENCES step_instance(id),              -- NULL for a group's row
+    step_group_instance_id UUID REFERENCES step_group_instance(id),  -- set only for a group's row
     transition_type VARCHAR(32) NOT NULL,  -- DUE_DATE_REACHED | MISSED_DATE_REACHED | MET_CONDITION_REACHED
     process_by TIMESTAMPTZ NOT NULL,
     is_processed BOOLEAN NOT NULL DEFAULT FALSE,
@@ -49,7 +65,8 @@ CREATE TABLE step_sla_state_transition (
 
 CREATE TABLE deviation (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    step_instance_id UUID NOT NULL REFERENCES step_instance(id),
+    step_instance_id UUID REFERENCES step_instance(id),              -- NULL for a group's deviation
+    step_group_instance_id UUID REFERENCES step_group_instance(id),  -- set only for a group's deviation
     deviation_type VARCHAR(32) NOT NULL,
     detected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     metadata JSONB

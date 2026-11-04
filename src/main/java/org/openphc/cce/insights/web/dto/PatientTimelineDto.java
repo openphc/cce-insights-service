@@ -31,6 +31,7 @@ public class PatientTimelineDto {
         private String stepName;
         private String status;       // COMPLETED | OVERDUE | MISSED | NOT_STARTED (StepInstance.displayStatus())
         private String stepStatus;   // NOT_STARTED | COMPLETED; null when no step_instance exists yet
+                                     // (for a group: null when it never opened)
         private String slaStatus;    // OVERDUE | MISSED | MET; null = not yet judged
         private int completionCount;
         private String effectiveDateTime;
@@ -43,6 +44,30 @@ public class PatientTimelineDto {
         private String description;
         @Builder.Default
         private int depth = 0;
+        /**
+         * true for a step group, such as a visit. A group row's status is that of its best
+         * instance, on the same scale as a step's, and completionCount counts its done instances.
+         */
+        private boolean group;
+        /** A group row's instances, in the order they opened. Null for a step. */
+        private List<GroupInstance> groupInstances;
+    }
+
+    /**
+     * One occurrence of a step group for the patient. A group that repeats has one per cycle.
+     */
+    @Data
+    @Builder
+    public static class GroupInstance {
+        private String groupInstanceId;
+        private String parentGroupInstanceId; // the enclosing group's instance; null for a top-level group
+        private int cycleIndex;               // 0 for the first cycle, then 1, 2, …
+        private String status;                // COMPLETED | OVERDUE | MISSED | NOT_STARTED (still open)
+        private OffsetDateTime openedAt;
+        private OffsetDateTime dueDate;
+        private OffsetDateTime completedAt;   // when it was done; null while it is open
+        private int completedSteps;           // done step instances in it, nested groups included
+        private int totalSteps;               // all step instances in it so far, nested groups included
     }
 
     @Data
@@ -59,5 +84,7 @@ public class PatientTimelineDto {
         private String source;
         private Integer daysOverdue;
         private String effectiveDateTime;
+        private String groupActionId;  // the step's group; null for a step in no group
+        private Integer cycleIndex;    // which instance of that group (0, 1, …); null for a step in no group
     }
 }

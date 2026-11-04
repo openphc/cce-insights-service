@@ -60,7 +60,13 @@ public class StepSlaStateTransitions extends TableImpl<Record> {
      * The column
      * <code>cce_analytics.step_sla_state_transitions.step_instance_id</code>.
      */
-    public final TableField<Record, UUID> STEP_INSTANCE_ID = createField(DSL.name("step_instance_id"), SQLDataType.UUID.nullable(false), this, "");
+    public final TableField<Record, Object> STEP_INSTANCE_ID = createField(DSL.name("step_instance_id"), org.jooq.impl.SQLDataType.OTHER, this, "");
+
+    /**
+     * The column
+     * <code>cce_analytics.step_sla_state_transitions.step_group_instance_id</code>.
+     */
+    public final TableField<Record, Object> STEP_GROUP_INSTANCE_ID = createField(DSL.name("step_group_instance_id"), org.jooq.impl.SQLDataType.OTHER, this, "");
 
     /**
      * The column
