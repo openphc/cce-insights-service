@@ -304,6 +304,43 @@ status: `COMPLETED`, else the outstanding step's `OVERDUE` / `MISSED`, else `NOT
 
 > **Note:** `journey[].effectiveDateTime` is `null` for a step with no completing event, otherwise read from the completing FHIR resource by `PatientTimelineService#extractEffectiveDateTime()`, trying fields in this order and returning the first present: `effectiveDateTime` → `Consent.verification[0].verificationDate` → `period.start` → `authoredOn` → `Consent.dateTime` (top-level) → `meta.lastUpdated`. The two `Consent`-specific fallbacks exist because `Consent` resources carry none of the generic fields — a real Kenya payload has `dateTime` (when the consent was proposed, i.e. the `consent-request` step's own timestamp) and, once verified, `verification[0].verificationDate` (when *that* verification happened — distinct from `dateTime`, checked first so a verified Consent doesn't report its proposal time for the `consent-verification` step). Before this fallback pair was added, both consent steps fell through to `meta.lastUpdated`, which real ingested Consent payloads don't populate either — so `consent-request`/`consent-verification` journey rows showed no timestamp at all.
 
+**Step groups.** A step group is a set of steps that belong together, such as one visit. The
+protocol defines it as an action with `groupingBehavior: logical-group`. Each time the group opens
+for the patient, the Matcher records a group instance. A group that repeats, such as one visit per
+day, has one instance per cycle.
+
+- A group has its own `journey[]` row, with `group: true`. Its steps follow it, one level deeper.
+- `groupInstances[]` lists its instances, in the order they opened. Each says how many of its steps
+  are done. Steps in a group nested inside it count too.
+- An instance's `status` is on the same scale as a step's:
+  - `COMPLETED`: the Matcher recorded it as complete, or every step in it so far is done;
+  - `OVERDUE` / `MISSED`: the verdict on the group's own deadline;
+  - `NOT_STARTED`: it is open, and a step in it is still awaited.
+- The row's `status` is that of its best instance, as for a step. `completionCount` counts its
+  done instances. A group that never opened is `NOT_STARTED` with `stepStatus: null`.
+- A step event in `timeline[]` carries `groupActionId` and `cycleIndex`, saying which group
+  instance its step is in. Both are null for a step in no group.
+
+```json
+{
+  "actionId": "visit",
+  "stepName": "Visit",
+  "group": true,
+  "status": "COMPLETED",
+  "stepStatus": "COMPLETED",
+  "completionCount": 1,
+  "depth": 0,
+  "groupInstances": [
+    { "groupInstanceId": "8d1f…", "parentGroupInstanceId": null, "cycleIndex": 0,
+      "status": "COMPLETED", "openedAt": "2026-11-02T09:00:00Z", "dueDate": null,
+      "completedAt": "2026-11-02T11:00:00Z", "completedSteps": 2, "totalSteps": 2 },
+    { "groupInstanceId": "41c7…", "parentGroupInstanceId": null, "cycleIndex": 1,
+      "status": "NOT_STARTED", "openedAt": "2026-11-03T09:00:00Z", "dueDate": null,
+      "completedAt": null, "completedSteps": 1, "totalSteps": 2 }
+  ]
+}
+```
+
 ### 2.2 GET `/v1/insights/patients/{patientId}/protocol-tracking`
 
 List all protocol instances for a patient.
@@ -2226,7 +2263,15 @@ Returns the ordered list of actions defined in the protocol PlanDefinition, with
       "stepOrder": 1,
       "requiredBehavior": "must",
       "type": null,
-      "title": "Registration"
+      "title": "Registration",
+      "group": false
+    },
+    {
+      "actionId": "visit",
+      "parentActionId": null,
+      "type": "step",
+      "title": "Visit",
+      "group": true
     },
     {
       "actionId": "anc-visit-1-referral-escalation",
@@ -2234,13 +2279,20 @@ Returns the ordered list of actions defined in the protocol PlanDefinition, with
       "stepOrder": 8,
       "requiredBehavior": "could",
       "type": "fire-event",
-      "title": "ANC Visit 1 Referral Escalation Notification"
+      "title": "ANC Visit 1 Referral Escalation Notification",
+      "group": false
     }
   ]
 }
 ```
 
-> **Note:** The `type` field is extracted from `action.type.coding[0].code` in the protocol definition JSONB. Actions with `type = "fire-event"` are intelligence actions (notifications/escalations). The `title` field is from `action.title`.
+> **Note:** There is no `stepOrder` or `requiredBehavior` field — the response is exactly
+> `actionId`, `parentActionId`, `type`, `title`, `group`, in the order actions appear in the
+> `PlanDefinition.action[]` array. `group` is true for a step group (`groupingBehavior:
+> logical-group`), such as a visit. A group has no step data of its own. Its steps name it as
+> their `parentActionId`. `type` is extracted from `action.type.coding[0].code`
+> in the protocol definition JSONB; actions with `type = "fire-event"` are intelligence
+> actions (notifications/escalations). `title` is from `action.title`.
 
 ---
 

@@ -307,19 +307,23 @@ public class PatientController {
             ProtocolDefinition pd = protocolDefinitionRepository.findById(protocolDefinitionId).orElse(null);
             if (pd != null && pd.getDefinition() != null) {
                 JsonNode root = objectMapper.readTree(pd.getDefinition());
-                JsonNode actionNodes = root.get("action");
-                if (actionNodes != null && actionNodes.isArray()) {
-                    for (JsonNode action : actionNodes) {
-                        String id = action.has("id") ? action.get("id").asText() : null;
-                        String title = action.has("title") ? action.get("title").asText() : null;
-                        if (id != null && title != null) {
-                            titles.putIfAbsent(id, title);
-                        }
-                    }
-                }
+                collectStepTitles(root.get("action"), titles);
             }
         } catch (Exception e) {
             log.warn("Failed to parse protocol definition {}: {}", protocolDefinitionId, e.getMessage());
+        }
+    }
+
+    /** Walks nested actions too, so a step inside a step group gets its title. */
+    private void collectStepTitles(JsonNode actionNodes, Map<String, String> titles) {
+        if (actionNodes == null || !actionNodes.isArray()) return;
+        for (JsonNode action : actionNodes) {
+            String id = action.has("id") ? action.get("id").asText() : null;
+            String title = action.has("title") ? action.get("title").asText() : null;
+            if (id != null && title != null) {
+                titles.putIfAbsent(id, title);
+            }
+            collectStepTitles(action.get("action"), titles);
         }
     }
 
