@@ -74,6 +74,12 @@ public class IntelligenceEventLogsMv extends TableImpl<Record> {
 
     /**
      * The column
+     * <code>cce_analytics.intelligence_event_logs_mv.step_group_instance_id</code>.
+     */
+    public final TableField<Record, Object> STEP_GROUP_INSTANCE_ID = createField(DSL.name("step_group_instance_id"), org.jooq.impl.SQLDataType.OTHER, this, "");
+
+    /**
+     * The column
      * <code>cce_analytics.intelligence_event_logs_mv.deviation_id</code>.
      */
     public final TableField<Record, Object> DEVIATION_ID = createField(DSL.name("deviation_id"), org.jooq.impl.SQLDataType.OTHER, this, "");

@@ -90,6 +90,9 @@ import org.openphc.cce.insights.jooq.tables.RollupProtocolInstanceCurrent;
 import org.openphc.cce.insights.jooq.tables.RollupProtocolInstanceCurrentMv;
 import org.openphc.cce.insights.jooq.tables.RollupStepCurrent;
 import org.openphc.cce.insights.jooq.tables.RollupStepCurrentMv;
+import org.openphc.cce.insights.jooq.tables.StepGroupInstances;
+import org.openphc.cce.insights.jooq.tables.StepGroupInstancesMv;
+import org.openphc.cce.insights.jooq.tables.StepGroupInstancesQueue;
 import org.openphc.cce.insights.jooq.tables.StepInstanceHistory;
 import org.openphc.cce.insights.jooq.tables.StepInstanceHistoryMv;
 import org.openphc.cce.insights.jooq.tables.StepInstanceHistoryQueue;
@@ -515,6 +518,21 @@ public class CceAnalytics extends SchemaImpl {
     public final RollupStepCurrentMv ROLLUP_STEP_CURRENT_MV = RollupStepCurrentMv.ROLLUP_STEP_CURRENT_MV;
 
     /**
+     * The table <code>cce_analytics.step_group_instances</code>.
+     */
+    public final StepGroupInstances STEP_GROUP_INSTANCES = StepGroupInstances.STEP_GROUP_INSTANCES;
+
+    /**
+     * The table <code>cce_analytics.step_group_instances_mv</code>.
+     */
+    public final StepGroupInstancesMv STEP_GROUP_INSTANCES_MV = StepGroupInstancesMv.STEP_GROUP_INSTANCES_MV;
+
+    /**
+     * The table <code>cce_analytics.step_group_instances_queue</code>.
+     */
+    public final StepGroupInstancesQueue STEP_GROUP_INSTANCES_QUEUE = StepGroupInstancesQueue.STEP_GROUP_INSTANCES_QUEUE;
+
+    /**
      * The table <code>cce_analytics.step_instance_history</code>.
      */
     public final StepInstanceHistory STEP_INSTANCE_HISTORY = StepInstanceHistory.STEP_INSTANCE_HISTORY;
@@ -655,6 +673,9 @@ public class CceAnalytics extends SchemaImpl {
             RollupProtocolInstanceCurrentMv.ROLLUP_PROTOCOL_INSTANCE_CURRENT_MV,
             RollupStepCurrent.ROLLUP_STEP_CURRENT,
             RollupStepCurrentMv.ROLLUP_STEP_CURRENT_MV,
+            StepGroupInstances.STEP_GROUP_INSTANCES,
+            StepGroupInstancesMv.STEP_GROUP_INSTANCES_MV,
+            StepGroupInstancesQueue.STEP_GROUP_INSTANCES_QUEUE,
             StepInstanceHistory.STEP_INSTANCE_HISTORY,
             StepInstanceHistoryMv.STEP_INSTANCE_HISTORY_MV,
             StepInstanceHistoryQueue.STEP_INSTANCE_HISTORY_QUEUE,
