@@ -19,6 +19,8 @@ public class StepInstance {
     private UUID id;
     private UUID protocolInstanceId;
     private String actionId;
+    /** The step's group occurrence (step_group_instances). Null for a step in no group. */
+    private UUID stepGroupInstanceId;
     private Integer repeatIndex;
     private StepStatus stepStatus;
     /** null = not yet judged ('' in ClickHouse). */

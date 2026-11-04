@@ -153,6 +153,7 @@ public class StepInstanceRepositoryImpl
                 .id(r.get(STEP_INSTANCES.ID.getName(), UUID.class))
                 .protocolInstanceId(r.get(STEP_INSTANCES.PROTOCOL_INSTANCE_ID.getName(), UUID.class))
                 .actionId(r.get(STEP_INSTANCES.ACTION_ID.getName(), String.class))
+                .stepGroupInstanceId(parseUUID(r.get(STEP_INSTANCES.STEP_GROUP_INSTANCE_ID.getName(), String.class)))
                 .repeatIndex(repeatIdx != null ? repeatIdx : 0)
                 .stepStatus(stepStatus)
                 .slaStatus(slaStatus)

@@ -132,6 +132,11 @@ public class InboundEventLogs extends TableImpl<Record> {
     public final TableField<Record, Object> FACILITY_ID = createField(DSL.name("facility_id"), org.jooq.impl.SQLDataType.OTHER.nullable(false).defaultValue(DSL.field(DSL.raw("'if(JSONExtractString(raw_payload, ''data'', ''hospitalization'', ''origin'', ''reference'') != '''', arrayElement(splitByChar(''/'', JSONExtractString(raw_payload, ''data'', ''hospitalization'', ''origin'', ''reference'')), -1), if(JSONExtractString(raw_payload, ''data'', ''hospitalization'', ''origin'', ''identifier'', ''value'') != '''', JSONExtractString(raw_payload, ''data'', ''hospitalization'', ''origin'', ''identifier'', ''value''), if(JSONExtractString(raw_payload, ''data'', ''location'', 1, ''location'', ''reference'') != '''', arrayElement(splitByChar(''/'', JSONExtractString(raw_payload, ''data'', ''location'', 1, ''location'', ''reference'')), -1), if(JSONExtractString(raw_payload, ''data'', ''location'', 1, ''location'', ''identifier'', ''value'') != '''', JSONExtractString(raw_payload, ''data'', ''location'', 1, ''location'', ''identifier'', ''value''), if(JSONExtractString(raw_payload, ''data'', ''location'', ''reference'') != '''', arrayElement(splitByChar(''/'', JSONExtractString(raw_payload, ''data'', ''location'', ''reference'')), -1), if(JSONExtractString(raw_payload, ''data'', ''location'', ''identifier'', ''value'') != '''', JSONExtractString(raw_payload, ''data'', ''location'', ''identifier'', ''value''), JSONExtractString(raw_payload, ''facilityid'')))))))'"), org.jooq.impl.SQLDataType.OTHER)), this, "");
 
     /**
+     * The column <code>cce_analytics.inbound_event_logs.facility_name</code>.
+     */
+    public final TableField<Record, Object> FACILITY_NAME = createField(DSL.name("facility_name"), org.jooq.impl.SQLDataType.OTHER.nullable(false).defaultValue(DSL.field(DSL.raw("'JSONExtractString(raw_payload, ''facilityname'')'"), org.jooq.impl.SQLDataType.OTHER)), this, "");
+
+    /**
      * The column <code>cce_analytics.inbound_event_logs.resource_type</code>.
      */
     public final TableField<Record, Object> RESOURCE_TYPE = createField(DSL.name("resource_type"), org.jooq.impl.SQLDataType.OTHER.nullable(false).defaultValue(DSL.field(DSL.raw("'JSONExtractString(JSONExtractRaw(raw_payload, ''data''), ''resourceType'')'"), org.jooq.impl.SQLDataType.OTHER)), this, "");

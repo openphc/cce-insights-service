@@ -59,6 +59,7 @@ public class ProtocolAnalyticsService {
                         .parentActionId(parentActionId)
                         .type(type)
                         .title(title)
+                        .group(PlanDefinitionActions.isStepGroup(action))
                         .build());
                 JsonNode subActions = action.get("action");
                 if (subActions != null && subActions.isArray()) {
