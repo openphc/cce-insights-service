@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
@@ -56,6 +57,38 @@ final class StepGroupProgress {
     /** The group instance a step instance belongs to. Empty for a step in no group. */
     Optional<StepGroupInstance> groupInstanceOf(StepInstance stepInstance) {
         return Optional.ofNullable(stepInstance.getStepGroupInstanceId()).map(groupInstancesById::get);
+    }
+
+    /**
+     * The group instances around a step instance, from the top-level group in: the one it is in comes
+     * last. Empty for a step in no group.
+     */
+    List<StepGroupInstance> groupInstancesAround(StepInstance stepInstance) {
+        List<StepGroupInstance> around = new ArrayList<>();
+        StepGroupInstance groupInstance = groupInstanceOf(stepInstance).orElse(null);
+        while (groupInstance != null) {
+            around.add(0, groupInstance);
+            groupInstance = groupInstance.getParentGroupInstanceId() != null
+                    ? groupInstancesById.get(groupInstance.getParentGroupInstanceId())
+                    : null;
+        }
+        return around;
+    }
+
+    /**
+     * A group instance's number among its group's instances in the same parent instance, from 1, in
+     * the order they opened: the second visit is 2. Null when it is the only one. A nested group is
+     * numbered from 1 again inside each instance of its parent.
+     */
+    Integer numberOf(StepGroupInstance groupInstance) {
+        List<StepGroupInstance> siblings = instancesOf(groupInstance.getGroupActionId()).stream()
+                .filter(g -> Objects.equals(g.getParentGroupInstanceId(), groupInstance.getParentGroupInstanceId()))
+                .toList();
+        if (siblings.size() < 2) return null;
+        for (int i = 0; i < siblings.size(); i++) {
+            if (siblings.get(i).getId().equals(groupInstance.getId())) return i + 1;
+        }
+        return null;
     }
 
     /** The step instances in a group instance, including those in the groups nested inside it. */

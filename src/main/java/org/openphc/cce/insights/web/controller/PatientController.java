@@ -1,5 +1,7 @@
 package org.openphc.cce.insights.web.controller;
 
+import org.openphc.cce.insights.web.dto.GroupPathEntryDto;
+import org.openphc.cce.insights.service.StepGroupPathService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -36,6 +38,7 @@ public class PatientController {
     private final DeviationRepository deviationRepository;
     private final MatcherEventLogRepository matcherEventLogRepository;
     private final ProtocolDefinitionRepository protocolDefinitionRepository;
+    private final StepGroupPathService stepGroupPathService;
     private final ObjectMapper objectMapper;
 
     @GetMapping("/{patientId}/compliance-timeline")
@@ -148,6 +151,8 @@ public class PatientController {
         List<StepInstance> steps = stepInstanceRepository
                 .findByProtocolInstanceIdOrderByDueDateAsc(protocolInstanceId);
         List<Deviation> deviations = deviationRepository.findByProtocolInstanceId(protocolInstanceId);
+        // Which visit each step instance is in, for a step in a step group.
+        Map<UUID, List<GroupPathEntryDto>> groupPaths = stepGroupPathService.pathsOf(List.of(pi));
 
         long completed = steps.stream().filter(s -> s.getCompletedAt() != null).count();
         double rate = steps.isEmpty() ? 0 : Math.round((double) completed / steps.size() * 1000.0) / 10.0;
@@ -178,6 +183,7 @@ public class PatientController {
             Object[] t = thresholds.get(s.getId());
             if (t != null && t[1] != null) sm.put("overdueDate", t[1]);
             if (t != null && t[2] != null) sm.put("missedDate", t[2]);
+            sm.put("groupPath", StepGroupPathService.pathOf(groupPaths, s.getId()));
             return sm;
         }).collect(Collectors.toList());
         result.put("steps", stepList);
@@ -188,6 +194,7 @@ public class PatientController {
             dm.put("stepInstanceId", d.getStepInstanceId());
             dm.put("deviationType", d.getDeviationType());
             dm.put("detectedAt", d.getDetectedAt());
+            dm.put("groupPath", StepGroupPathService.pathOf(groupPaths, d.getStepInstanceId()));
             return dm;
         }).collect(Collectors.toList());
         result.put("deviations", devList);
@@ -262,6 +269,9 @@ public class PatientController {
                 .stream()
                 .collect(Collectors.toMap(StepInstance::getId, StepInstance::getActionId, (a, b) -> a));
 
+        // Which visit each step instance is in, for a step in a step group.
+        Map<UUID, List<GroupPathEntryDto>> groupPaths = stepGroupPathService.pathsOf(instances);
+
         // Batch load deviations (1 query, replaces N+1)
         Map<UUID, List<Deviation>> deviationsByInstance = deviationRepository
                 .findByProtocolInstanceIdIn(instanceIds)
@@ -287,6 +297,7 @@ public class PatientController {
                             map.put("occurredAt", d.getOccurredAt());
                             map.put("metadata", metadata);
                             map.put("description", description);
+                            map.put("groupPath", StepGroupPathService.pathOf(groupPaths, d.getStepInstanceId()));
                             return map;
                         }))
                 .filter(m -> deviationType == null ||
