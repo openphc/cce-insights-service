@@ -313,6 +313,13 @@ day, has one instance per cycle.
   done instances. A group that never opened is `NOT_STARTED` with `stepStatus: null`.
 - A step event in `timeline[]` carries `groupActionId` and `cycleIndex`, saying which group
   instance its step is in. Both are null for a step in no group.
+- A step's row merges all its step instances, across every cycle. Its `instances[]` lists them one
+  by one, so a client can show one cycle at a time:
+  - `groupInstanceId` is the group instance it is in. It is null for a step in no group.
+  - Each has its own `status`, `stepStatus`, `slaStatus`, `effectiveDateTime`, `dueDate`, `source`,
+    `practitioner`, `facilityId` and `facilityName`, as on the row.
+  - `description` says what its deviation is. It is null when it has none.
+  - It is empty for a step with no step instance yet, and null on a group's row.
 
 ```json
 {
@@ -330,6 +337,27 @@ day, has one instance per cycle.
     { "groupInstanceId": "41c7…", "parentGroupInstanceId": null, "cycleIndex": 1,
       "status": "NOT_STARTED", "openedAt": "2026-11-03T09:00:00Z", "dueDate": null,
       "completedAt": null, "completedSteps": 1, "totalSteps": 2 }
+  ]
+}
+```
+
+A step in that group, done in the first visit and still awaited in the second:
+
+```json
+{
+  "actionId": "history",
+  "stepName": "History",
+  "status": "COMPLETED",
+  "completionCount": 1,
+  "depth": 1,
+  "instances": [
+    { "stepInstanceId": "c2a9…", "groupInstanceId": "8d1f…", "status": "COMPLETED",
+      "stepStatus": "COMPLETED", "slaStatus": "MET", "effectiveDateTime": "2026-11-02T10:00:00Z",
+      "source": "ebuzima", "practitioner": "Dr. Uwase", "facilityName": "Kicukiro HC",
+      "description": null },
+    { "stepInstanceId": "7be0…", "groupInstanceId": "41c7…", "status": "NOT_STARTED",
+      "stepStatus": "NOT_STARTED", "slaStatus": null, "dueDate": "2026-11-04T09:00:00Z",
+      "description": null }
   ]
 }
 ```
