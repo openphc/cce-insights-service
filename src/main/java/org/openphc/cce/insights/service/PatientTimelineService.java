@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.openphc.cce.insights.domain.entity.*;
 import org.openphc.cce.insights.domain.enums.SlaStatus;
+import org.openphc.cce.insights.domain.enums.StepStatus;
 import org.openphc.cce.insights.domain.repository.*;
 import org.openphc.cce.insights.web.dto.PatientTimelineDto;
 import org.springframework.stereotype.Service;
@@ -22,6 +23,7 @@ public class PatientTimelineService {
 
     private final ProtocolInstanceRepository protocolInstanceRepository;
     private final StepInstanceRepository stepInstanceRepository;
+    private final StepGroupInstanceRepository stepGroupInstanceRepository;
     private final ProtocolDefinitionRepository protocolDefinitionRepository;
     private final DeviationRepository deviationRepository;
     private final MatcherEventLogRepository matcherEventLogRepository;
@@ -42,6 +44,10 @@ public class PatientTimelineService {
                 .findByProtocolInstanceIdIn(instanceIds)
                 .stream()
                 .collect(Collectors.groupingBy(Deviation::getProtocolInstanceId));
+        Map<UUID, List<StepGroupInstance>> groupInstancesByInstance = stepGroupInstanceRepository
+                .findByProtocolInstanceIdIn(instanceIds)
+                .stream()
+                .collect(Collectors.groupingBy(StepGroupInstance::getProtocolInstanceId));
 
         List<PatientTimelineDto.ProtocolTimeline> protocols = new ArrayList<>();
         for (ProtocolInstance pi : instances) {
@@ -50,11 +56,13 @@ public class PatientTimelineService {
             double rate = steps.isEmpty() ? 0.0 : (double) completed / steps.size();
 
             // Resolve ordered action list and titles from protocol definition
-            List<String[]> orderedActions = resolveOrderedActions(pi.getProtocolDefinitionId());
+            List<ProtocolAction> orderedActions = resolveOrderedActions(pi.getProtocolDefinitionId());
             Map<String, String> stepTitles = new LinkedHashMap<>();
-            for (String[] pair : orderedActions) {
-                stepTitles.put(pair[0], pair[1]);
+            for (ProtocolAction action : orderedActions) {
+                stepTitles.put(action.actionId(), action.title());
             }
+            StepGroupProgress groupProgress = new StepGroupProgress(
+                    groupInstancesByInstance.getOrDefault(pi.getId(), List.of()), steps);
 
             // Build event context lookup: stepInstance.matchedEventId → EventContext (effectiveDateTime, practitioner, facilityId)
             Map<UUID, EventContext> eventContextMap = resolveEventContext(steps);
@@ -62,9 +70,11 @@ public class PatientTimelineService {
             // Deviations already loaded in batch above
             List<Deviation> deviations = deviationsByInstance.getOrDefault(pi.getId(), List.of());
             Map<String, Deviation> deviationByActionId = resolveDeviationsByActionId(deviations, steps);
+            Map<UUID, Deviation> deviationByStepInstanceId = resolveDeviationsByStepInstanceId(deviations);
 
             // Build Protocol Journey (one row per protocol-defined action)
-            List<PatientTimelineDto.JourneyStep> journey = buildJourney(orderedActions, steps, stepTitles, eventContextMap, deviationByActionId);
+            List<PatientTimelineDto.JourneyStep> journey = buildJourney(orderedActions, steps, groupProgress,
+                    eventContextMap, deviationByActionId, deviationByStepInstanceId);
 
             // Build Compliance Timeline events
             List<PatientTimelineDto.TimelineEvent> events = new ArrayList<>();
@@ -93,6 +103,9 @@ public class PatientTimelineService {
                                 .slaStatus(si.getSlaStatus() != null ? si.getSlaStatus().name() : null)
                                 .effectiveDateTime(eventContextMap.containsKey(si.getId()) ?
                                         eventContextMap.get(si.getId()).effectiveDateTime() : null);
+                groupProgress.groupInstanceOf(si).ifPresent(groupInstance -> builder
+                        .groupActionId(groupInstance.getGroupActionId())
+                        .cycleIndex(groupInstance.getCycleIndex()));
 
                 if (si.isCompleted()) {
                     builder.source(si.getCompletedBySource());
@@ -125,24 +138,30 @@ public class PatientTimelineService {
 
     /**
      * Build a consolidated journey: one row per protocol-defined action, in definition order.
-     * Shows the latest/best status for each action.
+     * Shows the latest/best status for each action. A step group gets a row of its own, with its
+     * instances (see {@link #journeyRowForGroup}). A step's row also lists its step instances, each
+     * with its group instance, so a client can show one cycle of a group at a time.
      */
     private List<PatientTimelineDto.JourneyStep> buildJourney(
-            List<String[]> orderedActions, List<StepInstance> steps,
-            Map<String, String> stepTitles, Map<UUID, EventContext> eventContextMap,
-            Map<String, Deviation> deviationByActionId) {
+            List<ProtocolAction> orderedActions, List<StepInstance> steps,
+            StepGroupProgress groupProgress, Map<UUID, EventContext> eventContextMap,
+            Map<String, Deviation> deviationByActionId, Map<UUID, Deviation> deviationByStepInstanceId) {
 
         // Group steps by actionId
         Map<String, List<StepInstance>> stepsByAction = steps.stream()
                 .collect(Collectors.groupingBy(StepInstance::getActionId, LinkedHashMap::new, Collectors.toList()));
 
         List<PatientTimelineDto.JourneyStep> journey = new ArrayList<>();
-        for (String[] action : orderedActions) {
-            String actionId = action[0];
-            String title = action[1];
-            int depth = action.length > 2 ? Integer.parseInt(action[2]) : 0;
-            String parentActionId = action.length > 3 && !action[3].isEmpty() ? action[3] : null;
-            String requiredBehavior = action.length > 4 && !action[4].isEmpty() ? action[4] : null;
+        for (ProtocolAction action : orderedActions) {
+            if (action.group()) {
+                journey.add(journeyRowForGroup(action, groupProgress));
+                continue;
+            }
+            String actionId = action.actionId();
+            String title = action.title();
+            int depth = action.depth();
+            String parentActionId = action.parentActionId();
+            String requiredBehavior = action.requiredBehavior();
             List<StepInstance> actionSteps = stepsByAction.getOrDefault(actionId, List.of());
 
             if (actionSteps.isEmpty()) {
@@ -155,6 +174,7 @@ public class PatientTimelineService {
                         .completionCount(0)
                         .requiredBehavior(requiredBehavior)
                         .depth(depth)
+                        .instances(List.of())
                         .build());
             } else {
                 // Pick the "best" status: COMPLETED > OVERDUE > MISSED > NOT_STARTED
@@ -190,10 +210,101 @@ public class PatientTimelineService {
                         .requiredBehavior(requiredBehavior)
                         .depth(depth)
                         .description(resolveDeviationDescription(actionId, deviationByActionId, best))
+                        .instances(actionSteps.stream()
+                                .map(stepInstance -> toJourneyStepInstance(stepInstance, eventContextMap,
+                                        deviationByStepInstanceId))
+                                .toList())
                         .build());
             }
         }
         return journey;
+    }
+
+    /**
+     * The journey row of a step group, such as a visit. A group never matches an event, so it has
+     * no step instances of its own. Its row shows its instances instead, each with how many of its
+     * steps are done. The row's status is that of its best instance, like a step's
+     * ({@link StepGroupProgress#displayStatus}). A group that never opened is NOT_STARTED, with no
+     * stepStatus, like a step with no instance.
+     */
+    private PatientTimelineDto.JourneyStep journeyRowForGroup(ProtocolAction action, StepGroupProgress groupProgress) {
+        List<StepGroupInstance> groupInstances = groupProgress.instancesOf(action.actionId());
+        PatientTimelineDto.JourneyStep.JourneyStepBuilder row = PatientTimelineDto.JourneyStep.builder()
+                .actionId(action.actionId())
+                .parentActionId(action.parentActionId())
+                .stepName(action.title())
+                .requiredBehavior(action.requiredBehavior())
+                .depth(action.depth())
+                .group(true)
+                .groupInstances(groupInstances.stream()
+                        .map(groupInstance -> toGroupInstanceDto(groupInstance, groupProgress))
+                        .toList());
+
+        if (groupInstances.isEmpty()) {
+            return row.status(StepStatus.NOT_STARTED.name()).completionCount(0).build();
+        }
+        StepGroupInstance best = groupInstances.stream()
+                .min(Comparator.comparingInt(g -> displayStatusPriority(groupProgress.displayStatus(g))))
+                .orElseThrow();
+        String status = groupProgress.displayStatus(best);
+        return row.status(status)
+                .stepStatus(StepStatus.COMPLETED.name().equals(status)
+                        ? StepStatus.COMPLETED.name() : StepStatus.NOT_STARTED.name())
+                .slaStatus(best.getSlaStatus() != null ? best.getSlaStatus().name() : null)
+                .completionCount((int) groupInstances.stream().filter(groupProgress::isDone).count())
+                .dueDate(best.getDueDate() != null ? best.getDueDate().toString() : null)
+                .build();
+    }
+
+    private PatientTimelineDto.GroupInstance toGroupInstanceDto(StepGroupInstance groupInstance,
+                                                                StepGroupProgress groupProgress) {
+        List<StepInstance> stepInstances = groupProgress.stepInstancesIn(groupInstance);
+        return PatientTimelineDto.GroupInstance.builder()
+                .groupInstanceId(groupInstance.getId().toString())
+                .parentGroupInstanceId(groupInstance.getParentGroupInstanceId() != null
+                        ? groupInstance.getParentGroupInstanceId().toString() : null)
+                .cycleIndex(groupInstance.getCycleIndex())
+                .status(groupProgress.displayStatus(groupInstance))
+                .openedAt(groupInstance.getOpenedAt())
+                .dueDate(groupInstance.getDueDate())
+                .completedAt(groupProgress.doneAt(groupInstance))
+                .completedSteps((int) stepInstances.stream().filter(StepInstance::isCompleted).count())
+                .totalSteps(stepInstances.size())
+                .build();
+    }
+
+    /** One step instance of a step's journey row, with the group instance it is in. */
+    private PatientTimelineDto.JourneyStepInstance toJourneyStepInstance(
+            StepInstance stepInstance, Map<UUID, EventContext> eventContextMap,
+            Map<UUID, Deviation> deviationByStepInstanceId) {
+        EventContext ctx = eventContextMap.get(stepInstance.getId());
+        Deviation deviation = deviationByStepInstanceId.get(stepInstance.getId());
+        return PatientTimelineDto.JourneyStepInstance.builder()
+                .stepInstanceId(stepInstance.getId().toString())
+                .groupInstanceId(stepInstance.getStepGroupInstanceId() != null
+                        ? stepInstance.getStepGroupInstanceId().toString() : null)
+                .status(stepInstance.displayStatus())
+                .stepStatus(stepInstance.getStepStatus() != null ? stepInstance.getStepStatus().name() : null)
+                .slaStatus(stepInstance.getSlaStatus() != null ? stepInstance.getSlaStatus().name() : null)
+                .effectiveDateTime(ctx != null ? ctx.effectiveDateTime : null)
+                .dueDate(stepInstance.getDueDate() != null ? stepInstance.getDueDate().toString() : null)
+                .source(stepInstance.getCompletedBySource())
+                .practitioner(ctx != null ? ctx.practitioner : null)
+                .facilityId(ctx != null ? ctx.facilityId : null)
+                .facilityName(ctx != null ? ctx.facilityName : null)
+                .description(deviation != null ? describeDeviation(deviation, stepInstance) : null)
+                .build();
+    }
+
+    /** Each step instance's deviation, the first when it has several. */
+    private Map<UUID, Deviation> resolveDeviationsByStepInstanceId(List<Deviation> deviations) {
+        Map<UUID, Deviation> result = new HashMap<>();
+        for (Deviation d : deviations) {
+            if (d.getStepInstanceId() != null) {
+                result.putIfAbsent(d.getStepInstanceId(), d);
+            }
+        }
+        return result;
     }
 
     /**
@@ -218,8 +329,13 @@ public class PatientTimelineService {
     private String resolveDeviationDescription(String actionId, Map<String, Deviation> deviationByActionId, StepInstance best) {
         Deviation dev = deviationByActionId.get(actionId);
         if (dev == null) return null;
+        return describeDeviation(dev, best);
+    }
+
+    /** A deviation in words, for the step instance it is shown with. */
+    private String describeDeviation(Deviation dev, StepInstance stepInstance) {
         return switch (dev.getDeviationType()) {
-            case OVERDUE -> best.isCompleted()
+            case OVERDUE -> stepInstance.isCompleted()
                     ? "Completed after SLA window"
                     : "Step overdue — exceeded expected timeframe";
             case MISSED -> "Step missed — no completion recorded within window";
@@ -232,15 +348,20 @@ public class PatientTimelineService {
      * Priority: COMPLETED > OVERDUE > MISSED > NOT_STARTED
      */
     private StepInstance pickBestStep(List<StepInstance> steps) {
-        Map<String, Integer> priority = Map.of(
-                "COMPLETED", 0,
-                "OVERDUE", 1,
-                "MISSED", 2,
-                "NOT_STARTED", 3
-        );
         return steps.stream()
-                .min(Comparator.comparingInt(s -> priority.getOrDefault(s.displayStatus(), 99)))
+                .min(Comparator.comparingInt(s -> displayStatusPriority(s.displayStatus())))
                 .orElse(steps.get(0));
+    }
+
+    /** COMPLETED > OVERDUE > MISSED > NOT_STARTED, for a step or a group instance. */
+    private static int displayStatusPriority(String displayStatus) {
+        return switch (displayStatus) {
+            case "COMPLETED" -> 0;
+            case "OVERDUE" -> 1;
+            case "MISSED" -> 2;
+            case "NOT_STARTED" -> 3;
+            default -> 99;
+        };
     }
 
     /**
@@ -435,12 +556,16 @@ public class PatientTimelineService {
         return null;
     }
 
+    /** One action of the protocol: a step, or a step group (such as a visit). */
+    private record ProtocolAction(String actionId, String title, int depth, String parentActionId,
+                                  String requiredBehavior, boolean group) {}
+
     /**
-     * Resolve ordered action list from PlanDefinition JSON.
-     * Returns list of [actionId, title, depth] tuples in definition order, recursing into nested actions.
+     * Resolve ordered action list from PlanDefinition JSON, in definition order, recursing into
+     * nested actions.
      */
-    private List<String[]> resolveOrderedActions(UUID protocolDefinitionId) {
-        List<String[]> actions = new ArrayList<>();
+    private List<ProtocolAction> resolveOrderedActions(UUID protocolDefinitionId) {
+        List<ProtocolAction> actions = new ArrayList<>();
         if (protocolDefinitionId == null) return actions;
         try {
             ProtocolDefinition pd = protocolDefinitionRepository.findById(protocolDefinitionId).orElse(null);
@@ -457,19 +582,20 @@ public class PatientTimelineService {
         return actions;
     }
 
-    private void collectActions(JsonNode actionNodes, List<String[]> actions, int depth, String parentId) {
+    private void collectActions(JsonNode actionNodes, List<ProtocolAction> actions, int depth, String parentId) {
         for (JsonNode action : actionNodes) {
             String id = action.has("id") ? action.get("id").asText() : null;
             String title = action.has("title") ? action.get("title").asText() : null;
             String requiredBehavior = action.has("requiredBehavior") ? action.get("requiredBehavior").asText() : null;
 
             // Skip fire-event intelligence actions (notifications/escalations) — not compliance steps
-            if (isFireEventAction(action)) {
+            if (PlanDefinitionActions.isFireEvent(action)) {
                 continue;
             }
 
             if (id != null) {
-                actions.add(new String[]{id, title != null ? title : formatActionId(id), String.valueOf(depth), parentId != null ? parentId : "", requiredBehavior != null ? requiredBehavior : ""});
+                actions.add(new ProtocolAction(id, title != null ? title : formatActionId(id), depth, parentId,
+                        requiredBehavior, PlanDefinitionActions.isStepGroup(action)));
             }
             // Recurse into nested sub-actions
             JsonNode subActions = action.get("action");
@@ -477,19 +603,6 @@ public class PatientTimelineService {
                 collectActions(subActions, actions, depth + 1, id);
             }
         }
-    }
-
-    private boolean isFireEventAction(JsonNode action) {
-        JsonNode type = action.get("type");
-        if (type == null) return false;
-        JsonNode coding = type.get("coding");
-        if (coding == null || !coding.isArray()) return false;
-        for (JsonNode c : coding) {
-            if (c.has("code") && "fire-event".equals(c.get("code").asText())) {
-                return true;
-            }
-        }
-        return false;
     }
 
     /**

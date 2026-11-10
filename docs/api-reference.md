@@ -304,6 +304,71 @@ status: `COMPLETED`, else the outstanding step's `OVERDUE` / `MISSED`, else `NOT
 
 > **Note:** `journey[].effectiveDateTime` is `null` for a step with no completing event, otherwise read from the completing FHIR resource by `PatientTimelineService#extractEffectiveDateTime()`, trying fields in this order and returning the first present: `effectiveDateTime` → `Consent.verification[0].verificationDate` → `period.start` → `authoredOn` → `Consent.dateTime` (top-level) → `meta.lastUpdated`. The two `Consent`-specific fallbacks exist because `Consent` resources carry none of the generic fields — a real Kenya payload has `dateTime` (when the consent was proposed, i.e. the `consent-request` step's own timestamp) and, once verified, `verification[0].verificationDate` (when *that* verification happened — distinct from `dateTime`, checked first so a verified Consent doesn't report its proposal time for the `consent-verification` step). Before this fallback pair was added, both consent steps fell through to `meta.lastUpdated`, which real ingested Consent payloads don't populate either — so `consent-request`/`consent-verification` journey rows showed no timestamp at all.
 
+**Step groups.** A step group is a set of steps that belong together, such as one visit. The
+protocol defines it as an action with `groupingBehavior: logical-group`. Each time the group opens
+for the patient, the Matcher records a group instance. A group that repeats, such as one visit per
+day, has one instance per cycle.
+
+- A group has its own `journey[]` row, with `group: true`. Its steps follow it, one level deeper.
+- `groupInstances[]` lists its instances, in the order they opened. Each says how many of its steps
+  are done. Steps in a group nested inside it count too.
+- An instance's `status` is on the same scale as a step's:
+  - `COMPLETED`: the Matcher recorded it as complete, or every step in it so far is done;
+  - `OVERDUE` / `MISSED`: the verdict on the group's own deadline;
+  - `NOT_STARTED`: it is open, and a step in it is still awaited.
+- The row's `status` is that of its best instance, as for a step. `completionCount` counts its
+  done instances. A group that never opened is `NOT_STARTED` with `stepStatus: null`.
+- A step event in `timeline[]` carries `groupActionId` and `cycleIndex`, saying which group
+  instance its step is in. Both are null for a step in no group.
+- A step's row merges all its step instances, across every cycle. Its `instances[]` lists them one
+  by one, so a client can show one cycle at a time:
+  - `groupInstanceId` is the group instance it is in. It is null for a step in no group.
+  - Each has its own `status`, `stepStatus`, `slaStatus`, `effectiveDateTime`, `dueDate`, `source`,
+    `practitioner`, `facilityId` and `facilityName`, as on the row.
+  - `description` says what its deviation is. It is null when it has none.
+  - It is empty for a step with no step instance yet, and null on a group's row.
+
+```json
+{
+  "actionId": "visit",
+  "stepName": "Visit",
+  "group": true,
+  "status": "COMPLETED",
+  "stepStatus": "COMPLETED",
+  "completionCount": 1,
+  "depth": 0,
+  "groupInstances": [
+    { "groupInstanceId": "8d1f…", "parentGroupInstanceId": null, "cycleIndex": 0,
+      "status": "COMPLETED", "openedAt": "2026-11-02T09:00:00Z", "dueDate": null,
+      "completedAt": "2026-11-02T11:00:00Z", "completedSteps": 2, "totalSteps": 2 },
+    { "groupInstanceId": "41c7…", "parentGroupInstanceId": null, "cycleIndex": 1,
+      "status": "NOT_STARTED", "openedAt": "2026-11-03T09:00:00Z", "dueDate": null,
+      "completedAt": null, "completedSteps": 1, "totalSteps": 2 }
+  ]
+}
+```
+
+A step in that group, done in the first visit and still awaited in the second:
+
+```json
+{
+  "actionId": "history",
+  "stepName": "History",
+  "status": "COMPLETED",
+  "completionCount": 1,
+  "depth": 1,
+  "instances": [
+    { "stepInstanceId": "c2a9…", "groupInstanceId": "8d1f…", "status": "COMPLETED",
+      "stepStatus": "COMPLETED", "slaStatus": "MET", "effectiveDateTime": "2026-11-02T10:00:00Z",
+      "source": "ebuzima", "practitioner": "Dr. Uwase", "facilityName": "Kicukiro HC",
+      "description": null },
+    { "stepInstanceId": "7be0…", "groupInstanceId": "41c7…", "status": "NOT_STARTED",
+      "stepStatus": "NOT_STARTED", "slaStatus": null, "dueDate": "2026-11-04T09:00:00Z",
+      "description": null }
+  ]
+}
+```
+
 ### 2.2 GET `/v1/insights/patients/{patientId}/protocol-tracking`
 
 List all protocol instances for a patient.
@@ -405,6 +470,24 @@ Step fields (2.0.0): `stepStatus` always; `slaStatus` only once judged (1.x `sta
 `DUE_DATE_REACHED` / `MISSED_DATE_REACHED` thresholds from `step_sla_state_transitions`, present for
 mandatory steps from creation — not only once the step went overdue — and absent for optional steps.
 
+Each step and each deviation also has a `groupPath` (see below).
+
+`groupPath` says which step group instances the step instance is in, such as which visit. It
+lists one entry per level, from the top-level group in, and is empty for a step in no group:
+
+```json
+"groupPath": [
+  { "groupActionId": "outpatient-visit", "groupName": "Outpatient Visit",
+    "groupInstanceId": "8d1f…", "number": 2, "openedAt": "2026-09-06T08:00:00Z" },
+  { "groupActionId": "clinical-consultation", "groupName": "Clinical Consultation",
+    "groupInstanceId": "41c7…", "number": null, "openedAt": "2026-09-06T09:00:00Z" }
+]
+```
+
+`number` is its place among its group's instances in the same parent instance, from 1, in the order
+they opened. A nested group starts again at 1 in each parent instance. It is null when the group
+opened only once there.
+
 ---
 
 ### 2.4 GET `/v1/insights/patients/{patientId}/events`
@@ -503,6 +586,9 @@ All deviations for a patient across all protocol enrollments, ordered by detecti
 }
 ```
 
+Each deviation has a `groupPath`: the group instances its step is in, such as which visit. It has
+the same shape as in §2.3, and is empty for a step in no group.
+
 ---
 
 ## 3. Deviations & Intelligence
@@ -550,6 +636,13 @@ List deviations with filtering, sorting, and pagination.
   }
 }
 ```
+
+> `occurredAt` is the clinical occurrence date (when the deviation actually happened,
+> derived from the linked step's engine-computed dates); `detectedAt` is when the system
+> flagged it (processing time). They usually match but can differ for backfilled data.
+
+Each deviation has a `groupPath`: the group instances its step is in, such as which visit. It has
+the same shape as in §2.3, and is empty for a step in no group.
 
 ### 3.2 GET `/v1/insights/deviations/trends`
 
@@ -1206,6 +1299,26 @@ Per-action counts are distinct patients. `timelinessDistribution` is now `{compl
 `overdueCount` / `missedCount` are SLA verdicts (include steps completed late); `notStartedCount` =
 `step_status NOT_STARTED`; `slaUnjudgedCount` = no SLA verdict yet. `skippedCount` and `pendingCount`
 were removed.
+
+**Step groups.** A patient counts once in `totalInstances` and `completedCount`, however many visits
+they had. So for a step in a group that repeats, such as one visit per day, two more counts are
+given per step:
+- `stepInstanceCount`: its step instances, one per visit;
+- `completedStepInstanceCount`: of those, the completed ones.
+
+`groups[]` has one entry per step group, in protocol order, over the same enrollments:
+
+```json
+"groups": [
+  { "groupActionId": "outpatient-visit", "title": "Outpatient Visit", "patientCount": 120,
+    "instanceCount": 310, "completedInstanceCount": 254, "completionRate": 0.82 }
+]
+```
+
+- `instanceCount`: its instances, such as visits. A nested group has one per instance of its parent.
+- `completedInstanceCount`: those the Matcher recorded as complete, or with every step in them so far
+  done, nested groups' steps included, as on the patient's journey.
+- It is empty for a protocol without groups.
 
 **Computed fields:**
 - `completionRate` = `completedCount / totalInstances`
@@ -2226,7 +2339,15 @@ Returns the ordered list of actions defined in the protocol PlanDefinition, with
       "stepOrder": 1,
       "requiredBehavior": "must",
       "type": null,
-      "title": "Registration"
+      "title": "Registration",
+      "group": false
+    },
+    {
+      "actionId": "visit",
+      "parentActionId": null,
+      "type": "step",
+      "title": "Visit",
+      "group": true
     },
     {
       "actionId": "anc-visit-1-referral-escalation",
@@ -2234,13 +2355,20 @@ Returns the ordered list of actions defined in the protocol PlanDefinition, with
       "stepOrder": 8,
       "requiredBehavior": "could",
       "type": "fire-event",
-      "title": "ANC Visit 1 Referral Escalation Notification"
+      "title": "ANC Visit 1 Referral Escalation Notification",
+      "group": false
     }
   ]
 }
 ```
 
-> **Note:** The `type` field is extracted from `action.type.coding[0].code` in the protocol definition JSONB. Actions with `type = "fire-event"` are intelligence actions (notifications/escalations). The `title` field is from `action.title`.
+> **Note:** There is no `stepOrder` or `requiredBehavior` field — the response is exactly
+> `actionId`, `parentActionId`, `type`, `title`, `group`, in the order actions appear in the
+> `PlanDefinition.action[]` array. `group` is true for a step group (`groupingBehavior:
+> logical-group`), such as a visit. A group has no step data of its own. Its steps name it as
+> their `parentActionId`. `type` is extracted from `action.type.coding[0].code`
+> in the protocol definition JSONB; actions with `type = "fire-event"` are intelligence
+> actions (notifications/escalations). `title` is from `action.title`.
 
 ---
 

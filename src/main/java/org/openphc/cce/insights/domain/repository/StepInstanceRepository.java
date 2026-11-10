@@ -27,6 +27,15 @@ public interface StepInstanceRepository extends ReadOnlyRepository<StepInstance,
     List<Object[]> findStepAnalyticsByFacility(UUID protocolDefId, String facilityId,
                                                OffsetDateTime startDate, OffsetDateTime endDate);
 
+    /**
+     * Every group instance of a protocol's enrollments in scope, one row each: group instance id,
+     * parent group instance id (null at the top level), group action id, patient id, whether the
+     * Matcher recorded it complete, and its step instances and how many are done. Those counts cover
+     * only the step instances directly in it, not those of the groups nested inside.
+     */
+    List<Object[]> findGroupInstanceProgress(UUID protocolDefId, String facilityId,
+                                             OffsetDateTime startDate, OffsetDateTime endDate);
+
     List<Object[]> findCompletionFunnel(UUID protocolDefId, OffsetDateTime startDate, OffsetDateTime endDate);
 
     List<Object[]> findStepComplianceByFacility(UUID protocolDefinitionId, OffsetDateTime startDate, OffsetDateTime endDate);

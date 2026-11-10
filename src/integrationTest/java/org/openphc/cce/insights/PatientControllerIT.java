@@ -9,6 +9,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.web.servlet.MockMvc;
 import org.openphc.cce.insights.domain.entity.Deviation;
 import org.openphc.cce.insights.domain.entity.MatcherEventLog;
+import org.openphc.cce.insights.domain.entity.ProtocolDefinition;
 import org.openphc.cce.insights.domain.entity.ProtocolInstance;
 import org.openphc.cce.insights.domain.entity.StepInstance;
 import org.openphc.cce.insights.domain.enums.DeviationType;
@@ -54,6 +55,8 @@ class PatientControllerIT extends AbstractIntegrationTest {
     private MatcherEventLogRepository matcherEventLogRepository;
     @MockitoBean
     private ProtocolDefinitionRepository protocolDefinitionRepository;
+    @MockitoBean
+    private org.openphc.cce.insights.service.StepGroupPathService stepGroupPathService;
 
     private static final String PATIENT_1 = "260225-0002-5501";
     private static final String PATIENT_2 = "260225-0002-5502";
@@ -183,6 +186,33 @@ class PatientControllerIT extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.data.length()").value(1))
                 .andExpect(jsonPath("$.data[0].deviationType").value("OVERDUE"))
                 .andExpect(jsonPath("$.data[0].protocolCanonical").isString());
+    }
+
+    @Test
+    void getPatientDeviations_namesAStepInsideAStepGroup() throws Exception {
+        String patient = "260225-0002-5504";
+        UUID protocolInstanceId = UUID.randomUUID();
+        UUID protocolDefinitionId = UUID.randomUUID();
+        UUID historyStepId = UUID.randomUUID();
+        when(protocolInstanceRepository.findByPatientId(patient)).thenReturn(List.of(ProtocolInstance.builder()
+                .id(protocolInstanceId).protocolDefinitionId(protocolDefinitionId).patientId(patient)
+                .status(ProtocolInstanceStatus.ACTIVE).build()));
+        when(protocolDefinitionRepository.findById(protocolDefinitionId)).thenReturn(java.util.Optional.of(
+                ProtocolDefinition.builder().id(protocolDefinitionId).definition("""
+                        { "action": [{ "id": "visit", "title": "Visit", "groupingBehavior": "logical-group",
+                                       "action": [{ "id": "history", "title": "Patient History" }] }] }
+                        """).build()));
+        when(stepInstanceRepository.findByProtocolInstanceIdIn(List.of(protocolInstanceId))).thenReturn(List.of(
+                StepInstance.builder().id(historyStepId).protocolInstanceId(protocolInstanceId).actionId("history").build()));
+        when(deviationRepository.findByProtocolInstanceIdIn(List.of(protocolInstanceId))).thenReturn(List.of(
+                Deviation.builder().id(UUID.randomUUID()).protocolInstanceId(protocolInstanceId)
+                        .stepInstanceId(historyStepId).deviationType(DeviationType.MISSED)
+                        .detectedAt(OffsetDateTime.now(ZoneOffset.UTC)).build()));
+
+        mockMvc.perform(get("/v1/insights/patients/" + patient + "/deviations"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].stepName").value("Patient History"))
+                .andExpect(jsonPath("$.data[0].description").value("Patient History was missed"));
     }
 
     @Test

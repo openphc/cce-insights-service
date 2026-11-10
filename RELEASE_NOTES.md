@@ -28,6 +28,31 @@ received or flagged it. Ingestion endpoints (`/ingestion/*`) stay on `received_a
   cached range for any range).
 - Intelligence deliveries stay on `created_at` (no clinical clock on that table).
 
+### Step groups (CCE-135)
+
+Reads step groups, which Matcher V8 adds. A step group is a set of steps that belong together, such
+as one visit. Needs the cce-data-pipeline change that captures `step_group_instance`.
+
+- **Patient Protocol Journey** (`/patients/{id}/compliance-timeline`): a group's `journey[]` row now
+  has `group: true` and `groupInstances[]`. Each instance has its cycle, when it opened, its status
+  and how many of its steps are done. Before, a group showed as a step that never started.
+- Timeline step events gain `groupActionId` and `cycleIndex`.
+- A step's `journey[]` row gains `instances[]`: its step instances one by one, each with the group
+  instance it is in. A client can then show one cycle of a group at a time, such as one visit.
+- **Which visit:** a step instance's `groupPath` names the group instances it is in, such as
+  "Outpatient Visit #2". It is on the steps and deviations of
+  `/patients/{id}/protocol-tracking/{protocolInstanceId}`, on `/patients/{id}/deviations` and on
+  `/deviations`.
+- **Step analytics** (`/protocols/{id}/step-analytics`): each step gains `stepInstanceCount` and
+  `completedStepInstanceCount`, which count visits where the other counts are patients. New
+  `groups[]`: per step group, its patients, its instances and how many are completed.
+- **Action order** (`/protocols/{id}/action-order`): new `group` flag.
+- **Patient deviations** (`/patients/{id}/deviations`): a step inside a group, or inside any nested
+  action, now gets its title. Before, only top-level actions did.
+- **Deviations:** every deviation read is per step. A group's own deviations, once the Matcher
+  writes them, are left out, as in the pipeline's step-level views.
+- jOOQ classes regenerated from the pipeline's step-group schema.
+
 ### CCE 2.0.0 ClickHouse schema (breaking API changes)
 
 Reads the 2.0.0 `cce_analytics` schema (Protocol / Matcher / Step SLA services replace the 1.x
