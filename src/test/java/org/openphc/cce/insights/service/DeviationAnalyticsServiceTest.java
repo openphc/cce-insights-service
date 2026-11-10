@@ -2,6 +2,7 @@ package org.openphc.cce.insights.service;
 
 import org.junit.jupiter.api.Test;
 import org.openphc.cce.insights.domain.repository.DeviationRepository;
+import org.openphc.cce.insights.domain.repository.ProtocolInstanceRepository;
 import org.openphc.cce.insights.web.dto.DeviationByFacilityDto;
 import org.openphc.cce.insights.web.dto.DeviationsByFacilityPage;
 
@@ -21,7 +22,10 @@ import static org.mockito.Mockito.when;
 class DeviationAnalyticsServiceTest {
 
     private final DeviationRepository deviationRepository = mock(DeviationRepository.class);
-    private final DeviationAnalyticsService service = new DeviationAnalyticsService(deviationRepository);
+    private final ProtocolInstanceRepository protocolInstanceRepository = mock(ProtocolInstanceRepository.class);
+    private final StepGroupPathService stepGroupPathService = mock(StepGroupPathService.class);
+    private final DeviationAnalyticsService service = new DeviationAnalyticsService(deviationRepository,
+            protocolInstanceRepository, stepGroupPathService);
 
     /** findDeviationsByFacilityAndType row shape: [facilityId, overdue, missed, orderViolation, total]. */
     private static Object[] row(String facilityId, long overdue, long missed, long orderViolation, long total) {
@@ -67,5 +71,31 @@ class DeviationAnalyticsServiceTest {
 
         assertThat(page.facilities()).isEmpty();
         assertThat(page.totalCount()).isZero();
+    }
+
+    @Test
+    void getDeviations_saysWhichVisitEachDeviationsStepIsIn() {
+        java.util.UUID enrollment = java.util.UUID.randomUUID();
+        java.util.UUID inAVisit = java.util.UUID.randomUUID();
+        java.util.UUID inNoGroup = java.util.UUID.randomUUID();
+        when(deviationRepository.findFilteredDeviations(any(), any(), any(), any(), any(), any(), anyInt()))
+                .thenReturn(List.of(
+                        new Object[]{java.util.UUID.randomUUID(), "P-1", enrollment, "c|1", inAVisit, "vitals",
+                                "MISSED", null, "FAC-1", null},
+                        new Object[]{java.util.UUID.randomUUID(), "P-1", enrollment, "c|1", inNoGroup, "registration",
+                                "OVERDUE", null, "FAC-1", null}));
+        org.openphc.cce.insights.domain.entity.ProtocolInstance protocolInstance =
+                org.openphc.cce.insights.domain.entity.ProtocolInstance.builder().id(enrollment).build();
+        when(protocolInstanceRepository.findAllById(List.of(enrollment))).thenReturn(List.of(protocolInstance));
+        org.openphc.cce.insights.web.dto.GroupPathEntryDto visit2 = org.openphc.cce.insights.web.dto.GroupPathEntryDto
+                .builder().groupActionId("visit").groupName("Outpatient Visit").number(2).build();
+        when(stepGroupPathService.pathsOf(List.of(protocolInstance)))
+                .thenReturn(java.util.Map.of(inAVisit, List.of(visit2)));
+
+        List<org.openphc.cce.insights.web.dto.DeviationDto> deviations =
+                service.getDeviations(null, null, null, null, null, null, 50);
+
+        assertThat(deviations.get(0).getGroupPath()).containsExactly(visit2);
+        assertThat(deviations.get(1).getGroupPath()).isEmpty();
     }
 }

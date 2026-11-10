@@ -65,6 +65,8 @@ class PatientControllerIT extends AbstractIntegrationTest {
     private IntelligenceDeliveryRepository intelligenceDeliveryRepository;
     @MockitoBean
     private ProtocolDefinitionRepository protocolDefinitionRepository;
+    @MockitoBean
+    private org.openphc.cce.insights.service.StepGroupPathService stepGroupPathService;
 
     private static final String PATIENT_1 = "260225-0002-5501";
     private static final String PATIENT_2 = "260225-0002-5502";
