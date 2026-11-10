@@ -58,6 +58,7 @@ public class ProtocolAnalyticsService {
                         .parentActionId(parentActionId)
                         .type(type)
                         .title(title)
+                        .group(PlanDefinitionActions.isStepGroup(action))
                         .build());
                 JsonNode subActions = action.get("action");
                 if (subActions != null && subActions.isArray()) {
@@ -108,6 +109,8 @@ public class ProtocolAnalyticsService {
                     .avgDaysToComplete(row[9] != null ? ((Number) row[9]).doubleValue() : null)
                     .medianDaysToComplete(row[10] != null ? ((Number) row[10]).doubleValue() : null)
                     .requiredBehavior(requiredBehaviorMap.get(actionId))
+                    .stepInstanceCount(row.length > 11 && row[11] != null ? ((Number) row[11]).longValue() : totalInst)
+                    .completedStepInstanceCount(row.length > 12 && row[12] != null ? ((Number) row[12]).longValue() : completedCount)
                     .build();
         }).collect(Collectors.toList());
 
@@ -115,7 +118,90 @@ public class ProtocolAnalyticsService {
                 .protocolDefinitionId(protocolDefinitionId)
                 .protocolCanonical(pd.getUrl() + "|" + pd.getVersion())
                 .steps(steps)
+                .groups(groupMetrics(pd, facilityId, startDate, endDate))
                 .build();
+    }
+
+    /**
+     * One metric per step group of the protocol, in protocol order, over the same enrollments as the
+     * step metrics. A group instance counts as completed as it does on the patient's journey
+     * ({@link StepGroupProgress#isDone}): the Matcher recorded it, or every step in it so far is done,
+     * nested groups' steps included.
+     */
+    private List<StepAnalyticsDto.GroupMetric> groupMetrics(ProtocolDefinition pd, String facilityId,
+                                                            OffsetDateTime startDate, OffsetDateTime endDate) {
+        Map<String, String> groupTitles = groupTitlesInOrder(pd);
+        if (groupTitles.isEmpty()) return List.of();
+
+        List<Object[]> rows = stepInstanceRepository.findGroupInstanceProgress(
+                pd.getId(), facilityId, startDate, endDate);
+        Map<UUID, Object[]> rowById = new HashMap<>();
+        Map<UUID, List<UUID>> childrenByParent = new HashMap<>();
+        for (Object[] row : rows) {
+            rowById.put((UUID) row[0], row);
+            if (row[1] != null) childrenByParent.computeIfAbsent((UUID) row[1], k -> new ArrayList<>()).add((UUID) row[0]);
+        }
+
+        Map<String, Set<String>> patients = new HashMap<>();
+        Map<String, long[]> counts = new HashMap<>(); // group action id -> {instances, completed}
+        for (Object[] row : rows) {
+            String groupActionId = (String) row[2];
+            long[] steps = stepsWithNested((UUID) row[0], rowById, childrenByParent);
+            boolean done = (Boolean) row[4] || (steps[0] > 0 && steps[1] == steps[0]);
+            patients.computeIfAbsent(groupActionId, k -> new HashSet<>()).add((String) row[3]);
+            long[] c = counts.computeIfAbsent(groupActionId, k -> new long[2]);
+            c[0]++;
+            if (done) c[1]++;
+        }
+
+        List<StepAnalyticsDto.GroupMetric> metrics = new ArrayList<>();
+        groupTitles.forEach((groupActionId, title) -> {
+            long[] c = counts.getOrDefault(groupActionId, new long[2]);
+            metrics.add(StepAnalyticsDto.GroupMetric.builder()
+                    .groupActionId(groupActionId)
+                    .title(title)
+                    .patientCount(patients.getOrDefault(groupActionId, Set.of()).size())
+                    .instanceCount(c[0])
+                    .completedInstanceCount(c[1])
+                    .completionRate(c[0] > 0 ? Math.round((double) c[1] / c[0] * 100.0) / 100.0 : 0)
+                    .build());
+        });
+        return metrics;
+    }
+
+    /** {steps, done} of a group instance, the groups nested inside it included. */
+    private static long[] stepsWithNested(UUID groupInstanceId, Map<UUID, Object[]> rowById,
+                                          Map<UUID, List<UUID>> childrenByParent) {
+        Object[] row = rowById.get(groupInstanceId);
+        long[] total = {(Long) row[5], (Long) row[6]};
+        for (UUID child : childrenByParent.getOrDefault(groupInstanceId, List.of())) {
+            long[] nested = stepsWithNested(child, rowById, childrenByParent);
+            total[0] += nested[0];
+            total[1] += nested[1];
+        }
+        return total;
+    }
+
+    /** The protocol's step groups, id to title, in protocol order. */
+    private Map<String, String> groupTitlesInOrder(ProtocolDefinition pd) {
+        Map<String, String> titles = new LinkedHashMap<>();
+        try {
+            collectGroupTitles(objectMapper.readTree(pd.getDefinition()).get("action"), titles);
+        } catch (Exception e) {
+            // fallback: no groups
+        }
+        return titles;
+    }
+
+    private static void collectGroupTitles(JsonNode actions, Map<String, String> titles) {
+        if (actions == null || !actions.isArray()) return;
+        for (JsonNode action : actions) {
+            if (PlanDefinitionActions.isStepGroup(action) && action.hasNonNull("id")) {
+                String id = action.get("id").asText();
+                titles.put(id, action.hasNonNull("title") ? action.get("title").asText() : id);
+            }
+            collectGroupTitles(action.get("action"), titles);
+        }
     }
 
     private Map<String, String> resolveRequiredBehaviorMap(ProtocolDefinition pd) {

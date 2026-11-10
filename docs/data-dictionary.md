@@ -50,6 +50,7 @@ Individual protocol steps per patient. Primary table for compliance calculations
 | `id` | `UUID` | Yes | PK |
 | `protocol_instance_id` | `UUID` | Yes | FK → `protocol_instance.id` |
 | `action_id` | `VARCHAR` | Yes | PlanDefinition action ID |
+| `step_group_instance_id` | `UUID` | Yes | FK → `step_group_instance.id` (§1.3b): the group instance the step is in. NULL for a step in no group (Matcher V8) |
 | `repeat_index` | `INTEGER` | Yes | Recurrence index |
 | `step_status` | `VARCHAR` | Yes | `NOT_STARTED`, `COMPLETED` |
 | `sla_status` | `VARCHAR` | Yes | `OVERDUE`, `MISSED`, `MET`; NULL in PostgreSQL = not yet judged, which lands in ClickHouse as `''` (also the permanent value for optional steps) |
@@ -71,14 +72,42 @@ inserts, Step SLA marks processed).
 | Column | Type | Used By Insights | Purpose |
 |--------|------|------------------|---------|
 | `id` | `UUID` | No | PK |
-| `step_instance_id` | `UUID` | Yes | FK → `step_instance.id` |
+| `step_instance_id` | `UUID` | Yes | FK → `step_instance.id`. NULL for a group's row |
+| `step_group_instance_id` | `UUID` | No | Set only for a group's row (Matcher V8). Exactly one of the two ids is set |
 | `transition_type` | `VARCHAR` | Yes | `DUE_DATE_REACHED` (→ OVERDUE on a breach), `MISSED_DATE_REACHED` (→ MISSED), `MET_CONDITION_REACHED` (→ MET) |
 | `process_by` | `TIMESTAMPTZ` | Yes | The threshold itself (clinical time): the due date, due date + tolerance-days, or the beating `completed_at` |
 | `is_processed`, `processed_at`, `processed_by`, `attempts`, `next_attempt_at` | — | No | Step SLA work-queue bookkeeping |
 
 Insights reads `process_by` of `DUE_DATE_REACHED` / `MISSED_DATE_REACHED` as the clinical occurrence
 date of OVERDUE / MISSED deviations (§3.1a) and as `overdueDate` / `missedDate` in the protocol-tracking
-detail (1.x `step_instance.overdue_date` / `missed_date`).
+detail (1.x `step_instance.overdue_date` / `missed_date`). A group's rows are not read.
+
+### 1.3b `step_group_instance` (Matcher V8)
+
+A step group is a set of steps that belong together, such as one visit. Each time a patient's group
+opens, the Matcher writes one row. A group that repeats has one row per cycle. A group inside a group
+has one row per instance of its parent. Insights reads it for:
+- the patient's Protocol Journey: `groupInstances[]` on a group's row, and `instances[]` on a step's
+  row (API reference §2.1);
+- `groupPath`, which says which visit a step instance is in, on the protocol-tracking steps and
+  deviations, the patient's deviations and `/deviations` (§2.3, §2.5, §3.1);
+- `groups[]` in step analytics: each group's patients, instances and completed instances (§8.1).
+
+| Column | Type | Used By Insights | Purpose |
+|--------|------|------------------|---------|
+| `id` | `UUID` | Yes | PK |
+| `protocol_instance_id` | `UUID` | Yes | FK → `protocol_instance.id` |
+| `parent_group_instance_id` | `UUID` | Yes | The enclosing group's instance. NULL for a top-level group |
+| `group_action_id` | `VARCHAR` | Yes | The group's PlanDefinition action ID |
+| `cycle_index` | `INTEGER` | Yes | 0 for the first cycle, then 1, 2, … in the order they opened |
+| `due_date` | `TIMESTAMPTZ` | Yes | When the group's first steps are due. NULL when nothing sets it |
+| `sla_status` | `VARCHAR` | Yes | The verdict on the group's own deadline, same values as `step_instance.sla_status` (Step SLA) |
+| `opened_at` | `TIMESTAMPTZ` | Yes | Clinical time of what opened it |
+| `completed_at` | `TIMESTAMPTZ` | Yes | When its last mandatory step was done |
+| `closed_at` | `TIMESTAMPTZ` | No | From when nothing more is expected |
+
+> The Matcher doesn't write `completed_at`, `closed_at` or a group deadline yet. Until it does,
+> Insights counts a group instance as done when every step in it so far is done.
 
 ### 1.4 `deviation`
 
@@ -87,10 +116,14 @@ Recorded deviations from protocol pathways.
 | Column | Type | Used By Insights | Purpose |
 |--------|------|------------------|---------|
 | `id` | `UUID` | Yes | PK |
-| `step_instance_id` | `UUID` | Yes | FK → `step_instance.id` — also the only way to the enrollment (`step_instance.protocol_instance_id`) since 2.0.0 dropped `deviation.protocol_instance_id` |
+| `step_instance_id` | `UUID` | Yes | FK → `step_instance.id` — also the only way to the enrollment (`step_instance.protocol_instance_id`) since 2.0.0 dropped `deviation.protocol_instance_id`. NULL for a group's deviation |
+| `step_group_instance_id` | `UUID` | No | Set only for a group's deviation (Matcher V8). Exactly one of the two ids is set |
 | `deviation_type` | `VARCHAR` | Yes | `OVERDUE`, `MISSED` (Step SLA Service) or `ORDER_VIOLATION` (Matcher) — at most one row per (step, type) |
 | `detected_at` | `TIMESTAMPTZ` | Yes | When deviation was detected |
 | `metadata` | `JSONB` | Yes | Additional context (due date, overdue date) |
+
+Every deviation view in Insights is per step. A group's deviations (no `step_instance_id`) are left
+out of all of them, as they are left out of the pipeline's step-level views.
 
 ### 1.5 `event_log`
 

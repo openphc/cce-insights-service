@@ -18,6 +18,7 @@ import static org.openphc.cce.insights.jooq.Tables.DEVIATIONS;
 import static org.openphc.cce.insights.jooq.Tables.INBOUND_EVENT_LOGS;
 import static org.openphc.cce.insights.jooq.Tables.MV_PATIENT_FACILITY_LATEST;
 import static org.openphc.cce.insights.jooq.Tables.PROTOCOL_INSTANCES;
+import static org.openphc.cce.insights.jooq.Tables.STEP_GROUP_INSTANCES;
 import static org.openphc.cce.insights.jooq.Tables.STEP_INSTANCES;
 
 @Repository
@@ -148,6 +149,7 @@ public class StepInstanceRepositoryImpl
                 .id(r.get(STEP_INSTANCES.ID.getName(), UUID.class))
                 .protocolInstanceId(r.get(STEP_INSTANCES.PROTOCOL_INSTANCE_ID.getName(), UUID.class))
                 .actionId(r.get(STEP_INSTANCES.ACTION_ID.getName(), String.class))
+                .stepGroupInstanceId(parseUUID(r.get(STEP_INSTANCES.STEP_GROUP_INSTANCE_ID.getName(), String.class)))
                 .repeatIndex(repeatIdx != null ? repeatIdx : 0)
                 .stepStatus(stepStatus)
                 .slaStatus(slaStatus)
@@ -172,7 +174,9 @@ public class StepInstanceRepositoryImpl
                 r.get("not_started_count",       Long.class),
                 r.get("sla_unjudged_count",      Long.class),
                 r.get("avg_days_to_complete",    Double.class),
-                r.get("median_days_to_complete", Double.class)
+                r.get("median_days_to_complete", Double.class),
+                r.get("step_instance_count",     Long.class),
+                r.get("completed_step_instance_count", Long.class)
         };
     }
 
@@ -200,7 +204,11 @@ public class StepInstanceRepositoryImpl
                 uniqIf(patient, status + " = 'NOT_STARTED'").as("not_started_count"),
                 uniqIf(patient, sla + " = ''").as("sla_unjudged_count"),
                 avgIf(daysToComplete, wasCompleted).as("avg_days_to_complete"),
-                medianIf(daysToComplete, wasCompleted).as("median_days_to_complete"));
+                medianIf(daysToComplete, wasCompleted).as("median_days_to_complete"),
+                // Step instances rather than patients: a step in a group that repeats, such as one
+                // visit per day, has one per visit.
+                DSL.field("count()", Long.class).as("step_instance_count"),
+                DSL.field("countIf(" + status + " = 'COMPLETED')", Long.class).as("completed_step_instance_count"));
     }
 
     /**
@@ -404,6 +412,55 @@ public class StepInstanceRepositoryImpl
                 .groupBy(DSL.field("si." + STEP_INSTANCES.ACTION_ID.getName()))
                 .fetch()
                 .map(StepInstanceRepositoryImpl::toStepAnalyticsRow);
+    }
+
+    @Override
+    public List<Object[]> findGroupInstanceProgress(UUID protocolDefId, String facilityId,
+                                                    OffsetDateTime startDate, OffsetDateTime endDate) {
+        var groupInstances = finalAs(STEP_GROUP_INSTANCES, "g");
+        var protocolInstances = finalAs(PROTOCOL_INSTANCES, "pi");
+        // Step instances per group instance, counting only the ones directly in it. The caller adds
+        // those of the groups nested inside.
+        var stepCounts = DSL.table(DSL.sql(
+                "(SELECT step_group_instance_id AS gid, count() AS steps,"
+                        + " countIf(step_status = 'COMPLETED') AS done"
+                        + " FROM step_instances" + finalClause()
+                        + " WHERE isNotNull(step_group_instance_id)"
+                        + " AND protocol_instance_id IN (SELECT id FROM protocol_instances" + finalClause()
+                        + " WHERE protocol_definition_id = toUUID(?))"
+                        + " GROUP BY step_group_instance_id) sc", protocolDefId.toString()));
+
+        var select = dsl.select(
+                    DSL.field("toString(g.id)", String.class).as("group_instance_id"),
+                    DSL.field("toString(g.parent_group_instance_id)", String.class).as("parent_group_instance_id"),
+                    DSL.field("g.group_action_id", String.class).as("group_action_id"),
+                    DSL.field("pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName(), String.class).as("patient_id"),
+                    DSL.field("isNotNull(g.completed_at)", Boolean.class).as("recorded_complete"),
+                    DSL.field("sc.steps", Long.class).as("steps"),
+                    DSL.field("sc.done", Long.class).as("done"))
+                .from(groupInstances)
+                .join(protocolInstances).on(DSL.condition("g.protocol_instance_id = pi.id"))
+                .leftJoin(stepCounts).on(DSL.condition("sc.gid = g.id"));
+        var withFacility = (facilityId != null && !facilityId.isEmpty())
+                ? select.join(MV_PATIENT_FACILITY_LATEST.as("pf")).on(DSL.condition(
+                        "pf.patient_id = pi." + PROTOCOL_INSTANCES.PATIENT_ID.getName()))
+                : select;
+        var query = withFacility
+                .where(DSL.condition(
+                        "pi." + PROTOCOL_INSTANCES.PROTOCOL_DEFINITION_ID.getName() + " = toUUID(?)",
+                        protocolDefId.toString()))
+                .and(enrolledWithin(startDate, endDate));
+        if (facilityId != null && !facilityId.isEmpty()) {
+            query = query.and(DSL.field("pf.facility_id").eq(facilityId));
+        }
+        return query.fetch().map(r -> new Object[]{
+                parseUUID(r.get("group_instance_id", String.class)),
+                parseUUID(r.get("parent_group_instance_id", String.class)),
+                r.get("group_action_id", String.class),
+                r.get("patient_id", String.class),
+                Boolean.TRUE.equals(r.get("recorded_complete", Boolean.class)),
+                r.get("steps", Long.class) != null ? r.get("steps", Long.class) : 0L,
+                r.get("done", Long.class) != null ? r.get("done", Long.class) : 0L});
     }
 
     @Override

@@ -151,6 +151,7 @@ src/
     │   ├── ProtocolDefinitionRepositoryImpl.java
     │   ├── ProtocolInstanceRepositoryImpl.java
     │   ├── StepInstanceRepositoryImpl.java
+    │   ├── StepGroupInstanceRepositoryImpl.java
     │   ├── DeviationRepositoryImpl.java
     │   ├── MatcherEventLogRepositoryImpl.java
     │   ├── InboundEventLogRepositoryImpl.java
@@ -196,7 +197,8 @@ dsl.select(DSL.field(STEP_INSTANCES.STATE.getName()))
 | `protocol_instances` | ReplacingMergeTree | Patient enrollments, compliance rates, filtering |
 | `step_instances` | ReplacingMergeTree | Step `step_status` (Matcher) × `sla_status` (Step SLA), timing, completion, facility joins via `mv_patient_facility_latest` |
 | `step_sla_state_transitions` | ReplacingMergeTree | Per-step SLA thresholds (`process_by`) — clinical occurrence date of OVERDUE / MISSED deviations, `overdueDate` / `missedDate` in protocol tracking (new in 2.0.0) |
-| `deviations` | ReplacingMergeTree | Deviation records, trends, counts by type (enrollment reached through `step_instances` since 2.0.0) |
+| `step_group_instances` | ReplacingMergeTree | Step groups (Matcher V8), such as visits: each instance of a group for a patient, shown in the patient's Protocol Journey |
+| `deviations` | ReplacingMergeTree | Deviation records, trends, counts by type (enrollment reached through `step_instances` since 2.0.0). Step deviations only: a group's deviations are left out |
 | `matcher_event_logs` | ReplacingMergeTree | Patient event history, timeline, event volume analytics (1.x `compliance_event_logs`) |
 | `inbound_event_logs` | MergeTree | Ingestion funnel, rejection analytics, source quality, pipeline loss |
 | `intelligence_deliveries` | ReplacingMergeTree | Intelligence delivery tracking, action type stats, delivery status |
