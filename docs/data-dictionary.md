@@ -86,8 +86,12 @@ detail (1.x `step_instance.overdue_date` / `missed_date`). A group's rows are no
 
 A step group is a set of steps that belong together, such as one visit. Each time a patient's group
 opens, the Matcher writes one row. A group that repeats has one row per cycle. A group inside a group
-has one row per instance of its parent. Insights reads it for the patient's Protocol Journey
-(`groupInstances[]` on a group's row, see the API reference §2.1).
+has one row per instance of its parent. Insights reads it for:
+- the patient's Protocol Journey: `groupInstances[]` on a group's row, and `instances[]` on a step's
+  row (API reference §2.1);
+- `groupPath`, which says which visit a step instance is in, on the protocol-tracking steps and
+  deviations, the patient's deviations and `/deviations` (§2.3, §2.5, §3.1);
+- `groups[]` in step analytics: each group's patients, instances and completed instances (§8.1).
 
 | Column | Type | Used By Insights | Purpose |
 |--------|------|------------------|---------|

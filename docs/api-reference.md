@@ -470,6 +470,24 @@ Step fields (2.0.0): `stepStatus` always; `slaStatus` only once judged (1.x `sta
 `DUE_DATE_REACHED` / `MISSED_DATE_REACHED` thresholds from `step_sla_state_transitions`, present for
 mandatory steps from creation — not only once the step went overdue — and absent for optional steps.
 
+Each step and each deviation also has a `groupPath` (see below).
+
+`groupPath` says which step group instances the step instance is in, such as which visit. It
+lists one entry per level, from the top-level group in, and is empty for a step in no group:
+
+```json
+"groupPath": [
+  { "groupActionId": "outpatient-visit", "groupName": "Outpatient Visit",
+    "groupInstanceId": "8d1f…", "number": 2, "openedAt": "2026-09-06T08:00:00Z" },
+  { "groupActionId": "clinical-consultation", "groupName": "Clinical Consultation",
+    "groupInstanceId": "41c7…", "number": null, "openedAt": "2026-09-06T09:00:00Z" }
+]
+```
+
+`number` is its place among its group's instances in the same parent instance, from 1, in the order
+they opened. A nested group starts again at 1 in each parent instance. It is null when the group
+opened only once there.
+
 ---
 
 ### 2.4 GET `/v1/insights/patients/{patientId}/events`
@@ -568,6 +586,9 @@ All deviations for a patient across all protocol enrollments, ordered by detecti
 }
 ```
 
+Each deviation has a `groupPath`: the group instances its step is in, such as which visit. It has
+the same shape as in §2.3, and is empty for a step in no group.
+
 ---
 
 ## 3. Deviations & Intelligence
@@ -615,6 +636,13 @@ List deviations with filtering, sorting, and pagination.
   }
 }
 ```
+
+> `occurredAt` is the clinical occurrence date (when the deviation actually happened,
+> derived from the linked step's engine-computed dates); `detectedAt` is when the system
+> flagged it (processing time). They usually match but can differ for backfilled data.
+
+Each deviation has a `groupPath`: the group instances its step is in, such as which visit. It has
+the same shape as in §2.3, and is empty for a step in no group.
 
 ### 3.2 GET `/v1/insights/deviations/trends`
 
@@ -1271,6 +1299,26 @@ Per-action counts are distinct patients. `timelinessDistribution` is now `{compl
 `overdueCount` / `missedCount` are SLA verdicts (include steps completed late); `notStartedCount` =
 `step_status NOT_STARTED`; `slaUnjudgedCount` = no SLA verdict yet. `skippedCount` and `pendingCount`
 were removed.
+
+**Step groups.** A patient counts once in `totalInstances` and `completedCount`, however many visits
+they had. So for a step in a group that repeats, such as one visit per day, two more counts are
+given per step:
+- `stepInstanceCount`: its step instances, one per visit;
+- `completedStepInstanceCount`: of those, the completed ones.
+
+`groups[]` has one entry per step group, in protocol order, over the same enrollments:
+
+```json
+"groups": [
+  { "groupActionId": "outpatient-visit", "title": "Outpatient Visit", "patientCount": 120,
+    "instanceCount": 310, "completedInstanceCount": 254, "completionRate": 0.82 }
+]
+```
+
+- `instanceCount`: its instances, such as visits. A nested group has one per instance of its parent.
+- `completedInstanceCount`: those the Matcher recorded as complete, or with every step in them so far
+  done, nested groups' steps included, as on the patient's journey.
+- It is empty for a protocol without groups.
 
 **Computed fields:**
 - `completionRate` = `completedCount / totalInstances`

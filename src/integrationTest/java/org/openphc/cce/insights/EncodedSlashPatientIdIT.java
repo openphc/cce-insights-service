@@ -63,6 +63,8 @@ class EncodedSlashPatientIdIT {
     private MatcherEventLogRepository matcherEventLogRepository;
     @MockitoBean
     private ProtocolDefinitionRepository protocolDefinitionRepository;
+    @MockitoBean
+    private org.openphc.cce.insights.service.StepGroupPathService stepGroupPathService;
 
     private final HttpClient httpClient = HttpClient.newHttpClient();
 
