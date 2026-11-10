@@ -51,6 +51,32 @@ public class PatientTimelineDto {
         private boolean group;
         /** A group row's instances, in the order they opened. Null for a step. */
         private List<GroupInstance> groupInstances;
+        /**
+         * A step row's step instances, each with the group instance it is in, so a client can show
+         * one cycle of a group at a time. The row's own fields merge them all. Empty for a step with
+         * no step instance yet; null for a group.
+         */
+        private List<JourneyStepInstance> instances;
+    }
+
+    /**
+     * One step instance of a journey row: one occurrence of the step, such as the step in one visit.
+     */
+    @Data
+    @Builder
+    public static class JourneyStepInstance {
+        private String stepInstanceId;
+        private String groupInstanceId; // the group instance it is in; null for a step in no group
+        private String status;          // COMPLETED | OVERDUE | MISSED | NOT_STARTED (StepInstance.displayStatus())
+        private String stepStatus;      // NOT_STARTED | COMPLETED
+        private String slaStatus;       // OVERDUE | MISSED | MET; null = not yet judged
+        private String effectiveDateTime;
+        private String dueDate;
+        private String source;
+        private String practitioner;
+        private String facilityId;
+        private String facilityName;
+        private String description;     // its deviation, in words; null when it has none
     }
 
     /**
