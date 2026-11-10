@@ -11,8 +11,10 @@ permissions:
 
 env:
   IMAGE_URI: ghcr.io/${{ github.repository }}
-  # Incremental release tags: v1, v2, v3, ... (one new tag per successful build)
-  VERSION_TAG_PREFIX: v
+  # Branch-scoped incremental release tags: demo-dev-v1, demo-dev-v2, ... (one new tag per
+  # successful build), matching demo-rw-v<N> / demo-tiberbu-v<N> on the other demo branches.
+  VERSION_TAG_PREFIX: demo-dev-v
+  LATEST_TAG: demo-dev-latest
 
 jobs:
   build:
@@ -61,7 +63,7 @@ jobs:
       run: docker build -t ${IMAGE_URI}:${{ steps.version.outputs.version_tag }} .
 
     - name: Tag image as latest
-      run: docker tag ${IMAGE_URI}:${{ steps.version.outputs.version_tag }} ${IMAGE_URI}:latest
+      run: docker tag ${IMAGE_URI}:${{ steps.version.outputs.version_tag }} ${IMAGE_URI}:${LATEST_TAG}
 
     - name: Log in to GitHub Container Registry
       uses: docker/login-action@v3
@@ -74,7 +76,7 @@ jobs:
       run: |
         VERSION_TAG="${{ steps.version.outputs.version_tag }}"
         docker push ${IMAGE_URI}:${VERSION_TAG}
-        docker push ${IMAGE_URI}:latest
+        docker push ${IMAGE_URI}:${LATEST_TAG}
 
   trigger-deploy:
     needs: build
