@@ -79,9 +79,11 @@ public class PatientTimelineService {
             // Deviations already loaded in batch above
             List<Deviation> deviations = deviationsByInstance.getOrDefault(pi.getId(), List.of());
             Map<String, Deviation> deviationByActionId = resolveDeviationsByActionId(deviations, steps);
+            Map<UUID, Deviation> deviationByStepInstanceId = resolveDeviationsByStepInstanceId(deviations);
 
             // Build Protocol Journey (one row per protocol-defined action)
-            List<PatientTimelineDto.JourneyStep> journey = buildJourney(orderedActions, steps, groupProgress, eventContextMap, deviationByActionId);
+            List<PatientTimelineDto.JourneyStep> journey = buildJourney(orderedActions, steps, groupProgress,
+                    eventContextMap, deviationByActionId, deviationByStepInstanceId);
 
             // Build Compliance Timeline events
             List<PatientTimelineDto.TimelineEvent> events = new ArrayList<>();
@@ -161,12 +163,13 @@ public class PatientTimelineService {
     /**
      * Build a consolidated journey: one row per protocol-defined action, in definition order.
      * Shows the latest/best status for each action. A step group gets a row of its own, with its
-     * instances (see {@link #journeyRowForGroup}).
+     * instances (see {@link #journeyRowForGroup}). A step's row also lists its step instances, each
+     * with its group instance, so a client can show one cycle of a group at a time.
      */
     private List<PatientTimelineDto.JourneyStep> buildJourney(
             List<ProtocolAction> orderedActions, List<StepInstance> steps,
             StepGroupProgress groupProgress, Map<UUID, EventContext> eventContextMap,
-            Map<String, Deviation> deviationByActionId) {
+            Map<String, Deviation> deviationByActionId, Map<UUID, Deviation> deviationByStepInstanceId) {
 
         // Group steps by actionId
         Map<String, List<StepInstance>> stepsByAction = steps.stream()
@@ -195,6 +198,7 @@ public class PatientTimelineService {
                         .completionCount(0)
                         .requiredBehavior(requiredBehavior)
                         .depth(depth)
+                        .instances(List.of())
                         .build());
             } else {
                 // Pick the "best" status: COMPLETED > OVERDUE > MISSED > NOT_STARTED
@@ -230,6 +234,10 @@ public class PatientTimelineService {
                         .requiredBehavior(requiredBehavior)
                         .depth(depth)
                         .description(resolveDeviationDescription(actionId, deviationByActionId, best))
+                        .instances(actionSteps.stream()
+                                .map(stepInstance -> toJourneyStepInstance(stepInstance, eventContextMap,
+                                        deviationByStepInstanceId))
+                                .toList())
                         .build());
             }
         }
@@ -289,6 +297,40 @@ public class PatientTimelineService {
                 .build();
     }
 
+    /** One step instance of a step's journey row, with the group instance it is in. */
+    private PatientTimelineDto.JourneyStepInstance toJourneyStepInstance(
+            StepInstance stepInstance, Map<UUID, EventContext> eventContextMap,
+            Map<UUID, Deviation> deviationByStepInstanceId) {
+        EventContext ctx = eventContextMap.get(stepInstance.getId());
+        Deviation deviation = deviationByStepInstanceId.get(stepInstance.getId());
+        return PatientTimelineDto.JourneyStepInstance.builder()
+                .stepInstanceId(stepInstance.getId().toString())
+                .groupInstanceId(stepInstance.getStepGroupInstanceId() != null
+                        ? stepInstance.getStepGroupInstanceId().toString() : null)
+                .status(stepInstance.displayStatus())
+                .stepStatus(stepInstance.getStepStatus() != null ? stepInstance.getStepStatus().name() : null)
+                .slaStatus(stepInstance.getSlaStatus() != null ? stepInstance.getSlaStatus().name() : null)
+                .effectiveDateTime(ctx != null ? ctx.effectiveDateTime : null)
+                .dueDate(stepInstance.getDueDate() != null ? stepInstance.getDueDate().toString() : null)
+                .source(stepInstance.getCompletedBySource())
+                .practitioner(ctx != null ? ctx.practitioner : null)
+                .facilityId(ctx != null ? ctx.facilityId : null)
+                .facilityName(ctx != null ? ctx.facilityName : null)
+                .description(deviation != null ? describeDeviation(deviation, stepInstance) : null)
+                .build();
+    }
+
+    /** Each step instance's deviation, the first when it has several. */
+    private Map<UUID, Deviation> resolveDeviationsByStepInstanceId(List<Deviation> deviations) {
+        Map<UUID, Deviation> result = new HashMap<>();
+        for (Deviation d : deviations) {
+            if (d.getStepInstanceId() != null) {
+                result.putIfAbsent(d.getStepInstanceId(), d);
+            }
+        }
+        return result;
+    }
+
     /**
      * Map deviations to their corresponding actionId via stepInstanceId lookup.
      */
@@ -311,8 +353,13 @@ public class PatientTimelineService {
     private String resolveDeviationDescription(String actionId, Map<String, Deviation> deviationByActionId, StepInstance best) {
         Deviation dev = deviationByActionId.get(actionId);
         if (dev == null) return null;
+        return describeDeviation(dev, best);
+    }
+
+    /** A deviation in words, for the step instance it is shown with. */
+    private String describeDeviation(Deviation dev, StepInstance stepInstance) {
         return switch (dev.getDeviationType()) {
-            case OVERDUE -> best.isCompleted()
+            case OVERDUE -> stepInstance.isCompleted()
                     ? "Completed after SLA window"
                     : "Step overdue — exceeded expected timeframe";
             case MISSED -> "Step missed — no completion recorded within window";

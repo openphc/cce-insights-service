@@ -11,6 +11,8 @@ as one visit. Needs the cce-data-pipeline change that captures `step_group_insta
   has `group: true` and `groupInstances[]`. Each instance has its cycle, when it opened, its status
   and how many of its steps are done. Before, a group showed as a step that never started.
 - Timeline step events gain `groupActionId` and `cycleIndex`.
+- A step's `journey[]` row gains `instances[]`: its step instances one by one, each with the group
+  instance it is in. A client can then show one cycle of a group at a time, such as one visit.
 - **Action order** (`/protocols/{id}/action-order`): new `group` flag.
 - **Patient deviations** (`/patients/{id}/deviations`): a step inside a group, or inside any nested
   action, now gets its title. Before, only top-level actions did.
