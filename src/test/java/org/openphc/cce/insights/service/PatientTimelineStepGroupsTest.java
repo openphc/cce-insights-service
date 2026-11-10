@@ -3,10 +3,12 @@ package org.openphc.cce.insights.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.openphc.cce.insights.domain.entity.Deviation;
 import org.openphc.cce.insights.domain.entity.ProtocolDefinition;
 import org.openphc.cce.insights.domain.entity.ProtocolInstance;
 import org.openphc.cce.insights.domain.entity.StepGroupInstance;
 import org.openphc.cce.insights.domain.entity.StepInstance;
+import org.openphc.cce.insights.domain.enums.DeviationType;
 import org.openphc.cce.insights.domain.enums.ProtocolInstanceStatus;
 import org.openphc.cce.insights.domain.enums.SlaStatus;
 import org.openphc.cce.insights.domain.enums.StepStatus;
@@ -65,6 +67,7 @@ class PatientTimelineStepGroupsTest {
 
     private final List<StepInstance> stepInstances = new ArrayList<>();
     private final List<StepGroupInstance> groupInstances = new ArrayList<>();
+    private final List<Deviation> deviations = new ArrayList<>();
     private PatientTimelineService service;
 
     @BeforeEach
@@ -90,7 +93,7 @@ class PatientTimelineStepGroupsTest {
                 ProtocolDefinition.builder().id(PROTOCOL_DEFINITION_ID).definition(PROTOCOL).build()));
         when(stepInstanceRepository.findByProtocolInstanceIdIn(any())).thenReturn(stepInstances);
         when(stepGroupInstanceRepository.findByProtocolInstanceIdIn(any())).thenReturn(groupInstances);
-        when(deviationRepository.findByProtocolInstanceIdIn(any())).thenReturn(List.of());
+        when(deviationRepository.findByProtocolInstanceIdIn(any())).thenReturn(deviations);
     }
 
     @Test
@@ -199,6 +202,61 @@ class PatientTimelineStepGroupsTest {
 
         assertThat(visit.getStatus()).isEqualTo("COMPLETED");
         assertThat(visit.getCompletedAt()).isEqualTo(DAY_1.plusHours(3));
+    }
+
+    @Test
+    void aStepRow_listsEachOfItsStepInstances_withTheVisitItIsIn() {
+        StepGroupInstance firstVisit = groupInstance("visit", 0, DAY_1, null);
+        StepGroupInstance secondVisit = groupInstance("visit", 1, DAY_2, null);
+        step("history", firstVisit, DAY_1.plusHours(1));
+        step("history", secondVisit, null);
+        step("registration", null, DAY_1);
+
+        PatientTimelineDto.JourneyStep history = journeyRow("history");
+
+        // The row still merges both visits; its instances tell them apart.
+        assertThat(history.getCompletionCount()).isEqualTo(1);
+        assertThat(history.getInstances()).hasSize(2);
+        assertThat(history.getInstances())
+                .filteredOn(i -> firstVisit.getId().toString().equals(i.getGroupInstanceId()))
+                .singleElement().satisfies(i -> {
+                    assertThat(i.getStatus()).isEqualTo("COMPLETED");
+                    assertThat(i.getStepStatus()).isEqualTo("COMPLETED");
+                });
+        assertThat(history.getInstances())
+                .filteredOn(i -> secondVisit.getId().toString().equals(i.getGroupInstanceId()))
+                .singleElement().satisfies(i -> {
+                    assertThat(i.getStatus()).isEqualTo("NOT_STARTED");
+                    assertThat(i.getStepStatus()).isEqualTo("NOT_STARTED");
+                });
+        assertThat(journeyRow("registration").getInstances()).singleElement()
+                .satisfies(i -> assertThat(i.getGroupInstanceId()).isNull());
+        assertThat(journeyRow("bp").getInstances()).isEmpty();
+        assertThat(journeyRow("visit").getInstances()).isNull();
+    }
+
+    @Test
+    void aStepInstancesDeviation_isDescribedOnThatInstanceOnly() {
+        StepGroupInstance firstVisit = groupInstance("visit", 0, DAY_1, null);
+        StepGroupInstance secondVisit = groupInstance("visit", 1, DAY_2, null);
+        step("history", firstVisit, DAY_1.plusHours(1));
+        step("history", secondVisit, null);
+        StepInstance missed = stepInstances.get(1);
+        deviations.add(Deviation.builder()
+                .id(UUID.randomUUID())
+                .protocolInstanceId(PROTOCOL_INSTANCE_ID)
+                .stepInstanceId(missed.getId())
+                .deviationType(DeviationType.MISSED)
+                .build());
+
+        List<PatientTimelineDto.JourneyStepInstance> instances = journeyRow("history").getInstances();
+
+        assertThat(instances).filteredOn(i -> i.getStepInstanceId().equals(missed.getId().toString()))
+                .singleElement()
+                .satisfies(i -> assertThat(i.getDescription()).isEqualTo("Step missed — no completion recorded within window"));
+        assertThat(instances).filteredOn(i -> !i.getStepInstanceId().equals(missed.getId().toString()))
+                .singleElement()
+                .satisfies(i -> assertThat(i.getDescription()).isNull());
     }
 
     @Test
