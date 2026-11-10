@@ -2,6 +2,7 @@ package org.openphc.cce.insights.service;
 
 import lombok.RequiredArgsConstructor;
 import org.openphc.cce.insights.domain.repository.DeviationRepository;
+import org.openphc.cce.insights.domain.repository.ProtocolInstanceRepository;
 import org.openphc.cce.insights.web.dto.*;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
@@ -16,6 +17,8 @@ import java.util.stream.Collectors;
 public class DeviationAnalyticsService {
 
     private final DeviationRepository deviationRepository;
+    private final ProtocolInstanceRepository protocolInstanceRepository;
+    private final StepGroupPathService stepGroupPathService;
 
     public List<DeviationDto> getDeviations(String deviationType, String facilityId, String district,
                                              UUID protocolDefinitionId,
@@ -23,7 +26,7 @@ public class DeviationAnalyticsService {
                                              int limit) {
         List<Object[]> rows = deviationRepository.findFilteredDeviations(
                 deviationType, facilityId, district, protocolDefinitionId, startDate, endDate, limit);
-        return rows.stream().map(row -> DeviationDto.builder()
+        List<DeviationDto> deviations = rows.stream().map(row -> DeviationDto.builder()
                 .deviationId(uuidOf(row[0]))
                 .patientId((String) row[1])
                 .protocolInstanceId(uuidOf(row[2]))
@@ -35,6 +38,14 @@ public class DeviationAnalyticsService {
                 .facilityId((String) row[8])
                 .occurredAt(DateUtil.toOffsetDateTime(row[9]))
                 .build()).collect(Collectors.toList());
+
+        // Which visit each deviation's step is in, for a step in a step group.
+        List<UUID> protocolInstanceIds = deviations.stream()
+                .map(DeviationDto::getProtocolInstanceId).filter(Objects::nonNull).distinct().toList();
+        Map<UUID, List<GroupPathEntryDto>> groupPaths = protocolInstanceIds.isEmpty() ? Map.of()
+                : stepGroupPathService.pathsOf(protocolInstanceRepository.findAllById(protocolInstanceIds));
+        deviations.forEach(d -> d.setGroupPath(StepGroupPathService.pathOf(groupPaths, d.getStepInstanceId())));
+        return deviations;
     }
 
     @Cacheable(value = "analytics", key = "'deviation-kpis-' + (#protocolDefinitionId ?: 'all') + '-' + (#facilityId ?: 'all') + '-' + (#district ?: 'all') + '-' + (#startDate ?: 'all') + '-' + (#endDate ?: 'all')")
