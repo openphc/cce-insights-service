@@ -275,6 +275,31 @@ class PatientTimelineStepGroupsTest {
         assertThat(registration.getCycleIndex()).isNull();
     }
 
+    @Test
+    void aCompletedStepsTime_isItsCompletedAt_onTheRowItsInstancesAndTheTimeline() {
+        StepGroupInstance firstVisit = groupInstance("visit", 0, DAY_1, null);
+        StepGroupInstance secondVisit = groupInstance("visit", 1, DAY_2, null);
+        OffsetDateTime historyDoneAt = DAY_1.plusHours(1);
+        step("history", firstVisit, historyDoneAt);
+        step("history", secondVisit, null);
+
+        PatientTimelineDto.JourneyStep history = journeyRow("history");
+
+        assertThat(history.getEffectiveDateTime()).isEqualTo(historyDoneAt.toString());
+        assertThat(history.getInstances())
+                .filteredOn(i -> firstVisit.getId().toString().equals(i.getGroupInstanceId()))
+                .singleElement()
+                .satisfies(i -> assertThat(i.getEffectiveDateTime()).isEqualTo(historyDoneAt.toString()));
+        assertThat(history.getInstances())
+                .filteredOn(i -> secondVisit.getId().toString().equals(i.getGroupInstanceId()))
+                .singleElement()
+                .satisfies(i -> assertThat(i.getEffectiveDateTime()).isNull());
+        assertThat(protocol().getTimeline())
+                .filteredOn(e -> "history".equals(e.getActionId()) && "COMPLETED".equals(e.getStepStatus()))
+                .singleElement()
+                .satisfies(e -> assertThat(e.getEffectiveDateTime()).isEqualTo(historyDoneAt.toString()));
+    }
+
     private StepGroupInstance groupInstance(String groupActionId, int cycleIndex, OffsetDateTime openedAt,
                                             StepGroupInstance parent) {
         StepGroupInstance groupInstance = StepGroupInstance.builder()
