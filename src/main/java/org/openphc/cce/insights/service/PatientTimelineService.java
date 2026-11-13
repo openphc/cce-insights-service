@@ -64,7 +64,7 @@ public class PatientTimelineService {
             StepGroupProgress groupProgress = new StepGroupProgress(
                     groupInstancesByInstance.getOrDefault(pi.getId(), List.of()), steps);
 
-            // Build event context lookup: stepInstance.matchedEventId → EventContext (effectiveDateTime, practitioner, facilityId)
+            // Build event context lookup: stepInstance.matchedEventId → EventContext (practitioner, facilityId, facilityName)
             Map<UUID, EventContext> eventContextMap = resolveEventContext(steps);
 
             // Deviations already loaded in batch above
@@ -101,8 +101,7 @@ public class PatientTimelineService {
                                 .state(displayStatus)
                                 .stepStatus(si.getStepStatus() != null ? si.getStepStatus().name() : null)
                                 .slaStatus(si.getSlaStatus() != null ? si.getSlaStatus().name() : null)
-                                .effectiveDateTime(eventContextMap.containsKey(si.getId()) ?
-                                        eventContextMap.get(si.getId()).effectiveDateTime() : null);
+                                .effectiveDateTime(completionTime(si));
                 groupProgress.groupInstanceOf(si).ifPresent(groupInstance -> builder
                         .groupActionId(groupInstance.getGroupActionId())
                         .cycleIndex(groupInstance.getCycleIndex()));
@@ -201,7 +200,7 @@ public class PatientTimelineService {
                         .stepStatus(best.getStepStatus() != null ? best.getStepStatus().name() : null)
                         .slaStatus(best.getSlaStatus() != null ? best.getSlaStatus().name() : null)
                         .completionCount(completedCount)
-                        .effectiveDateTime(ctx != null ? ctx.effectiveDateTime : null)
+                        .effectiveDateTime(completionTime(best))
                         .dueDate(best.getDueDate() != null ? best.getDueDate().toString() : null)
                         .source(best.getCompletedBySource())
                         .practitioner(ctx != null ? ctx.practitioner : null)
@@ -286,7 +285,7 @@ public class PatientTimelineService {
                 .status(stepInstance.displayStatus())
                 .stepStatus(stepInstance.getStepStatus() != null ? stepInstance.getStepStatus().name() : null)
                 .slaStatus(stepInstance.getSlaStatus() != null ? stepInstance.getSlaStatus().name() : null)
-                .effectiveDateTime(ctx != null ? ctx.effectiveDateTime : null)
+                .effectiveDateTime(completionTime(stepInstance))
                 .dueDate(stepInstance.getDueDate() != null ? stepInstance.getDueDate().toString() : null)
                 .source(stepInstance.getCompletedBySource())
                 .practitioner(ctx != null ? ctx.practitioner : null)
@@ -365,7 +364,7 @@ public class PatientTimelineService {
     }
 
     /**
-     * Resolve event context (effectiveDateTime, practitioner, facilityId) for completed steps.
+     * Resolve event context (practitioner, facilityId, facilityName) for completed steps.
      * Uses step_instance.matched_event_id → matcher_event_logs → inbound_event_logs.
      * Returns a map of stepInstance.id → EventContext.
      */
@@ -386,7 +385,6 @@ public class PatientTimelineService {
         for (Map.Entry<UUID, UUID> entry : stepToEvent.entrySet()) {
             MatcherEventLog el = eventMap.get(entry.getValue());
             if (el != null) {
-                String effectiveDt = el.getData() != null ? extractEffectiveDateTime(el.getData()) : null;
                 String practitioner = el.getData() != null ? extractPractitioner(el.getData()) : null;
                 String facilityId = el.getFacilityId();
                 // Prefer the envelope-sourced facilityname (tibERbu and any future adaptor that
@@ -399,15 +397,26 @@ public class PatientTimelineService {
                 if (facilityName == null && el.getData() != null) {
                     facilityName = extractFacilityName(el.getData());
                 }
-                if (effectiveDt != null || practitioner != null || facilityId != null || facilityName != null) {
-                    result.put(entry.getKey(), new EventContext(effectiveDt, practitioner, facilityId, facilityName));
+                if (practitioner != null || facilityId != null || facilityName != null) {
+                    result.put(entry.getKey(), new EventContext(practitioner, facilityId, facilityName));
                 }
             }
         }
         return result;
     }
 
-    private record EventContext(String effectiveDateTime, String practitioner, String facilityId, String facilityName) {}
+    private record EventContext(String practitioner, String facilityId, String facilityName) {}
+
+    /**
+     * When a completed step's work happened: its completed_at, which Matcher takes from the event's
+     * clinical time (the time in the FHIR payload, e.g. Condition.recordedDate). It is the same time
+     * the step's SLA and its visit were judged by, whatever the resource type. Null for a step not
+     * completed.
+     */
+    private static String completionTime(StepInstance stepInstance) {
+        return stepInstance.isCompleted() && stepInstance.getCompletedAt() != null
+                ? stepInstance.getCompletedAt().toString() : null;
+    }
 
     /**
      * Extract practitioner display name from FHIR JSON data.
@@ -502,56 +511,6 @@ public class PatientTimelineService {
             }
         } catch (Exception e) {
             log.debug("Failed to extract facility name: {}", e.getMessage());
-        }
-        return null;
-    }
-
-    /**
-     * Extract effectiveDateTime (or period.start for Encounter) from FHIR JSON data.
-     */
-    private String extractEffectiveDateTime(String jsonData) {
-        try {
-            JsonNode root = objectMapper.readTree(jsonData);
-            JsonNode effectiveDt = root.get("effectiveDateTime");
-            if (effectiveDt != null && !effectiveDt.isNull()) {
-                return effectiveDt.asText();
-            }
-            // Fallback: Consent.verification[0].verificationDate - checked before the generic
-            // Consent.dateTime below, since a verified Consent carries BOTH: dateTime is when the
-            // consent was originally proposed, verificationDate is when THIS (verification) step
-            // actually happened. Real payloads have no effectiveDateTime/period/authoredOn/
-            // meta.lastUpdated at all for Consent, so without this the consent-verification step
-            // showed no timestamp.
-            JsonNode verification = root.path("verification");
-            if (verification.isArray() && !verification.isEmpty()) {
-                JsonNode verificationDate = verification.get(0).get("verificationDate");
-                if (verificationDate != null && !verificationDate.isNull()) {
-                    return verificationDate.asText();
-                }
-            }
-            // Fallback: Encounter.period.start
-            JsonNode periodStart = root.path("period").get("start");
-            if (periodStart != null && !periodStart.isNull()) {
-                return periodStart.asText();
-            }
-            // Fallback: authoredOn (ServiceRequest)
-            JsonNode authoredOn = root.get("authoredOn");
-            if (authoredOn != null && !authoredOn.isNull()) {
-                return authoredOn.asText();
-            }
-            // Fallback: Consent.dateTime (top-level - when the Consent record was proposed/created,
-            // i.e. the consent-request step's own timestamp)
-            JsonNode consentDateTime = root.get("dateTime");
-            if (consentDateTime != null && !consentDateTime.isNull()) {
-                return consentDateTime.asText();
-            }
-            // Fallback: meta.lastUpdated
-            JsonNode lastUpdated = root.path("meta").get("lastUpdated");
-            if (lastUpdated != null && !lastUpdated.isNull()) {
-                return lastUpdated.asText();
-            }
-        } catch (Exception e) {
-            log.debug("Failed to extract effectiveDateTime: {}", e.getMessage());
         }
         return null;
     }
