@@ -44,3 +44,6 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local reference documents. Never commit them.
+artifacts/
