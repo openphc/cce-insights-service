@@ -48,3 +48,6 @@ Thumbs.db
 bin/
 
 .claude/
+
+# Local reference documents. Never commit them.
+artifacts/
