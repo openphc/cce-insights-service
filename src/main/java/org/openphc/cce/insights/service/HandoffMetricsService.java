@@ -54,11 +54,7 @@ public class HandoffMetricsService {
         }
         return HandoffMetricDto.builder()
                 .key(h.key())
-                .label(h.label())
-                .description(h.description())
                 .actionId(h.actionId())
-                .fromPlace(h.fromPlace())
-                .toPlace(h.toPlace())
                 .total(total)
                 .completed(completed)
                 .onTime(onTime)

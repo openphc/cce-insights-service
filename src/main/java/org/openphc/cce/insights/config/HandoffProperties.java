@@ -17,15 +17,10 @@ public record HandoffProperties(List<Handoff> items) {
     }
 
     /**
-     * @param key          stable id for the UI
-     * @param label        short name, e.g. "Referral → seen at the facility"
-     * @param description  what the hand-off is, and its deadline
+     * @param key          stable id; the UI names the card by it, like its other dashboard cards
      * @param actionId     the step that completes the hand-off (the one with the deadline)
      * @param fromActionId the step it starts from (optional: no elapsed time without it)
-     * @param fromPlace    where the hand-off starts (team or facility), e.g. "Community"
-     * @param toPlace      where it ends; the same as fromPlace for a step within one facility
      */
-    public record Handoff(String key, String label, String description, String actionId, String fromActionId,
-                          String fromPlace, String toPlace) {
+    public record Handoff(String key, String actionId, String fromActionId) {
     }
 }
