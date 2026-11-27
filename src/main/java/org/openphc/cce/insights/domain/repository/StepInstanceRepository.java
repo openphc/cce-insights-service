@@ -83,7 +83,13 @@ public interface StepInstanceRepository extends ReadOnlyRepository<StepInstance,
     Object[] aggregateStepMetricsByProtocolAndFacility(UUID protocolDefinitionId, String facilityId,
                                                        OffsetDateTime startDate, OffsetDateTime endDate);
 
-    // Returns single row: [totalReceived, totalVerified] — completed counts for the
-    // consent-request and consent-verification steps, across all protocols.
-    Object[] aggregateConsentMetrics(OffsetDateTime startDate, OffsetDateTime endDate);
+    /**
+     * Hand-off counts per step: for each step in {@code actionIds} whose due date falls in [startDate, endDate], one
+     * row [action_id, total, completed, on_time, completed_late, overdue_open, pending, median_seconds].
+     * Completed steps with no deadline judgement (optional steps, or data from before the step had a deadline) are
+     * left out. {@code fromActionIds} (same order, may hold nulls) names the step each hand-off starts from, in the
+     * same step group: median_seconds is the median time between the two, NULL when none can be measured.
+     */
+    java.util.List<Object[]> findHandoffMetrics(java.util.List<String> actionIds, java.util.List<String> fromActionIds,
+                                                OffsetDateTime startDate, OffsetDateTime endDate);
 }

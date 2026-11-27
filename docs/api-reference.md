@@ -2196,7 +2196,7 @@ HIE transmission KPIs, deviation summary, and top/bottom 3 facilities by complia
 
 ### 15.2 GET `/v1/insights/dashboard/compliance-summary`
 
-Patient/facility/practitioner/consent compliance rollups for the Dashboard's four metric-card rows. Unlike 15.1, this is **not scoped** by `facilityId`/`startDate`/`endDate` — it aggregates across the whole system.
+Patient/facility/practitioner compliance rollups for the Dashboard's metric-card rows. Unlike 15.1, this is **not scoped** by `facilityId`/`startDate`/`endDate` — it aggregates across the whole system.
 
 **Required Scope:** `dashboard:read`
 
@@ -2217,11 +2217,6 @@ Patient/facility/practitioner/consent compliance rollups for the Dashboard's fou
       "between75And90": 0,
       "below75": 2
     },
-    "consent": {
-      "totalReceived": 1,
-      "totalVerified": 1,
-      "verificationRate": 100.0
-    },
     "practitioners": {
       "trackedPractitioners": 4,
       "above90": 2,
@@ -2236,7 +2231,74 @@ Patient/facility/practitioner/consent compliance rollups for the Dashboard's fou
 
 `facilities`/`practitioners` bucket every tracked facility/practitioner into `above90` (>90% compliance), `between75And90` (75–90% inclusive), or `below75` (<75%) — the three buckets are disjoint and sum to the tracked count.
 
-`consent` is Tiberbu-specific (Kenya SHA outpatient protocol): a system-wide count of completed `consent-request` and `consent-verification` step instances, computed directly in ClickHouse via `StepInstanceRepository#aggregateConsentMetrics()` (`countIf(action_id = '...' AND state = 'COMPLETED')`, no join). `verificationRate = totalVerified / totalReceived * 100`, `0` when `totalReceived` is `0`. This counts step instances by `action_id` across **every** protocol in the system — a non-Kenya protocol that happens to reuse the action ids `consent-request`/`consent-verification` would be counted too; there is no protocol-scoping on this query.
+### 15.3 GET `/v1/insights/dashboard/handoffs`
+
+Deviations per hand-off: the protocol steps, configured in `cce.insights.handoffs.items`, that hand a patient on to the next team or facility, each a mandatory step with a time limit. Backs the Dashboard's **Referral Hand-off Deviations** row. **Not cached**: the counts change as events arrive, and the UI polls it (see `VITE_HANDOFF_POLLING_INTERVAL`).
+
+**Required Scope:** `dashboard:read`
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `startDate` | ISO 8601 date-time | No | Hand-offs whose deadline (`due_date`) is on or after this time |
+| `endDate` | ISO 8601 date-time | No | Hand-offs whose deadline is on or before this time |
+
+**Response: `200 OK`**: one entry per configured hand-off, in configuration order (zeros when it has none in the range).
+
+```json
+{
+  "data": [
+    {
+      "key": "ecg-reviewed",
+      "label": "Delayed ECG Reviewed",
+      "description": "ECGs recorded that the doctor did not review within the time limit, out of those due.",
+      "actionId": "ecg-review",
+      "fromPlace": "Clinic",
+      "toPlace": "Clinic",
+      "total": 14,
+      "completed": 14,
+      "onTime": 10,
+      "completedLate": 4,
+      "overdueOpen": 0,
+      "pending": 0,
+      "deviations": 4,
+      "deviationRate": 28.6,
+      "medianMinutes": 3.9
+    }
+  ]
+}
+```
+
+| Field | Meaning |
+|-------|---------|
+| `total` | Step instances of `actionId` with a deadline in the range |
+| `onTime` / `completedLate` | Completed, with `sla_status` `MET` / `OVERDUE` or `MISSED` |
+| `overdueOpen` | Not completed and already past the deadline |
+| `pending` | Not completed, deadline not reached yet (not judged) |
+| `deviations` | `completedLate + overdueOpen` |
+| `deviationRate` | `deviations / (total - pending) * 100`, one decimal; `0` when nothing is judged yet |
+| `medianMinutes` | Median time from the `fromActionId` step's completion to this step's completion, in the same step group; `null` when none can be measured |
+
+Counts are hand-offs (step instances), not patients. A completed step with no SLA judgement (a step that had no deadline) is excluded.
+
+**Configuration** (`application.yml`):
+
+```yaml
+cce:
+  insights:
+    handoffs:
+      items:
+        - key: ecg-reviewed              # stable id (UI test id)
+          label: Delayed ECG Reviewed    # card title
+          description: ...               # card tooltip
+          actionId: ecg-review           # the step that completes the hand-off (must have a deadline in the protocol)
+          fromActionId: ecg-confirmation # the step it starts from (for medianMinutes)
+          fromPlace: Clinic              # where the patient is handed from / to
+          toPlace: Clinic
+```
+
+A hand-off is only counted when its step is `requiredBehavior: must` with a `relatedAction.offsetDuration` in the protocol; optional steps get no deadline and so never deviate.
 
 ---
 

@@ -38,3 +38,44 @@ cce:
       lookups: ${CACHE_TTL_LOOKUPS:60}
       analytics: ${CACHE_TTL_ANALYTICS:30}
       metrics: ${CACHE_TTL_METRICS:15}
+  insights:
+    # Dashboard "Referral Hand-off Deviations": the protocol steps that hand a patient on, each mandatory with a time limit.
+    # actionId: the step that completes the hand-off; fromActionId: the step it starts from (for the time taken).
+    # fromPlace / toPlace: where the patient is handed from and to (the same place for a step within one facility).
+    handoffs:
+      items:
+        - key: referral-consultation
+          label: Delayed UHC Consultations
+          description: CHW referrals from the community where the patient was not seen at the UHC within the time limit, out of those due.
+          actionId: ncd-referral-consultation
+          fromActionId: ncd-referral
+          fromPlace: Community (CHW)
+          toPlace: UHC
+        - key: consultation-ecg
+          label: Delayed ECG Recorded
+          description: ECGs ordered at the UHC that were not recorded within the time limit, out of those due.
+          actionId: ncd-ecg-confirmation
+          fromActionId: ncd-ecg-requested
+          fromPlace: UHC
+          toPlace: UHC
+        - key: ecg-reviewed
+          label: Delayed ECG Reviewed
+          description: ECGs recorded at the UHC that the doctor did not review within the time limit, out of those due.
+          actionId: ncd-ecg-review
+          fromActionId: ncd-ecg-confirmation
+          fromPlace: UHC
+          toPlace: UHC
+        - key: pci-referral-acknowledged
+          label: Delayed Cardiac Acknowledgment
+          description: PCI referrals from the UHC that the cardiac centre did not acknowledge within the time limit, out of those due.
+          actionId: ncd-pci-acknowledged
+          fromActionId: ncd-pci-referral
+          fromPlace: UHC
+          toPlace: Cardiac centre
+        - key: acknowledged-stent
+          label: Delayed Stent Procedure
+          description: Acknowledged PCI referrals where the cardiac centre did not record the stent outcome within the time limit, out of those due.
+          actionId: ncd-pci-outcome
+          fromActionId: ncd-pci-acknowledged
+          fromPlace: Cardiac centre
+          toPlace: Cardiac centre
