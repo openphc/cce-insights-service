@@ -36,7 +36,7 @@ class DashboardControllerIT extends AbstractIntegrationTest {
     @Test
     void getHandoffs_returnsOneEntryPerHandoff() throws Exception {
         when(handoffMetricsService.getHandoffMetrics(any(), any())).thenReturn(List.of(
-                HandoffMetricDto.builder().key("pci-referral-acknowledged").label("PCI referral to acknowledged")
+                HandoffMetricDto.builder().key("pci-referral-acknowledged").actionId("ncd-pci-acknowledged")
                         .total(4).onTime(3).completedLate(1).deviations(1).deviationRate(25.0).medianMinutes(0.8)
                         .build()));
 

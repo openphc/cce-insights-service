@@ -10,13 +10,9 @@ import lombok.Data;
 @Data
 @Builder
 public class HandoffMetricDto {
+    /** Stable id of the hand-off; the UI names the card by it. */
     private String key;
-    private String label;
-    private String description;
     private String actionId;
-    /** Where the hand-off starts and ends (team or facility); equal for a step within one facility. */
-    private String fromPlace;
-    private String toPlace;
     /** Hand-offs with a deadline in the range: completed (on time or late), or outstanding. */
     private long total;
     private long completed;

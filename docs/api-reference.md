@@ -2251,11 +2251,7 @@ Deviations per hand-off: the protocol steps, configured in `cce.insights.handoff
   "data": [
     {
       "key": "ecg-reviewed",
-      "label": "Delayed ECG Reviewed",
-      "description": "ECGs recorded that the doctor did not review within the time limit, out of those due.",
       "actionId": "ecg-review",
-      "fromPlace": "Clinic",
-      "toPlace": "Clinic",
       "total": 14,
       "completed": 14,
       "onTime": 10,
@@ -2272,6 +2268,7 @@ Deviations per hand-off: the protocol steps, configured in `cce.insights.handoff
 
 | Field | Meaning |
 |-------|---------|
+| `key` | The hand-off's stable id from the configuration. The UI names and describes the card by it, like its other dashboard cards; the service returns no display text |
 | `total` | Step instances of `actionId` with a deadline in the range |
 | `onTime` / `completedLate` | Completed, with `sla_status` `MET` / `OVERDUE` or `MISSED` |
 | `overdueOpen` | Not completed and already past the deadline |
@@ -2289,13 +2286,9 @@ cce:
   insights:
     handoffs:
       items:
-        - key: ecg-reviewed              # stable id (UI test id)
-          label: Delayed ECG Reviewed    # card title
-          description: ...               # card tooltip
+        - key: ecg-reviewed              # stable id; the UI's name for the card is keyed by it
           actionId: ecg-review           # the step that completes the hand-off (must have a deadline in the protocol)
           fromActionId: ecg-confirmation # the step it starts from (for medianMinutes)
-          fromPlace: Clinic              # where the patient is handed from / to
-          toPlace: Clinic
 ```
 
 A hand-off is only counted when its step is `requiredBehavior: must` with a `relatedAction.offsetDuration` in the protocol; optional steps get no deadline and so never deviate.

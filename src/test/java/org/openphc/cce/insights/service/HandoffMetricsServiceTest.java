@@ -21,8 +21,8 @@ class HandoffMetricsServiceTest {
 
     private final StepInstanceRepository repository = mock(StepInstanceRepository.class);
     private final HandoffProperties properties = new HandoffProperties(List.of(
-            new Handoff("referral-consultation", "Referral → seen", "seen", "consultation", "referral", "Community", "Clinic"),
-            new Handoff("pci-acknowledged", "PCI referral → acknowledged", "ack", "acknowledged", null, "Clinic", "Hospital")));
+            new Handoff("referral-consultation", "consultation", "referral"),
+            new Handoff("pci-acknowledged", "acknowledged", null)));
     private final HandoffMetricsService service = new HandoffMetricsService(properties, repository);
 
     @Test
@@ -34,8 +34,7 @@ class HandoffMetricsServiceTest {
         HandoffMetricDto consultation = service.getHandoffMetrics(null, null).get(0);
 
         assertThat(consultation.getKey()).isEqualTo("referral-consultation");
-        assertThat(consultation.getFromPlace()).isEqualTo("Community");
-        assertThat(consultation.getToPlace()).isEqualTo("Clinic");
+        assertThat(consultation.getActionId()).isEqualTo("consultation");
         assertThat(consultation.getTotal()).isEqualTo(10);
         assertThat(consultation.getOnTime()).isEqualTo(6);
         assertThat(consultation.getCompletedLate()).isEqualTo(2);
