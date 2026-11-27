@@ -10,7 +10,6 @@ public class DashboardComplianceSummaryDto {
     private PatientComplianceDto patients;
     private FacilityComplianceDto facilities;
     private PractitionerComplianceDto practitioners;
-    private ConsentComplianceDto consent;
 
     @Data
     @Builder
@@ -37,13 +36,5 @@ public class DashboardComplianceSummaryDto {
         private long above90;
         private long between75And90;
         private long below75;
-    }
-
-    @Data
-    @Builder
-    public static class ConsentComplianceDto {
-        private long totalReceived;
-        private long totalVerified;
-        private double verificationRate;
     }
 }

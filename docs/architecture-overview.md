@@ -597,18 +597,34 @@ HAVING COUNT(*) >= :minDeviations
 ORDER BY total_deviations DESC;
 ```
 
-**Consent Funnel Metrics** (`StepInstanceRepository#aggregateConsentMetrics()`, backing the Dashboard's `consent` block — see [api-reference.md §15.2](api-reference.md#152-get-v1insightsdashboardcompliance-summary)):
+**Hand-off Deviation Metrics** (`StepInstanceRepository#findHandoffMetrics()`, called by `HandoffMetricsService`, backing [api-reference.md §15.3](api-reference.md#153-get-v1insightsdashboardhandoffs)):
 
-Tiberbu-specific (Kenya SHA outpatient protocol). A single-row aggregate over `step_instances`, no join:
+One row per configured hand-off step. The `LEFT JOIN` finds, in the same step group, when the step the hand-off starts from was completed, for the median time taken. The `multiIf` maps each hand-off step to its `fromActionId`.
 
 ```sql
-SELECT
-  countIf(action_id = 'consent-request'      AND state = 'COMPLETED') AS total_received,
-  countIf(action_id = 'consent-verification' AND state = 'COMPLETED') AS total_verified
-FROM step_instances;
+SELECT si.action_id,
+  count()                                                                              AS total,
+  countIf(si.step_status = 'COMPLETED')                                                AS completed,
+  countIf(si.step_status = 'COMPLETED'  AND si.sla_status = 'MET')                     AS on_time,
+  countIf(si.step_status = 'COMPLETED'  AND si.sla_status IN ('OVERDUE', 'MISSED'))    AS completed_late,
+  countIf(si.step_status != 'COMPLETED' AND si.sla_status IN ('OVERDUE', 'MISSED'))    AS overdue_open,
+  countIf(si.step_status != 'COMPLETED' AND (si.sla_status IS NULL OR si.sla_status = '')) AS pending,
+  medianIf(dateDiff('second', prev.completed_at, si.completed_at),
+           si.step_status = 'COMPLETED' AND prev.completed_at IS NOT NULL
+           AND si.completed_at >= prev.completed_at)                                   AS median_seconds
+FROM step_instances si FINAL
+LEFT JOIN (SELECT step_group_instance_id, action_id, max(completed_at) AS completed_at
+           FROM step_instances FINAL WHERE step_status = 'COMPLETED'
+           GROUP BY step_group_instance_id, action_id) prev
+  ON prev.step_group_instance_id = si.step_group_instance_id
+ AND prev.action_id = multiIf(si.action_id = :action1, :from1, ..., '')
+WHERE si.action_id IN (:actionIds)
+  AND NOT (si.step_status = 'COMPLETED' AND (si.sla_status IS NULL OR si.sla_status = ''))
+  AND si.due_date BETWEEN :start AND :end
+GROUP BY si.action_id;
 ```
 
-System-wide, not scoped to a protocol — any protocol reusing these exact `action_id`s would be counted too. `verificationRate = totalVerified / totalReceived * 100` (in `DashboardService`), `0` when `totalReceived` is `0`.
+`FINAL` is added only when `CLICKHOUSE_USE_FINAL` is on. `deviations = completed_late + overdue_open`; `deviationRate = deviations / (total - pending) * 100` (in `HandoffMetricsService`). The result is not cached.
 
 ---
 

@@ -740,23 +740,42 @@ public class StepInstanceRepositoryImpl
     }
 
     @Override
-    public Object[] aggregateConsentMetrics(OffsetDateTime startDate, OffsetDateTime endDate) {
-        var si = finalAs(STEP_INSTANCES, "si");
-        var pi = finalAs(PROTOCOL_INSTANCES, "pi");
-        String stepStatus = "si." + STEP_INSTANCES.STEP_STATUS.getName();
-        String actionId = "si." + STEP_INSTANCES.ACTION_ID.getName();
-
-        org.jooq.Record r = dsl.select(
-                    DSL.field("countIf(" + actionId + " = 'consent-request' AND " + stepStatus + " = 'COMPLETED')",
-                            Long.class).as("total_received"),
-                    DSL.field("countIf(" + actionId + " = 'consent-verification' AND " + stepStatus + " = 'COMPLETED')",
-                            Long.class).as("total_verified")
-                )
-                .from(si)
-                .join(pi).on(DSL.condition(
-                        "si." + STEP_INSTANCES.PROTOCOL_INSTANCE_ID.getName() + " = pi.id"))
-                .where(enrolledWithin(startDate, endDate))
-                .fetchOne();
-        return r != null ? r.intoArray() : new Object[]{0L, 0L};
+    public List<Object[]> findHandoffMetrics(List<String> actionIds, List<String> fromActionIds,
+                                             OffsetDateTime startDate, OffsetDateTime endDate) {
+        if (actionIds.isEmpty()) return List.of();
+        List<Object> binds = new java.util.ArrayList<>();
+        // The step each hand-off starts from: multiIf(si.action_id = ?, ?, ..., '')
+        StringBuilder from = new StringBuilder("multiIf(");
+        for (int i = 0; i < actionIds.size(); i++) {
+            from.append("si.action_id = ?, ?, ");
+            binds.add(actionIds.get(i));
+            binds.add(fromActionIds.get(i) == null ? "" : fromActionIds.get(i));
+        }
+        from.append("'')");
+        String in = String.join(", ", java.util.Collections.nCopies(actionIds.size(), "?"));
+        binds.addAll(actionIds);
+        binds.add(dtStart(startDate));
+        binds.add(dtEnd(endDate));
+        String fin = finalClause();
+        String sql = "SELECT si.action_id,"
+                + " count() AS total,"
+                + " countIf(si.step_status = 'COMPLETED') AS completed,"
+                + " countIf(si.step_status = 'COMPLETED' AND si.sla_status = 'MET') AS on_time,"
+                + " countIf(si.step_status = 'COMPLETED' AND si.sla_status IN ('OVERDUE', 'MISSED')) AS completed_late,"
+                + " countIf(si.step_status != 'COMPLETED' AND si.sla_status IN ('OVERDUE', 'MISSED')) AS overdue_open,"
+                + " countIf(si.step_status != 'COMPLETED' AND (si.sla_status IS NULL OR si.sla_status = '')) AS pending,"
+                + " medianIf(dateDiff('second', prev.completed_at, si.completed_at),"
+                + "   si.step_status = 'COMPLETED' AND prev.completed_at IS NOT NULL"
+                + "   AND si.completed_at >= prev.completed_at) AS median_seconds"
+                + " FROM step_instances si" + fin
+                + " LEFT JOIN (SELECT step_group_instance_id, action_id, max(completed_at) AS completed_at"
+                + "   FROM step_instances" + fin
+                + "   WHERE step_status = 'COMPLETED' GROUP BY step_group_instance_id, action_id) prev"
+                + "   ON prev.step_group_instance_id = si.step_group_instance_id AND prev.action_id = " + from
+                + " WHERE si.action_id IN (" + in + ")"
+                + "   AND NOT (si.step_status = 'COMPLETED' AND (si.sla_status IS NULL OR si.sla_status = ''))"
+                + "   AND si.due_date >= parseDateTime64BestEffort(?) AND si.due_date <= parseDateTime64BestEffort(?)"
+                + " GROUP BY si.action_id";
+        return dsl.resultQuery(sql, binds.toArray()).fetch().stream().map(org.jooq.Record::intoArray).toList();
     }
 }
